@@ -96,6 +96,7 @@ const auditLogsRouter = require('./routes/auditLogs');
 
 const paymentRoutes = require('./routes/paymentRoutes');
 const testNotification = require('./routes/testNotification');
+const invitationsRouter = require('./routes/invitations');
 
 app.use('/api/visitors', visitorsRouter);
 app.use('/api/users', usersRouter);
@@ -103,6 +104,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/zones', zonesRouter);
 app.use('/api/blacklist', blacklistRouter);
 app.use('/api/alerts', alertsRouter);
+app.use('/api/invitations', invitationsRouter);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/attendance', attendanceRouter);
 app.use('/api/branch-settings', branchSettingsRouter);

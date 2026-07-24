@@ -43,10 +43,14 @@ const ApprovalList = () => {
                           (v.companyName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                           (v.hostName || '').toLowerCase().includes(searchTerm.toLowerCase());
 
+    const todayStr = new Date().toISOString().split('T')[0];
     const matchesTab = tabFilter === 'All' ? true :
                        tabFilter === 'Pending' ? (v.status === 'Pending Approval' || v.status === 'Pending') :
+                       tabFilter === 'MyVisitors' ? (user?.name && v.hostName?.toLowerCase().includes(user.name.toLowerCase())) :
+                       tabFilter === 'Today' ? (v.visitDate === todayStr || new Date(v.visitDate).toDateString() === new Date().toDateString()) :
                        tabFilter === 'Approved' ? (v.status === 'Approved') :
-                       tabFilter === 'Rejected' ? (v.status === 'Rejected') : true;
+                       tabFilter === 'Rejected' ? (v.status === 'Rejected') :
+                       tabFilter === 'History' ? (['Checked Out', 'Exited', 'Expired', 'Rejected', 'Cancelled'].includes(v.status)) : true;
 
     return matchesSearch && matchesTab;
   }).sort((a, b) => new Date(b.createdAt || b.visitDate) - new Date(a.createdAt || a.visitDate));
@@ -74,18 +78,21 @@ const ApprovalList = () => {
         </div>
       </div>
 
-      {/* Tabs Bar */}
-      <div className="bg-slate-100 p-1.5 rounded-xl flex gap-2 border border-slate-200">
+      {/* Host Dashboard Tabs Bar */}
+      <div className="bg-slate-100 p-1.5 rounded-xl flex flex-wrap gap-2 border border-slate-200">
         {[
           { key: 'Pending', label: '⏳ Pending Approvals' },
+          { key: 'MyVisitors', label: '👤 My Visitors' },
+          { key: 'Today', label: '📅 Today\'s Visitors' },
           { key: 'Approved', label: '✅ Approved' },
           { key: 'Rejected', label: '❌ Rejected' },
+          { key: 'History', label: '📜 Visitor History' },
           { key: 'All', label: '📋 All Requests' },
         ].map(tab => (
           <button
             key={tab.key}
             onClick={() => setTabFilter(tab.key)}
-            className={`flex-1 py-2.5 px-4 text-center font-bold text-xs rounded-lg transition-all ${
+            className={`py-2 px-3 text-center font-bold text-xs rounded-lg transition-all ${
               tabFilter === tab.key
                 ? 'bg-[var(--color-brand-indigo)] text-white shadow-md'
                 : 'text-slate-700 hover:bg-white'

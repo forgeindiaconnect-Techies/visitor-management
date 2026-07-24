@@ -26,6 +26,8 @@ import PreBookingForm from './pages/visitors/PreBookingForm';
 import SecurityCheckIn from './pages/visitors/SecurityCheckIn';
 import ReturningVisitor from './pages/visitors/ReturningVisitor';
 import VisitorPass from './pages/public/VisitorPass';
+import PreRegister from './pages/public/PreRegister';
+import PreBookingRegistration from './pages/visitors/PreBookingRegistration';
 import ApprovalList from './pages/approvals/ApprovalList';
 import ApprovalDetails from './pages/approvals/ApprovalDetails';
 import ZoneList from './pages/zones/ZoneList';
@@ -79,6 +81,7 @@ const AppRoutes = () => {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/pass/:visitId" element={<VisitorPass />} />
+      <Route path="/pre-register" element={<PreRegister />} />
       
       <Route path="/" element={
         <ProtectedRoute>
@@ -97,6 +100,7 @@ const AppRoutes = () => {
         <Route path="visitors" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin', 'Security', 'HR', 'Receptionist']}><VisitorList /></ProtectedRoute>} />
         <Route path="visitors/new" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin', 'Security', 'HR', 'Receptionist']}><VisitorForm /></ProtectedRoute>} />
         <Route path="visitors/pre-booking" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin', 'HR', 'Receptionist', 'Employee']}><PreBookingForm /></ProtectedRoute>} />
+        <Route path="invitations" element={<ProtectedRoute allowedRoles={['SaaS Super Admin', 'Super Admin', 'Company Admin', 'MD', 'Admin', 'HR', 'Receptionist']}><PreBookingRegistration /></ProtectedRoute>} />
         <Route path="visitors/security" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin', 'Security', 'Receptionist']}><SecurityCheckIn /></ProtectedRoute>} />
         <Route path="visitors/returning" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin', 'Security', 'HR', 'Receptionist']}><ReturningVisitor /></ProtectedRoute>} />
         

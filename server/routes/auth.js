@@ -41,7 +41,10 @@ router.post('/login', loginLimiter, async (req, res) => {
     }
 
     // Block inactive and suspended users from logging in
-    if (user.status === 'Inactive') {
+    if (!user.isActive || user.status === 'Inactive') {
+      if (user.role === 'Visitor') {
+        return res.status(403).json({ message: 'Please complete your registration using the invitation email.' });
+      }
       return res.status(403).json({ message: 'Your account has been deactivated. Please contact your administrator.' });
     }
     
