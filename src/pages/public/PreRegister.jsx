@@ -27,7 +27,8 @@ const PreRegister = () => {
   const [formError, setFormError] = useState('');
   const [registeredResult, setRegisteredResult] = useState(null);
 
-  const API_BASE = import.meta.env.VITE_API_URL || 'https://fic-visitor-1.onrender.com/api';
+  const _rawUrl = import.meta.env.VITE_API_URL || 'https://fic-visitor-1.onrender.com';
+  const API_BASE = _rawUrl.replace(/\/api\/?$/, '') + '/api';
 
   useEffect(() => {
     if (!token) {
