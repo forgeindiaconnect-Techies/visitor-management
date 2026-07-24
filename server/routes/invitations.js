@@ -40,7 +40,7 @@ router.post('/create', async (req, res) => {
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 48 * 3600 * 1000); // 48 Hours
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const frontendUrl = process.env.FRONTEND_URL || 'https://fic-visitor-1.vercel.app';
     const registrationLink = `${frontendUrl}/pre-register?token=${token}`;
     const expiryDateStr = expiresAt.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
 
@@ -189,7 +189,7 @@ router.post('/register', async (req, res) => {
     const visitId = `VISIT${vNum.toString().padStart(4, '0')}`;
     const bookingId = `BK${bNum.toString().padStart(6, '0')}`;
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const frontendUrl = process.env.FRONTEND_URL || 'https://fic-visitor-1.vercel.app';
     const passUrl = `${frontendUrl}/pass/${visitId}`;
     const qrPayload = {
       bookingId,
@@ -285,7 +285,7 @@ router.post('/:id/resend', async (req, res) => {
       return res.status(400).json({ message: 'Cannot resend email for a used or cancelled invitation.' });
     }
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const frontendUrl = process.env.FRONTEND_URL || 'https://fic-visitor-1.vercel.app';
     const registrationLink = `${frontendUrl}/pre-register?token=${invitation.token}`;
     const expiryDateStr = new Date(invitation.expiresAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
 
@@ -323,7 +323,7 @@ router.post('/:id/regenerate', async (req, res) => {
 
     await invitation.save();
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const frontendUrl = process.env.FRONTEND_URL || 'https://fic-visitor-1.vercel.app';
     const registrationLink = `${frontendUrl}/pre-register?token=${newToken}`;
     const expiryDateStr = newExpiresAt.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
 

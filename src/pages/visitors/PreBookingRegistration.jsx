@@ -26,7 +26,7 @@ const PreBookingRegistration = () => {
   const { user } = useAuth();
   const { addNotification } = useVisitors();
 
-  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+  const API_BASE = import.meta.env.VITE_API_URL || 'https://fic-visitor-1.onrender.com/api';
 
   // Form State
   const [formData, setFormData] = useState({
