@@ -114,7 +114,7 @@ const VisitorList = () => {
             <span>+ Walk-in Visitor</span>
           </button>
           <button 
-            onClick={() => navigate('/visitors/pre-booking')}
+            onClick={() => navigate('/invitations')}
             className="bg-indigo-50 border border-indigo-200 text-[var(--color-brand-indigo)] hover:bg-indigo-100 px-4 py-2.5 rounded-lg flex items-center space-x-2 font-bold transition-colors shadow-sm text-sm"
           >
             <CalendarCheck size={18} />
