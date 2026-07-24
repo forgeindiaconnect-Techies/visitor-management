@@ -44,6 +44,10 @@ const userSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  isActive: {
+    type: Boolean,
+    default: true
+  },
   branchId: {
     type: String,
     required: true,
