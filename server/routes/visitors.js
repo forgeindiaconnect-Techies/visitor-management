@@ -219,28 +219,44 @@ router.post('/', async (req, res) => {
       await profile.save();
     }
 
-    // 2. Generate unique Visit ID reliably
-    const lastVisitor = await Visitor.findOne().sort({ createdAt: -1 });
+    // 2. Generate unique Visit ID and Booking ID
+    const lastVisitor = await Visitor.findOne({ companyId: req.companyId }).sort({ createdAt: -1 });
     let vNum = 1;
-    if (lastVisitor && lastVisitor.visitId && lastVisitor.visitId.startsWith('VISIT')) {
-      const match = lastVisitor.visitId.match(/\d+$/);
-      if (match) vNum = parseInt(match[0], 10) + 1;
+    let bNum = 1;
+    if (lastVisitor) {
+      if (lastVisitor.visitId && lastVisitor.visitId.startsWith('VISIT')) {
+        const match = lastVisitor.visitId.match(/\d+$/);
+        if (match) vNum = parseInt(match[0], 10) + 1;
+      }
+      if (lastVisitor.bookingId && lastVisitor.bookingId.startsWith('BK')) {
+        const bMatch = lastVisitor.bookingId.match(/\d+$/);
+        if (bMatch) bNum = parseInt(bMatch[0], 10) + 1;
+      }
     }
     const visitId = `VISIT${vNum.toString().padStart(4, '0')}`;
+    const bookingId = req.body.bookingId || `BK${bNum.toString().padStart(6, '0')}`;
 
-    // 3. Generate QR Code URL
+    // 3. Generate QR Code Data & URL
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
     const qrCode = `${frontendUrl}/pass/${visitId}`;
+    const qrPayload = {
+      bookingId: bookingId,
+      visitorId: profileId,
+      mobile: mobileNumber
+    };
 
     // 4. Save the Visit Record
+    const initialStatus = req.body.isDraft ? 'Draft' : (req.body.status || 'Pending');
     const visitor = new Visitor({
       ...req.body,
       companyId: req.companyId,
       visitorProfileId: profile._id,
       profileId,
       visitId,
+      bookingId,
       qrCode,
-      status: req.body.status || 'Pending'
+      qrPayload,
+      status: initialStatus
     });
     const newVisitor = await visitor.save();
 
@@ -249,7 +265,7 @@ router.post('/', async (req, res) => {
       branchId: newVisitor.branch,
       type: 'success',
       module: 'Visitors',
-      title: '👥 Visitor Registered',
+      title: initialStatus === 'Pre-Booked' ? '📅 Visitor Pre-Booked' : '👥 Visitor Registered',
       message: `${newVisitor.visitorName} has been registered for ${newVisitor.hostName || 'a visit'}.`,
       createdBy: req.user ? req.user.name : 'Security'
     });
@@ -262,7 +278,7 @@ router.post('/', async (req, res) => {
     // Audit log
     await logAction(req, `Visitor Registered`, 'Visitor', {
       userId: req.user ? req.user._id : undefined,
-      description: `Visitor ${newVisitor.visitorName} was registered successfully.`,
+      description: `Visitor ${newVisitor.visitorName} (${newVisitor.registrationType || 'Walk-in'}) was registered successfully.`,
       status: 'Success'
     });
 
@@ -272,7 +288,42 @@ router.post('/', async (req, res) => {
   }
 });
 
+// Search visitor by Mobile Number, Booking ID, or Visit ID for Security Check-In
+router.get('/search/:query', async (req, res) => {
+  try {
+    const rawQuery = req.params.query.trim();
+    let searchTerm = rawQuery;
 
+    // Handle scanned JSON QR Code
+    if (rawQuery.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(rawQuery);
+        searchTerm = parsed.bookingId || parsed.mobile || parsed.visitorId || rawQuery;
+      } catch (e) {
+        // Not valid JSON, use raw text
+      }
+    }
+
+    const visitor = await Visitor.findOne({
+      companyId: req.companyId,
+      $or: [
+        { bookingId: searchTerm },
+        { visitId: searchTerm },
+        { mobileNumber: searchTerm },
+        { aadhaarNumber: searchTerm },
+        { profileId: searchTerm }
+      ]
+    }).sort({ createdAt: -1 });
+
+    if (!visitor) {
+      return res.status(404).json({ message: 'No booking or visitor found matching search criteria' });
+    }
+
+    res.json(visitor);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
 
 // Get a single visitor by visitId (for public pass page)
 router.get('/pass/:visitId', async (req, res) => {
@@ -280,7 +331,7 @@ router.get('/pass/:visitId', async (req, res) => {
     const isValidObjectId = require('mongoose').isValidObjectId(req.params.visitId);
     let query = { visitId: req.params.visitId };
     if (isValidObjectId) {
-      query = { $or: [{ visitId: req.params.visitId }, { _id: req.params.visitId }] };
+      query = { $or: [{ visitId: req.params.visitId }, { _id: req.params.visitId }, { bookingId: req.params.visitId }] };
     }
     const visitor = await Visitor.findOne(query);
     if (!visitor) return res.status(404).json({ message: 'Visitor not found' });
@@ -290,12 +341,129 @@ router.get('/pass/:visitId', async (req, res) => {
   }
 });
 
+const buildVisitorQuery = (id, companyId) => {
+  const isValidObjectId = require('mongoose').isValidObjectId(id);
+  const orConditions = [{ visitId: id }, { bookingId: id }];
+  if (isValidObjectId) {
+    orConditions.push({ _id: id });
+  }
+  return { companyId, $or: orConditions };
+};
+
+// Host Approve Visitor Endpoint
+router.patch('/:id/approve', async (req, res) => {
+  try {
+    const visitor = await Visitor.findOne(buildVisitorQuery(req.params.id, req.companyId));
+    if (!visitor) return res.status(404).json({ message: 'Visitor request not found' });
+
+    visitor.status = 'Approved';
+    visitor.approvedBy = req.user ? req.user.name : (req.body.approvedBy || visitor.hostName || 'Host');
+    visitor.approvalTime = new Date();
+    
+    // Ensure bookingId exists
+    if (!visitor.bookingId) {
+      const lastVisitor = await Visitor.findOne({ companyId: req.companyId, bookingId: { $exists: true } }).sort({ createdAt: -1 });
+      let bNum = 1;
+      if (lastVisitor && lastVisitor.bookingId && lastVisitor.bookingId.startsWith('BK')) {
+        const bMatch = lastVisitor.bookingId.match(/\d+$/);
+        if (bMatch) bNum = parseInt(bMatch[0], 10) + 1;
+      }
+      visitor.bookingId = `BK${bNum.toString().padStart(6, '0')}`;
+    }
+
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    visitor.qrCode = `${frontendUrl}/pass/${visitor.visitId || visitor._id}`;
+    visitor.qrPayload = {
+      bookingId: visitor.bookingId,
+      visitorId: visitor.profileId || visitor.visitId,
+      mobile: visitor.mobileNumber
+    };
+
+    const updatedVisitor = await visitor.save();
+
+    // Create Notification for Reception/Security & Visitor
+    const notification = await Notification.create({
+      companyId: req.companyId,
+      branchId: updatedVisitor.branch,
+      type: 'success',
+      module: 'Visitors',
+      title: '✅ Approved Visitor',
+      message: `Visitor: ${updatedVisitor.visitorName} | Booking ID: ${updatedVisitor.bookingId} | Expected Arrival: ${updatedVisitor.expectedArrivalTime || '10:30 AM'}`,
+      createdBy: req.user ? req.user.name : 'Host'
+    });
+
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('new_notification', notification);
+    }
+
+    await logAction(req, `Visitor Pre-Booking Approved`, 'Visitor', {
+      userId: req.user ? req.user._id : undefined,
+      description: `Host ${updatedVisitor.approvedBy} approved visitor ${updatedVisitor.visitorName} (Booking: ${updatedVisitor.bookingId}).`,
+      status: 'Success'
+    });
+
+    res.json(updatedVisitor);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+// Host Reject Visitor Endpoint
+router.patch('/:id/reject', async (req, res) => {
+  try {
+    const visitor = await Visitor.findOne(buildVisitorQuery(req.params.id, req.companyId));
+    if (!visitor) return res.status(404).json({ message: 'Visitor request not found' });
+
+    visitor.status = 'Rejected';
+    visitor.rejectionReason = req.body.rejectionReason || 'Meeting Cancelled';
+    visitor.approvedBy = req.user ? req.user.name : (req.body.approvedBy || visitor.hostName || 'Host');
+
+    const updatedVisitor = await visitor.save();
+
+    const notification = await Notification.create({
+      companyId: req.companyId,
+      branchId: updatedVisitor.branch,
+      type: 'error',
+      module: 'Visitors',
+      title: '❌ Visitor Request Rejected',
+      message: `Visitor: ${updatedVisitor.visitorName} has been rejected by ${updatedVisitor.approvedBy}. Reason: ${updatedVisitor.rejectionReason}`,
+      createdBy: req.user ? req.user.name : 'Host'
+    });
+
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('new_notification', notification);
+    }
+
+    await logAction(req, `Visitor Pre-Booking Rejected`, 'Visitor', {
+      userId: req.user ? req.user._id : undefined,
+      description: `Host ${updatedVisitor.approvedBy} rejected visitor ${updatedVisitor.visitorName}. Reason: ${updatedVisitor.rejectionReason}.`,
+      status: 'Success'
+    });
+
+    res.json(updatedVisitor);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
 // Update visitor status/tracking
 router.patch('/:id', async (req, res) => {
   try {
-    const oldVisitor = await Visitor.findOne({ _id: req.params.id, companyId: req.companyId });
+    const query = buildVisitorQuery(req.params.id, req.companyId);
+    const oldVisitor = await Visitor.findOne(query);
+    
+    // Auto-set timestamps when status changes to Checked In or Checked Out
+    if (req.body.status === 'Checked In' || req.body.status === 'Inside') {
+      req.body.entryTime = req.body.entryTime || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+      req.body.checkedIn = true;
+    } else if (req.body.status === 'Checked Out' || req.body.status === 'Exited') {
+      req.body.exitTime = req.body.exitTime || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    }
+
     const updatedVisitor = await Visitor.findOneAndUpdate(
-      { _id: req.params.id, companyId: req.companyId },
+      query,
       req.body,
       { new: true }
     );
@@ -370,7 +538,7 @@ router.patch('/:id', async (req, res) => {
 router.patch('/:id/zone', async (req, res) => {
   try {
     const { status, currentZone, entryTime, exitTime, checkedIn, remarks, purpose } = req.body;
-    const visitor = await Visitor.findOne({ _id: req.params.id, companyId: req.companyId });
+    const visitor = await Visitor.findOne(buildVisitorQuery(req.params.id, req.companyId));
     if (!visitor) return res.status(404).json({ message: 'Visitor not found' });
 
     // Initialize zoneLogs if undefined (for backwards compatibility)

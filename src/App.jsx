@@ -22,6 +22,8 @@ import Dashboard from './pages/Dashboard';
 import NotificationsPage from './pages/dashboards/NotificationsPage';
 import VisitorList from './pages/visitors/VisitorList';
 import VisitorForm from './pages/visitors/VisitorForm';
+import PreBookingForm from './pages/visitors/PreBookingForm';
+import SecurityCheckIn from './pages/visitors/SecurityCheckIn';
 import ReturningVisitor from './pages/visitors/ReturningVisitor';
 import VisitorPass from './pages/public/VisitorPass';
 import ApprovalList from './pages/approvals/ApprovalList';
@@ -94,6 +96,8 @@ const AppRoutes = () => {
         {/* Visitor Management */}
         <Route path="visitors" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin', 'Security', 'HR', 'Receptionist']}><VisitorList /></ProtectedRoute>} />
         <Route path="visitors/new" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin', 'Security', 'HR', 'Receptionist']}><VisitorForm /></ProtectedRoute>} />
+        <Route path="visitors/pre-booking" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin', 'HR', 'Receptionist', 'Employee']}><PreBookingForm /></ProtectedRoute>} />
+        <Route path="visitors/security" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin', 'Security', 'Receptionist']}><SecurityCheckIn /></ProtectedRoute>} />
         <Route path="visitors/returning" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin', 'Security', 'HR', 'Receptionist']}><ReturningVisitor /></ProtectedRoute>} />
         
         {/* Approvals Module */}

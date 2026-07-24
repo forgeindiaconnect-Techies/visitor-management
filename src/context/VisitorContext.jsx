@@ -217,8 +217,6 @@ export const VisitorProvider = ({ children }) => {
       if (response.ok) {
         const updatedVisitor = await response.json();
         setVisitors(prev => prev.map(v => String(v._id || v.id) === String(id) ? updatedVisitor : v));
-      } else {
-         throw new Error('API Update failed');
       }
     } catch (err) {
       console.error(err);
@@ -230,6 +228,49 @@ export const VisitorProvider = ({ children }) => {
     } else if (newStatus === 'Rejected') {
       addNotification('Visitor Rejected', `Access denied for visitor ID: ${id}`, 'error');
     }
+  };
+
+  const approveVisitor = async (id) => {
+    try {
+      const response = await fetch(`${API_URL}/${id}/approve`, {
+        method: 'PATCH',
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(currentUser?.token && { 'Authorization': `Bearer ${currentUser.token}` })
+        }
+      });
+      if (response.ok) {
+        const updated = await response.json();
+        setVisitors(prev => prev.map(v => String(v._id || v.id) === String(id) ? updated : v));
+        addNotification('Visitor Approved', `QR Pass generated for ${updated.visitorName} (Booking ID: ${updated.bookingId || id})`, 'success');
+        return true;
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    return false;
+  };
+
+  const rejectVisitor = async (id, rejectionReason = 'Meeting Cancelled') => {
+    try {
+      const response = await fetch(`${API_URL}/${id}/reject`, {
+        method: 'PATCH',
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(currentUser?.token && { 'Authorization': `Bearer ${currentUser.token}` })
+        },
+        body: JSON.stringify({ rejectionReason })
+      });
+      if (response.ok) {
+        const updated = await response.json();
+        setVisitors(prev => prev.map(v => String(v._id || v.id) === String(id) ? updated : v));
+        addNotification('Visitor Rejected', `Pre-booking request for ${updated.visitorName} rejected.`, 'info');
+        return true;
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    return false;
   };
 
   const updateVisitor = async (id, updates) => {
@@ -295,7 +336,7 @@ export const VisitorProvider = ({ children }) => {
   }, [allVisitors]);
 
   return (
-    <VisitorContext.Provider value={{ visitors, allVisitors, addVisitor, updateVisitorStatus, updateVisitorTracking, updateVisitor, loading, networkIp }}>
+    <VisitorContext.Provider value={{ visitors, allVisitors, addVisitor, updateVisitorStatus, approveVisitor, rejectVisitor, updateVisitorTracking, updateVisitor, loading, networkIp }}>
       {children}
     </VisitorContext.Provider>
   );

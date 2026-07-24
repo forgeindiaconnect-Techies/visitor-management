@@ -195,9 +195,29 @@ const VisitorForm = () => {
           <ArrowLeft size={20} />
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Add New Visitor</h1>
-          <p className="text-gray-500 mt-1">Pre-register a visitor for seamless facility access.</p>
+          <h1 className="text-2xl font-bold text-gray-900">Walk-in Visitor Registration</h1>
+          <p className="text-gray-500 mt-1">For visitors who arrive at facility without prior registration.</p>
         </div>
+      </div>
+
+      {/* Registration Mode Tabs */}
+      <div className="bg-slate-100 p-1.5 rounded-xl flex gap-2 shadow-inner border border-slate-200">
+        <button
+          type="button"
+          onClick={() => navigate('/visitors/new')}
+          className="flex-1 py-3 px-4 text-center font-bold text-sm rounded-lg bg-[var(--color-brand-indigo)] text-white shadow-md transition-all flex items-center justify-center gap-2"
+        >
+          <span>🚶 Walk-in Visitor</span>
+          <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-normal">Arrives First</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate('/visitors/pre-booking')}
+          className="flex-1 py-3 px-4 text-center font-bold text-sm rounded-lg text-slate-700 hover:bg-white transition-all flex items-center justify-center gap-2"
+        >
+          <span>📅 Pre-Booking</span>
+          <span className="text-[10px] bg-slate-200 px-2 py-0.5 rounded-full font-normal">Register in Advance</span>
+        </button>
       </div>
 
 
@@ -315,6 +335,10 @@ const VisitorForm = () => {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
                 <input type="email" name="email" value={formData.email} onChange={handleChange} className={inputClassName} placeholder="e.g., jane@example.com" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Aadhaar Card Number *</label>
+                <input required type="text" name="aadhaarNumber" value={formData.aadhaarNumber || ''} onChange={handleChange} className={inputClassName} placeholder="e.g., 1234 5678 9012" maxLength={14} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Company Name</label>

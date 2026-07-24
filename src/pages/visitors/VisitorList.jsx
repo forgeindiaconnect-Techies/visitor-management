@@ -5,7 +5,7 @@ import { useBranch } from '../../context/BranchContext';
 import { useNotification } from '../../context/NotificationContext';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Plus, Search, Filter, MoreVertical, QrCode, X, FileText, Edit, Save } from 'lucide-react';
+import { Plus, Search, Filter, MoreVertical, QrCode, X, FileText, Edit, Save, CalendarCheck, UserPlus } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 
 const VisitorList = () => {
@@ -61,20 +61,30 @@ const VisitorList = () => {
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'Pending': return 'bg-orange-100 text-orange-700';
-      case 'Approved': return 'bg-blue-100 text-blue-700';
-      case 'Rejected': return 'bg-red-100 text-red-700';
-      case 'Inside': return 'bg-yellow-100 text-yellow-700';
-      case 'Exited': return 'bg-green-100 text-green-700';
+      case 'Draft': return 'bg-gray-100 text-gray-700 border border-gray-200';
+      case 'Pending Approval':
+      case 'Pending': return 'bg-orange-100 text-orange-800 border border-orange-200';
+      case 'Approved': return 'bg-green-100 text-green-800 border border-green-200';
+      case 'Rejected':
+      case 'Cancelled': return 'bg-red-100 text-red-800 border border-red-200';
+      case 'Checked In':
+      case 'Inside': return 'bg-blue-100 text-blue-800 border border-blue-200';
+      case 'Checked Out':
+      case 'Exited': return 'bg-purple-100 text-purple-800 border border-purple-200';
+      case 'Expired': return 'bg-slate-800 text-white border border-slate-700';
       default: return 'bg-gray-100 text-gray-700';
     }
   };
 
   const filteredVisitors = visitors.filter(v => {
     const matchesSearch = (v.visitorName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          (v.companyName || '').toLowerCase().includes(searchTerm.toLowerCase());
+                          (v.companyName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (v.mobileNumber || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (v.bookingId || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'All' || 
-                          (statusFilter === 'Checked In' ? (v.status === 'Inside' || v.status === 'Exited') : v.status === statusFilter);
+                          (statusFilter === 'Checked In' ? (v.status === 'Checked In' || v.status === 'Inside') : 
+                           statusFilter === 'Checked Out' ? (v.status === 'Checked Out' || v.status === 'Exited') : 
+                           v.status === statusFilter);
     const matchesDate = !dateFilter || v.visitDate === dateFilter;
     return matchesSearch && matchesStatus && matchesDate;
   });
@@ -95,13 +105,22 @@ const VisitorList = () => {
           <h1 className="text-2xl font-bold text-gray-900">Visitors Management</h1>
           <p className="text-gray-500 mt-1">Manage and track all visitors across zones.</p>
         </div>
-        <button 
-          onClick={() => navigate('/visitors/new')}
-          className="bg-[var(--color-brand-indigo)] hover:bg-[var(--color-brand-indigo-light)] text-white px-5 py-2.5 rounded-lg flex items-center space-x-2 font-medium transition-colors shadow-md"
-        >
-          <Plus size={20} />
-          <span>Add Visitor</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button 
+            onClick={() => navigate('/visitors/new')}
+            className="bg-[var(--color-brand-indigo)] hover:bg-[var(--color-brand-indigo-light)] text-white px-4 py-2.5 rounded-lg flex items-center space-x-2 font-medium transition-colors shadow-md text-sm"
+          >
+            <UserPlus size={18} />
+            <span>+ Walk-in Visitor</span>
+          </button>
+          <button 
+            onClick={() => navigate('/visitors/pre-booking')}
+            className="bg-indigo-50 border border-indigo-200 text-[var(--color-brand-indigo)] hover:bg-indigo-100 px-4 py-2.5 rounded-lg flex items-center space-x-2 font-bold transition-colors shadow-sm text-sm"
+          >
+            <CalendarCheck size={18} />
+            <span>+ Pre-Booking</span>
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-visible">
@@ -147,7 +166,7 @@ const VisitorList = () => {
             {isFilterOpen && (
               <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-200 z-50 overflow-hidden">
                 <div className="p-2 space-y-1">
-                  {['All', 'Pending', 'Approved', 'Checked In', 'Inside', 'Exited', 'Rejected'].map((status) => (
+                  {['All', 'Pre-Booked', 'Approved', 'Checked In', 'Checked Out', 'Cancelled', 'Expired', 'Draft', 'Pending', 'Rejected'].map((status) => (
                     <button
                       key={status}
                       onClick={() => {
@@ -156,7 +175,7 @@ const VisitorList = () => {
                       }}
                       className={`block w-full text-left px-4 py-2 text-sm rounded-lg transition-colors ${statusFilter === status ? 'bg-indigo-50 text-[var(--color-brand-indigo)] font-semibold' : 'text-gray-700 hover:bg-slate-50'}`}
                     >
-                      {status === 'All' ? 'All Statuses' : status === 'Checked In' ? 'QR Scans (Checked In)' : status}
+                      {status === 'All' ? 'All Statuses' : status}
                     </button>
                   ))}
                 </div>
@@ -251,13 +270,13 @@ const VisitorList = () => {
                               <button onClick={() => { setSelectedVisitorEdit(visitor); setOpenDropdownId(null); }} className="block w-full text-left px-4 py-2 text-sm text-gray-700 font-medium hover:bg-slate-50 flex items-center gap-2">
                                 <Edit size={14} /> Edit Details
                               </button>
+                              <button onClick={() => { updateVisitorStatus(visitor._id || visitor.id, 'Checked In'); setOpenDropdownId(null); }} className="block w-full text-left px-4 py-2 text-sm text-green-700 font-semibold hover:bg-green-50 border-t border-gray-100">Check In</button>
+                              <button onClick={() => { updateVisitorStatus(visitor._id || visitor.id, 'Checked Out'); setOpenDropdownId(null); }} className="block w-full text-left px-4 py-2 text-sm text-slate-700 font-semibold hover:bg-slate-50">Check Out</button>
                               {user?.role !== 'Security' && (
                                 <>
-                                  <button onClick={() => { updateVisitorStatus(visitor.id, 'Inside'); setOpenDropdownId(null); }} className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-slate-50 border-t border-gray-100">Mark as Inside</button>
-                                  <button onClick={() => { updateVisitorStatus(visitor.id, 'Exited'); setOpenDropdownId(null); }} className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-slate-50">Mark as Exited</button>
                                   <button onClick={() => { setSelectedVisitorUpdateZone(visitor); setOpenDropdownId(null); }} className="block w-full text-left px-4 py-2 text-sm text-indigo-600 font-medium hover:bg-slate-50 border-t border-gray-100">Update Zone</button>
-                                  <button onClick={() => { updateVisitorStatus(visitor.id, 'Approved'); setOpenDropdownId(null); }} className="block w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-slate-50 border-t border-gray-100">Approve</button>
-                                  <button onClick={() => { updateVisitorStatus(visitor.id, 'Rejected'); setOpenDropdownId(null); }} className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-slate-50">Reject</button>
+                                  <button onClick={() => { updateVisitorStatus(visitor._id || visitor.id, 'Approved'); setOpenDropdownId(null); }} className="block w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-slate-50 border-t border-gray-100">Approve</button>
+                                  <button onClick={() => { updateVisitorStatus(visitor._id || visitor.id, 'Cancelled'); setOpenDropdownId(null); }} className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-slate-50">Cancel Booking</button>
                                   <button onClick={() => { setSelectedVisitorHistory(visitor); setOpenDropdownId(null); }} className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-slate-50 border-t border-gray-100">
                                     View Zone History
                                   </button>
