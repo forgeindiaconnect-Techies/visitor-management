@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { useVisitors } from '../../context/VisitorContext';
+import { useNotification } from '../../context/NotificationContext';
 import { 
   Send, 
   Link as LinkIcon, 
@@ -24,7 +24,7 @@ import {
 
 const PreBookingRegistration = () => {
   const { user } = useAuth();
-  const { addNotification } = useVisitors();
+  const { addNotification } = useNotification();
 
   const _rawUrl = import.meta.env.VITE_API_URL || 'https://fic-visitor-1.onrender.com';
   const API_BASE = _rawUrl.replace(/\/api\/?$/, '') + '/api';
