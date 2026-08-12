@@ -36,13 +36,16 @@ const visitorSchema = new mongoose.Schema({
   rejectionReason: { type: String },
   status: { 
     type: String, 
-    enum: ["Draft", "Pending Approval", "Pre-Booked", "Pending", "Approved", "Rejected", "Checked In", "Checked Out", "Cancelled", "Expired", "Inside", "Exited"], 
-    default: 'Pending Approval' 
+    enum: ["Draft", "Pending Approval", "Pre-Booked", "Pending", "PENDING", "Approved", "APPROVED", "Rejected", "REJECTED", "Checked In", "CHECKED_IN", "Checked Out", "CHECKED_OUT", "Cancelled", "Expired", "Inside", "Exited"], 
+    default: 'PENDING' 
   },
   branch: { type: String, required: true },
   currentZone: { type: String },
   entryTime: { type: String },
   exitTime: { type: String },
+  checkInTime: { type: Date },
+  checkOutTime: { type: Date },
+  exitNotes: { type: String },
   qrCode: { type: String },
   qrPayload: { type: Object },
   approvedBy: { type: String },

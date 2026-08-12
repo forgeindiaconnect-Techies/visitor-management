@@ -1,9 +1,10 @@
 @import "tailwindcss";
 
 @theme {
-  --color-brand-indigo: #1E1B6E;
-  --color-brand-indigo-light: #2d299e;
-  --color-brand-indigo-dark: #110f40;
+  --color-brand-indigo: #005EB8;
+  --color-brand-indigo-light: #0B66C3;
+  --color-brand-indigo-dark: #003A70;
+  --color-brand-yellow: #FFC20E;
 }
 
 body {
@@ -38,7 +39,7 @@ body {
 }
 
 .bg-grid-pattern {
-  background-image: radial-gradient(#1E1B6E 1px, transparent 1px);
+  background-image: radial-gradient(#005EB8 1px, transparent 1px);
   background-size: 24px 24px;
 }
 
@@ -68,6 +69,19 @@ body {
 
 .animate-float-bg {
   animation: floatBackground 12s ease-in-out infinite;
+}
+
+@keyframes floatBackgroundReverse {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(-30px, 30px) scale(0.95);
+  }
+}
+
+.animate-float-bg-reverse {
+  animation: floatBackgroundReverse 15s ease-in-out infinite;
 }
 
 @keyframes logoZoom {
@@ -148,4 +162,22 @@ body {
 input::-ms-reveal,
 input::-ms-clear {
   display: none;
+}
+
+@keyframes gradientAnimation {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.bg-moving-gradient {
+  background: linear-gradient(120deg, #e0f2fe 0%, #fffbeb 25%, #fef9c3 50%, #eff6ff 75%, #fef08a 100%);
+  background-size: 300% 300%;
+  animation: gradientAnimation 14s ease-in-out infinite;
 }

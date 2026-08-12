@@ -1,4 +1,10 @@
 require('dotenv').config({ path: '../.env' }); // Load .env from root directory
+const dns = require('dns');
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1']);
+} catch (e) {
+  console.warn('Could not set custom DNS servers:', e.message);
+}
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -60,7 +66,8 @@ app.use(cors({
   credentials: true
 }));
 
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '20mb' }));
+app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 app.use(cookieParser());
 
 // Environment Variable Validation
@@ -97,8 +104,70 @@ const auditLogsRouter = require('./routes/auditLogs');
 const paymentRoutes = require('./routes/paymentRoutes');
 const testNotification = require('./routes/testNotification');
 const invitationsRouter = require('./routes/invitations');
+const preBookingRoutes = require('./routes/preBookingRoutes');
 
+app.use('/api/prebookings', preBookingRoutes);
 app.use('/api/visitors', visitorsRouter);
+
+// Failsafe Public Pass Lookup Endpoint
+app.get('/api/pass-lookup/:visitId', async (req, res) => {
+  try {
+    const { visitId } = req.params;
+    const Visitor = require('./models/Visitor');
+    const PreBooking = require('./models/PreBooking');
+    const isValidObjectId = require('mongoose').isValidObjectId(visitId);
+
+    let visitor = await Visitor.findOne({
+      $or: [
+        { visitId: visitId },
+        { profileId: visitId },
+        { bookingId: visitId },
+        ...(isValidObjectId ? [{ _id: visitId }] : [])
+      ]
+    });
+
+    if (!visitor) {
+      const pb = await PreBooking.findOne({
+        $or: [
+          { visitorId: visitId },
+          { qrToken: visitId },
+          ...(isValidObjectId ? [{ _id: visitId }] : [])
+        ]
+      });
+
+      if (pb) {
+        visitor = {
+          id: pb._id,
+          _id: pb._id,
+          visitId: pb.visitorId,
+          profileId: pb.visitorId,
+          visitorName: pb.fullName,
+          fullName: pb.fullName,
+          mobileNumber: pb.mobileNumber,
+          email: pb.email,
+          companyName: pb.visitingCompany || 'Forge India Connect Private Limited',
+          hostName: pb.hostEmployee,
+          purpose: pb.visitPurpose,
+          visitDate: pb.visitDate,
+          expectedArrivalTime: pb.expectedTime,
+          branch: pb.branchLocation || 'Head Office',
+          vehicleNumber: pb.vehicleNumber,
+          photoUrl: pb.facePhoto,
+          status: pb.status === 'PENDING' ? 'Pending' : (pb.status === 'APPROVED' ? 'Approved' : (pb.status === 'CHECKED_IN' ? 'Inside' : pb.status)),
+          createdAt: pb.createdAt
+        };
+      }
+    }
+
+    if (!visitor) {
+      return res.status(404).json({ success: false, message: 'Visitor pass not found or invalid QR code.' });
+    }
+
+    return res.json(visitor);
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
 app.use('/api/users', usersRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/zones', zonesRouter);

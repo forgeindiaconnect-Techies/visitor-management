@@ -32,6 +32,7 @@ const SecurityDashboard = () => {
   const { attendance, checkIn, checkOut } = useAttendance();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeSubTab, setActiveSubTab] = useState('prebooking'); // 'prebooking' | 'attendance' | 'all'
   
   const { addNotification } = useNotification();
   
@@ -48,6 +49,143 @@ const SecurityDashboard = () => {
   const [qrScanMode, setQrScanMode] = useState('camera'); // 'camera' or 'manual'
   const [qrScannerError, setQrScannerError] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
+
+  // Pre-Booking Search & Verification State
+  const [pbSearchQuery, setPbSearchQuery] = useState('');
+  const [pbVisitor, setPbVisitor] = useState(null);
+  const [pbSearchLoading, setPbSearchLoading] = useState(false);
+  const [pbSearchError, setPbSearchError] = useState('');
+  const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+  const [checkoutNotes, setCheckoutNotes] = useState('');
+  const [checkoutError, setCheckoutError] = useState('');
+
+  const handlePbSearch = async (e) => {
+    if (e) e.preventDefault();
+    if (!pbSearchQuery.trim()) return;
+
+    setPbSearchLoading(true);
+    setPbSearchError('');
+    setPbVisitor(null);
+
+    const cleanQuery = pbSearchQuery.trim();
+    try {
+      const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+
+      let response = await fetch(`${API_URL}/api/prebookings/visitor/${encodeURIComponent(cleanQuery)}`);
+      if (!response.ok) {
+        response = await fetch(`${API_URL}/api/visitors/search/${encodeURIComponent(cleanQuery)}`);
+      }
+      if (!response.ok) {
+        response = await fetch(`${API_URL}/api/pass-lookup/${encodeURIComponent(cleanQuery)}`);
+      }
+
+      if (response.ok) {
+        const json = await response.json();
+        const raw = json.data || json;
+        setPbVisitor({
+          id: raw._id || raw.id,
+          _id: raw._id || raw.id,
+          visitorId: raw.visitorId || raw.visitId || raw._id,
+          fullName: raw.fullName || raw.visitorName || 'Visitor',
+          mobileNumber: raw.mobileNumber || '-',
+          email: raw.email || '-',
+          visitingCompany: raw.visitingCompany || raw.companyName || 'Forge India Connect Private Limited',
+          hostEmployee: raw.hostEmployee || raw.hostName || 'Staff',
+          visitPurpose: raw.visitPurpose || raw.purpose || 'Official Visit',
+          visitDate: raw.visitDate || new Date().toISOString().split('T')[0],
+          expectedTime: raw.expectedTime || raw.expectedArrivalTime || '10:00 AM',
+          branchLocation: raw.branchLocation || raw.branch || activeBranch || 'Head Office',
+          vehicleNumber: raw.vehicleNumber || '-',
+          facePhoto: raw.facePhoto || raw.photoUrl || '',
+          status: raw.status || 'PENDING',
+          checkInTime: raw.checkInTime || null,
+          checkInBy: raw.checkInBy || null,
+          checkOutTime: raw.checkOutTime || null,
+          checkOutBy: raw.checkOutBy || null,
+          checkOutNotes: raw.checkOutNotes || raw.exitNotes || ''
+        });
+      } else {
+        setPbSearchError(`Visitor not found for "${cleanQuery}".`);
+      }
+    } catch (err) {
+      setPbSearchError('Search failed. Check server connection.');
+    } finally {
+      setPbSearchLoading(false);
+    }
+  };
+
+  const handlePbCheckIn = async () => {
+    if (!pbVisitor) return;
+
+    const isApproved = pbVisitor.status === 'APPROVED' || pbVisitor.status === 'Approved' || pbVisitor.status === 'Pre-Booked';
+    if (!isApproved && pbVisitor.status !== 'CHECKED_IN') {
+      alert(`❌ Check-In Blocked: Visitor cannot check in. Current status: ${pbVisitor.status}`);
+      return;
+    }
+
+    try {
+      const targetId = pbVisitor.visitorId || pbVisitor._id;
+      const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+
+      const response = await fetch(`${API_URL}/api/prebookings/visitor/${encodeURIComponent(targetId)}/check-in`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setPbVisitor(prev => ({
+          ...prev,
+          status: 'CHECKED_IN',
+          checkInTime: data.data?.checkInTime || new Date(),
+          checkInBy: data.data?.checkInBy || 'Security'
+        }));
+        alert('✅ Visitor checked in successfully.');
+        addNotification('Check-In Success', `${pbVisitor.fullName} is now checked in.`, 'success');
+      } else {
+        alert(data.message || 'Check-In failed.');
+      }
+    } catch (err) {
+      alert('Failed to execute Check-In.');
+    }
+  };
+
+  const handlePbCheckOut = async (e) => {
+    e.preventDefault();
+    setCheckoutError('');
+    if (!checkoutNotes.trim()) {
+      setCheckoutError('Check-out notes are mandatory before checking out.');
+      return;
+    }
+
+    try {
+      const targetId = pbVisitor.visitorId || pbVisitor._id;
+      const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+
+      const response = await fetch(`${API_URL}/api/prebookings/visitor/${encodeURIComponent(targetId)}/check-out`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: checkoutNotes.trim(), checkOutNotes: checkoutNotes.trim() })
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setPbVisitor(prev => ({
+          ...prev,
+          status: 'CHECKED_OUT',
+          checkOutTime: data.data?.checkOutTime || new Date(),
+          checkOutBy: data.data?.checkOutBy || 'Security',
+          checkOutNotes: checkoutNotes.trim()
+        }));
+        setShowCheckoutModal(false);
+        setCheckoutNotes('');
+        alert('✅ Visitor checked out successfully.');
+        addNotification('Check-Out Success', `${pbVisitor.fullName} checked out with notes logged!`, 'success');
+      } else {
+        setCheckoutError(data.message || 'Check-out failed.');
+      }
+    } catch (err) {
+      setCheckoutError('Failed to execute Check-Out.');
+    }
+  };
 
   // Camera QR Scanner Lifecycle
   useEffect(() => {
@@ -209,51 +347,71 @@ const SecurityDashboard = () => {
     });
   };
 
-  const processQrScan = async (visitId) => {
-    if (!visitId) return;
+  const processQrScan = async (scannedValue) => {
+    if (!scannedValue) return;
+
+    let cleanToken = scannedValue.trim();
+    if (cleanToken.includes('/pass/')) {
+      const parts = cleanToken.split('/pass/');
+      cleanToken = parts[parts.length - 1];
+    }
+    cleanToken = cleanToken.trim();
 
     try {
-      const visitor = visitors.find(v => v.visitId === visitId.toUpperCase().trim());
-      if (!visitor) {
-        addNotification('Scan Failed', 'Invalid QR Code or Visit ID not found.', 'error');
-        return;
-      }
+      setPbSearchLoading(true);
+      setPbSearchError('');
+      setPbVisitor(null);
 
-      let newStatus = '';
-      if (visitor.status === 'Approved') newStatus = 'Inside';
-      else if (visitor.status === 'Inside') newStatus = 'Exited';
-      else {
-        addNotification('Scan Failed', `Visitor is currently ${visitor.status}. Cannot scan.`, 'error');
-        return;
-      }
+      const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
 
-      const API_BASE = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
-      const response = await fetch(`${API_BASE}/api/visitors/${visitor.id || visitor._id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'X-Company-Id': visitor.companyId
-        },
-        body: JSON.stringify({ 
-          status: newStatus,
-          ...(newStatus === 'Inside' ? { entryTime: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }) } : {}),
-          ...(newStatus === 'Exited' ? { exitTime: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }) } : {})
-        })
-      });
+      let response = await fetch(`${API_URL}/api/prebookings/qr/${encodeURIComponent(cleanToken)}`);
+      if (!response.ok) {
+        response = await fetch(`${API_URL}/api/prebookings/visitor/${encodeURIComponent(cleanToken)}`);
+      }
+      if (!response.ok) {
+        response = await fetch(`${API_URL}/api/visitors/search/${encodeURIComponent(cleanToken)}`);
+      }
 
       if (response.ok) {
-        addNotification('Scan Success', `Visitor ${visitor.visitorName} is now ${newStatus}.`, 'success');
+        const json = await response.json();
+        const raw = json.data || json;
+        setPbVisitor({
+          id: raw._id || raw.id,
+          _id: raw._id || raw.id,
+          visitorId: raw.visitorId || raw.visitId || raw._id,
+          fullName: raw.fullName || raw.visitorName || 'Visitor',
+          mobileNumber: raw.mobileNumber || '-',
+          email: raw.email || '-',
+          visitingCompany: raw.visitingCompany || raw.companyName || 'Forge India Connect Private Limited',
+          hostEmployee: raw.hostEmployee || raw.hostName || 'Staff',
+          visitPurpose: raw.visitPurpose || raw.purpose || 'Official Visit',
+          visitDate: raw.visitDate || new Date().toISOString().split('T')[0],
+          expectedTime: raw.expectedTime || raw.expectedArrivalTime || '10:00 AM',
+          branchLocation: raw.branchLocation || raw.branch || activeBranch || 'Head Office',
+          vehicleNumber: raw.vehicleNumber || '-',
+          facePhoto: raw.facePhoto || raw.photoUrl || '',
+          status: raw.status || 'PENDING',
+          checkInTime: raw.checkInTime || null,
+          checkInBy: raw.checkInBy || null,
+          checkOutTime: raw.checkOutTime || null,
+          checkOutBy: raw.checkOutBy || null,
+          checkOutNotes: raw.checkOutNotes || raw.exitNotes || ''
+        });
+        setActiveSubTab('prebooking');
         setShowQrModal(false);
         setQrVisitId('');
-        // Trigger a refresh (a real app would use the context's refresh function)
-        window.location.reload();
+        addNotification('QR Scan Success', `Visitor Pass loaded for ${raw.fullName || raw.visitorName}`, 'success');
       } else {
-        const errData = await response.json();
-        addNotification('Scan Error', errData.message || 'Failed to update visitor status.', 'error');
+        const errData = await response.json().catch(() => ({}));
+        setPbSearchError(errData.message || `Visitor not found for QR token "${cleanToken}".`);
+        addNotification('QR Scan Failed', errData.message || 'Visitor not found', 'error');
       }
     } catch (err) {
-      addNotification('Network Error', 'Failed to process QR scan.', 'error');
+      console.error("QR Lookup Error:", err);
+      setPbSearchError('Failed to process QR scan. Check server connection.');
+      addNotification('Scan Error', 'Network error during QR lookup', 'error');
+    } finally {
+      setPbSearchLoading(false);
     }
   };
 
@@ -310,6 +468,249 @@ const SecurityDashboard = () => {
         <DashboardCard onClick={() => navigate('/blacklist')} title="Blocked Attempts" value={blockedAttempts} icon={Ban} colorClass="bg-orange-100 text-orange-600" />
       </div>
 
+      {/* Sub-Tab Navigation Bar */}
+      <div className="flex border-b border-gray-200 gap-4 mt-6">
+        <button
+          onClick={() => setActiveSubTab('prebooking')}
+          className={`pb-3 px-2 font-bold text-sm border-b-2 flex items-center gap-2 transition-colors ${
+            activeSubTab === 'prebooking'
+              ? 'border-indigo-600 text-indigo-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <Search size={18} />
+          Pre-Booking Search & Verification
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('attendance')}
+          className={`pb-3 px-2 font-bold text-sm border-b-2 flex items-center gap-2 transition-colors ${
+            activeSubTab === 'attendance'
+              ? 'border-indigo-600 text-indigo-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <Clock size={18} />
+          Daily Attendance & Camera Scanner
+        </button>
+      </div>
+
+      {/* PRE-BOOKING SEARCH TAB CONTENT */}
+      {activeSubTab === 'prebooking' && (
+        <div className="space-y-6">
+          <div className="bg-white rounded-2xl shadow-md border border-gray-200 p-6 sm:p-8 space-y-4">
+            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+              <Search className="text-indigo-600" size={22} />
+              PRE-BOOKING SEARCH
+            </h2>
+
+            <form onSubmit={handlePbSearch} className="space-y-3">
+              <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider">
+                Enter Visitor Number or Mobile Number
+              </label>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    value={pbSearchQuery}
+                    onChange={(e) => setPbSearchQuery(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handlePbSearch(e); }}
+                    placeholder="Example: VIS-20260812-001 or 9876543210..."
+                    className="w-full pl-10 pr-4 py-3.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-600 outline-none text-sm font-semibold"
+                  />
+                  <Search size={18} className="absolute left-3.5 top-4 text-gray-400" />
+                </div>
+                <button
+                  type="submit"
+                  disabled={pbSearchLoading}
+                  className="px-8 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-colors shadow-md flex items-center justify-center gap-2 text-sm shrink-0"
+                >
+                  {pbSearchLoading ? 'SEARCHING...' : 'SEARCH'}
+                </button>
+              </div>
+
+              <div className="relative my-4 flex items-center justify-center">
+                <div className="border-t border-gray-200 w-full" />
+                <span className="bg-white px-4 text-xs font-bold text-gray-400 uppercase tracking-widest absolute">OR</span>
+              </div>
+
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => setShowQrModal(true)}
+                  className="w-full sm:w-auto px-8 py-3.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl shadow-md transition-transform active:scale-95 flex items-center justify-center gap-2 text-sm"
+                >
+                  <QrCode size={20} className="text-indigo-400" />
+                  <span>OPEN QR SCANNER</span>
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {pbSearchError && (
+            <div className="bg-red-50 border border-red-200 text-red-700 p-6 rounded-2xl text-center font-semibold text-sm">
+              ⚠️ {pbSearchError}
+            </div>
+          )}
+
+          {pbVisitor && (
+            <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden animate-in fade-in duration-300">
+              {/* Pass Header */}
+              <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-bold">VISITOR PASS</h3>
+                  <p className="text-xs text-slate-300">{pbVisitor.visitingCompany}</p>
+                </div>
+                <div>
+                  <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                    pbVisitor.status === 'PENDING' ? 'bg-amber-100 text-amber-800' :
+                    pbVisitor.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' :
+                    pbVisitor.status === 'CHECKED_IN' ? 'bg-green-100 text-green-800' :
+                    pbVisitor.status === 'CHECKED_OUT' ? 'bg-slate-100 text-slate-800' : 'bg-red-100 text-red-800'
+                  }`}>
+                    {pbVisitor.status === 'PENDING' ? '🟠 PENDING' :
+                     pbVisitor.status === 'APPROVED' ? '🟢 APPROVED' :
+                     pbVisitor.status === 'CHECKED_IN' ? '🟢 CHECKED IN' :
+                     pbVisitor.status === 'CHECKED_OUT' ? '🔵 CHECKED OUT' : pbVisitor.status}
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-6 sm:p-8 space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {/* Face Photo Column */}
+                  <div className="flex flex-col items-center justify-center p-5 bg-slate-50 border rounded-2xl">
+                    <div className="w-36 h-36 rounded-full overflow-hidden border-4 border-white shadow-md bg-indigo-100 flex items-center justify-center mb-2">
+                      {pbVisitor.facePhoto ? (
+                        <img src={pbVisitor.facePhoto} alt="Visitor Face" className="w-full h-full object-cover" />
+                      ) : (
+                        <Users size={64} className="text-indigo-400" />
+                      )}
+                    </div>
+                    <span className="text-xs font-semibold text-gray-500">Visitor Face Photo</span>
+                  </div>
+
+                  {/* Details Grid */}
+                  <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                    <div className="bg-gray-50 p-3.5 rounded-xl border">
+                      <span className="text-xs text-gray-400 block font-medium uppercase">Visitor Number</span>
+                      <span className="font-mono font-bold text-indigo-900 text-base">{pbVisitor.visitorId}</span>
+                    </div>
+
+                    <div className="bg-gray-50 p-3.5 rounded-xl border">
+                      <span className="text-xs text-gray-400 block font-medium uppercase">Full Name</span>
+                      <span className="font-bold text-gray-900 text-base">{pbVisitor.fullName}</span>
+                    </div>
+
+                    <div className="bg-gray-50 p-3.5 rounded-xl border">
+                      <span className="text-xs text-gray-400 block font-medium uppercase">Mobile</span>
+                      <span className="font-bold text-gray-900">{pbVisitor.mobileNumber}</span>
+                    </div>
+
+                    <div className="bg-gray-50 p-3.5 rounded-xl border">
+                      <span className="text-xs text-gray-400 block font-medium uppercase">Email</span>
+                      <span className="font-medium text-gray-800">{pbVisitor.email}</span>
+                    </div>
+
+                    <div className="bg-gray-50 p-3.5 rounded-xl border">
+                      <span className="text-xs text-gray-400 block font-medium uppercase">Company</span>
+                      <span className="font-bold text-indigo-900">{pbVisitor.visitingCompany}</span>
+                    </div>
+
+                    <div className="bg-gray-50 p-3.5 rounded-xl border">
+                      <span className="text-xs text-gray-400 block font-medium uppercase">Host</span>
+                      <span className="font-bold text-indigo-900">{pbVisitor.hostEmployee}</span>
+                    </div>
+
+                    <div className="bg-gray-50 p-3.5 rounded-xl border">
+                      <span className="text-xs text-gray-400 block font-medium uppercase">Purpose</span>
+                      <span className="font-semibold text-gray-800">{pbVisitor.visitPurpose}</span>
+                    </div>
+
+                    <div className="bg-gray-50 p-3.5 rounded-xl border">
+                      <span className="text-xs text-gray-400 block font-medium uppercase">Date & Time</span>
+                      <span className="font-semibold text-gray-800">{pbVisitor.visitDate} ({pbVisitor.expectedTime})</span>
+                    </div>
+
+                    <div className="bg-gray-50 p-3.5 rounded-xl border">
+                      <span className="text-xs text-gray-400 block font-medium uppercase">Branch</span>
+                      <span className="font-semibold text-gray-800">📍 {pbVisitor.branchLocation}</span>
+                    </div>
+
+                    <div className="bg-gray-50 p-3.5 rounded-xl border">
+                      <span className="text-xs text-gray-400 block font-medium uppercase">Vehicle</span>
+                      <span className="font-semibold text-gray-800">🚗 {pbVisitor.vehicleNumber}</span>
+                    </div>
+
+                    {/* CHECK-IN & CHECK-OUT TIME LOGS */}
+                    {pbVisitor.checkInTime && (
+                      <div className="bg-emerald-50 p-3.5 rounded-xl border border-emerald-200">
+                        <span className="text-xs text-emerald-700 block font-bold uppercase">Check-In Time</span>
+                        <span className="font-bold text-emerald-900">{new Date(pbVisitor.checkInTime).toLocaleString()}</span>
+                        <span className="text-xs text-emerald-700 block mt-0.5">By: {pbVisitor.checkInBy || 'Security'}</span>
+                      </div>
+                    )}
+
+                    {pbVisitor.checkOutTime && (
+                      <div className="bg-red-50 p-3.5 rounded-xl border border-red-200">
+                        <span className="text-xs text-red-700 block font-bold uppercase">Check-Out Time</span>
+                        <span className="font-bold text-red-900">{new Date(pbVisitor.checkOutTime).toLocaleString()}</span>
+                        <span className="text-xs text-red-700 block mt-0.5">Notes: {pbVisitor.checkOutNotes || 'Completed'}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* PASS ACTION BAR */}
+                <div className="pt-4 border-t flex items-center justify-between">
+                  <span className="text-xs font-semibold text-gray-500">Status: {pbVisitor.status}</span>
+
+                  <div>
+                    {pbVisitor.status === 'PENDING' && (
+                      <span className="px-6 py-3 bg-amber-50 text-amber-800 border border-amber-300 rounded-xl font-bold text-sm">
+                        Waiting for Super Admin approval
+                      </span>
+                    )}
+
+                    {pbVisitor.status === 'REJECTED' && (
+                      <span className="px-6 py-3 bg-red-50 text-red-800 border border-red-300 rounded-xl font-bold text-sm">
+                        ❌ Visitor rejected
+                      </span>
+                    )}
+
+                    {(pbVisitor.status === 'APPROVED' || pbVisitor.status === 'Approved' || pbVisitor.status === 'Pre-Booked') && (
+                      <button
+                        onClick={handlePbCheckIn}
+                        className="px-8 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-lg transition-transform active:scale-95 text-base"
+                      >
+                        CHECK IN
+                      </button>
+                    )}
+
+                    {(pbVisitor.status === 'CHECKED_IN' || pbVisitor.status === 'Checked In') && (
+                      <button
+                        onClick={() => { setCheckoutNotes(''); setCheckoutError(''); setShowCheckoutModal(true); }}
+                        className="px-8 py-3.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-lg transition-transform active:scale-95 text-base"
+                      >
+                        CHECK OUT
+                      </button>
+                    )}
+
+                    {(pbVisitor.status === 'CHECKED_OUT' || pbVisitor.status === 'Checked Out') && (
+                      <span className="px-6 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm border">
+                        Visit Completed (Checked Out)
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* DAILY ATTENDANCE & TOOLS TAB CONTENT */}
+      {(activeSubTab === 'attendance' || activeSubTab === 'all') && (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
         {/* Left Column: Attendance, Quick Verification, Security Tools */}
         <div className="lg:col-span-1 space-y-6">
@@ -574,6 +975,7 @@ const SecurityDashboard = () => {
         </div>
 
       </div>
+      )}
 
       {/* QR Scanner Modal */}
       {showQrModal && (
@@ -712,6 +1114,63 @@ const SecurityDashboard = () => {
                 </form>
               )}
             </div>
+          </div>
+        </div>
+      )}
+      {/* MANDATORY CHECK-OUT POPUP MODAL */}
+      {showCheckoutModal && pbVisitor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full border border-slate-200 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                Visitor Check-Out
+              </h3>
+              <button onClick={() => setShowCheckoutModal(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+            </div>
+
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs space-y-1">
+              <div className="font-bold text-slate-900 text-sm">Visitor: {pbVisitor.fullName}</div>
+              <div className="text-slate-500">Visitor No: <span className="font-mono text-indigo-600 font-semibold">{pbVisitor.visitorId}</span></div>
+            </div>
+
+            {checkoutError && (
+              <div className="p-3 bg-red-50 border border-red-200 text-red-600 text-xs font-semibold rounded-xl">
+                ⚠️ {checkoutError}
+              </div>
+            )}
+
+            <form onSubmit={handlePbCheckOut} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
+                  Checkout Notes * <span className="text-red-500">(Required)</span>
+                </label>
+                <textarea
+                  value={checkoutNotes}
+                  onChange={(e) => setCheckoutNotes(e.target.value)}
+                  placeholder="Example: Meeting completed successfully..."
+                  rows={5}
+                  className="w-full p-3 rounded-xl border border-slate-300 text-sm focus:outline-none focus:border-indigo-600 h-28"
+                  required
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowCheckoutModal(false); setCheckoutNotes(''); }}
+                  className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 font-semibold text-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!checkoutNotes.trim()}
+                  className="px-6 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-lg shadow-red-600/30 transition-all disabled:opacity-50"
+                >
+                  Confirm Check-Out
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

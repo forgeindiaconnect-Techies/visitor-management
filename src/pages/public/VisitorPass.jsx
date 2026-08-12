@@ -17,14 +17,23 @@ const VisitorPass = () => {
 
   const fetchVisitor = async () => {
     try {
-      const apiUrl = `${import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com')}/api/visitors/pass/${visitId}`;
-      const response = await fetch(apiUrl);
+      const baseUrl = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+      
+      let response = await fetch(`${baseUrl}/api/pass-lookup/${visitId}`);
+      if (!response.ok) {
+        response = await fetch(`${baseUrl}/api/visitors/pass/${visitId}`);
+      }
+      if (!response.ok) {
+        response = await fetch(`${baseUrl}/api/prebookings/visitor/${visitId}`);
+      }
+
       if (!response.ok) {
         throw new Error('Visitor pass not found or invalid QR code.');
       }
       const data = await response.json();
-      setVisitor(data);
-      setPurpose(data.purpose || '');
+      const visitorObj = data.data || data;
+      setVisitor(visitorObj);
+      setPurpose(visitorObj.purpose || visitorObj.visitPurpose || 'Business Meeting');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -140,137 +149,141 @@ const VisitorPass = () => {
       <div className="max-w-md w-full space-y-4 relative z-10">
         
         {/* Header */}
-        <div className="text-center mb-6 relative z-10 flex flex-col items-center">
-          <div className="w-20 h-20 bg-white rounded-2xl shadow-sm border border-gray-100 flex items-center justify-center p-2 mb-3">
+        <div className="text-center mb-4 relative z-10 flex flex-col items-center">
+          <div className="w-16 h-16 bg-white rounded-2xl shadow-sm border border-gray-100 flex items-center justify-center p-2 mb-2">
              <img src="/logo.svg" alt="FIC Logo" className="w-full h-full object-contain" />
           </div>
-          <h1 className="text-3xl font-black text-[var(--color-brand-indigo)] tracking-tight">FIC VMS</h1>
-          <p className="mt-1 text-sm font-bold text-gray-500 uppercase tracking-widest">Digital Visitor Pass</p>
+          <h1 className="text-2xl font-black text-[var(--color-brand-indigo)] tracking-tight">FORGE INDIA CONNECT</h1>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">OFFICIAL VISITOR PASS</p>
         </div>
 
         {/* Timeline */}
         {renderTimeline()}
 
         {/* Main Pass Card */}
-        <div className="bg-white/80 backdrop-blur-[15px] rounded-[20px] shadow-xl overflow-hidden border border-white/50 relative pass-card-animate">
+        <div className="bg-white rounded-[24px] shadow-2xl overflow-hidden border border-slate-100 relative pass-card-animate">
           
-          {/* Top Header Background */}
-          <div className="h-32 bg-gradient-to-br from-[var(--color-brand-indigo)] to-indigo-900 relative">
-            <div className="absolute top-4 right-4">
-               <span className={`font-bold px-3 py-1 rounded-full text-xs shadow-sm flex items-center gap-1 ${getStatusColor(visitor.status)}`}>
-                  <div className={`w-1.5 h-1.5 rounded-full ${visitor.status === 'Approved' ? 'bg-green-500 animate-pulse' : visitor.status === 'Inside' ? 'bg-blue-500' : 'bg-current'}`}></div>
-                  {visitor.status}
-                </span>
-            </div>
+          {/* Top Header Banner */}
+          <div className="h-24 bg-gradient-to-r from-indigo-900 via-indigo-800 to-purple-900 relative flex items-start justify-between p-4">
+            <span className="text-[11px] font-mono font-bold text-indigo-200 uppercase tracking-wider">
+              ID: {visitor.visitId || visitor.profileId}
+            </span>
+            <span className={`font-bold px-3 py-1 rounded-full text-xs shadow-md flex items-center gap-1.5 ${getStatusColor(visitor.status)}`}>
+              <div className={`w-2 h-2 rounded-full ${visitor.status === 'Approved' ? 'bg-green-500 animate-pulse' : visitor.status === 'Inside' ? 'bg-blue-500' : 'bg-current'}`}></div>
+              {visitor.status === 'Approved' ? 'APPROVED ✓' : visitor.status}
+            </span>
           </div>
 
-          {/* Hero Photo (Overlapping) */}
-          <div className="flex flex-col items-center -mt-16 px-6">
-            <div className="w-32 h-32 bg-white rounded-3xl p-1.5 shadow-lg relative z-10">
-              <div className="w-full h-full bg-gray-100 rounded-2xl overflow-hidden flex items-center justify-center">
+          {/* Face Photo */}
+          <div className="flex flex-col items-center -mt-12 px-6">
+            <div className="w-28 h-28 bg-white rounded-3xl p-1 shadow-xl relative z-10 border-2 border-indigo-500/20">
+              <div className="w-full h-full bg-slate-900 rounded-2xl overflow-hidden flex items-center justify-center">
                 {visitor.photoUrl ? (
-                  <img src={visitor.photoUrl} alt="Visitor" className="w-full h-full object-cover" />
+                  <img src={visitor.photoUrl} alt={visitor.visitorName} className="w-full h-full object-cover" />
                 ) : (
-                  <User size={48} className="text-gray-400" />
+                  <User size={48} className="text-slate-400" />
                 )}
               </div>
             </div>
-            <h2 className="text-2xl font-bold text-gray-900 mt-4 tracking-tight">{visitor.visitorName}</h2>
-            <p className="text-sm text-gray-500 font-medium">{visitor.companyName || 'Independent Visitor'}</p>
+            <h2 className="text-xl font-black text-slate-900 mt-3 tracking-tight">{visitor.visitorName}</h2>
+            <p className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-3 py-0.5 rounded-full mt-1">
+              {visitor.companyName || 'Forge India Connect Private Limited'}
+            </p>
           </div>
 
-          {/* 2-Column Details Grid */}
-          <div className="p-6">
-            <div className="bg-slate-50 rounded-2xl p-5 border border-gray-100">
-              <div className="grid grid-cols-2 gap-y-6 gap-x-4">
-                
-                {/* ID Info */}
-                <div className="col-span-1">
-                  <div className="flex items-center gap-1.5 text-gray-500 mb-1">
-                    <User size={14} />
-                    <span className="text-[10px] font-bold uppercase tracking-wider">Visitor ID</span>
-                  </div>
-                  <p className="text-sm font-bold text-[var(--color-brand-indigo)]">{visitor.profileId}</p>
-                </div>
-                
-                <div className="col-span-1">
-                  <div className="flex items-center gap-1.5 text-gray-500 mb-1">
-                    <MapPin size={14} />
-                    <span className="text-[10px] font-bold uppercase tracking-wider">Visit ID</span>
-                  </div>
-                  <p className="text-sm font-bold text-gray-900">{visitor.visitId}</p>
-                </div>
-
-                {/* Logistics */}
-                <div className="col-span-1">
-                  <div className="flex items-center gap-1.5 text-gray-500 mb-1">
-                    <Building size={14} />
-                    <span className="text-[10px] font-bold uppercase tracking-wider">Branch</span>
-                  </div>
-                  <p className="text-sm font-bold text-gray-900 truncate">{visitor.branch}</p>
-                </div>
-
-                <div className="col-span-1">
-                  <div className="flex items-center gap-1.5 text-gray-500 mb-1">
-                    <Calendar size={14} />
-                    <span className="text-[10px] font-bold uppercase tracking-wider">Date</span>
-                  </div>
-                  <p className="text-sm font-bold text-gray-900">{visitor.visitDate}</p>
-                </div>
-
-                {/* Host & Purpose */}
-                <div className="col-span-2 border-t border-gray-200 pt-4 mt-1">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <div className="flex items-center gap-1.5 text-gray-500 mb-1">
-                        <User size={14} />
-                        <span className="text-[10px] font-bold uppercase tracking-wider">Visiting Host</span>
-                      </div>
-                      <p className="text-sm font-bold text-gray-900">{visitor.hostName}</p>
-                    </div>
-                    
-                    <div className="text-right flex flex-col items-end">
-                      <div className="flex items-center gap-1.5 text-gray-500 mb-1">
-                        <span className="text-[10px] font-bold uppercase tracking-wider">Purpose</span>
-                      </div>
-                      {visitor.status === 'Pending' || visitor.status === 'Approved' || visitor.status === 'Inside' ? (
-                        <select 
-                          value={purpose}
-                          onChange={(e) => setPurpose(e.target.value)}
-                          className="text-xs font-bold text-purple-700 bg-purple-100 border-none rounded-full py-1 px-3 outline-none focus:ring-2 focus:ring-purple-300 transition-shadow cursor-pointer text-right appearance-none"
-                        >
-                          <option value="Interview">Interview</option>
-                          <option value="Follow up">Follow up</option>
-                          <option value="Job consulting">Job consulting</option>
-                          <option value="Banking">Banking</option>
-                          <option value="CEO meeting">CEO meeting</option>
-                          <option value="Visitors">Visitors</option>
-                          <option value="Guest">Guest</option>
-                        </select>
-                      ) : (
-                        <span className="text-xs font-bold text-purple-700 bg-purple-100 px-3 py-1 rounded-full">{purpose}</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
+          {/* Details Table List */}
+          <div className="p-5">
+            <div className="bg-slate-50/80 rounded-2xl p-4 border border-slate-200/70 space-y-2.5 text-xs">
+              
+              <div className="flex justify-between items-center border-b border-slate-200/60 pb-2">
+                <span className="text-slate-500 font-semibold uppercase text-[10px]">Visitor ID</span>
+                <span className="font-mono font-extrabold text-indigo-700 text-sm">{visitor.visitId || visitor.profileId}</span>
               </div>
+
+              <div className="flex justify-between items-center border-b border-slate-200/60 pb-2">
+                <span className="text-slate-500 font-semibold uppercase text-[10px]">Full Name</span>
+                <span className="font-bold text-slate-900">{visitor.visitorName}</span>
+              </div>
+
+              <div className="flex justify-between items-center border-b border-slate-200/60 pb-2">
+                <span className="text-slate-500 font-semibold uppercase text-[10px]">Mobile Number</span>
+                <span className="font-semibold text-slate-800">{visitor.mobileNumber || 'N/A'}</span>
+              </div>
+
+              {visitor.email && (
+                <div className="flex justify-between items-center border-b border-slate-200/60 pb-2">
+                  <span className="text-slate-500 font-semibold uppercase text-[10px]">Email Address</span>
+                  <span className="font-medium text-slate-700 truncate max-w-[180px]">{visitor.email}</span>
+                </div>
+              )}
+
+              <div className="flex justify-between items-center border-b border-slate-200/60 pb-2">
+                <span className="text-slate-500 font-semibold uppercase text-[10px]">Visiting Company</span>
+                <span className="font-bold text-indigo-700">Forge India Connect Private Limited</span>
+              </div>
+
+              <div className="flex justify-between items-center border-b border-slate-200/60 pb-2">
+                <span className="text-slate-500 font-semibold uppercase text-[10px]">Host Employee</span>
+                <span className="font-bold text-slate-900">{visitor.hostName || 'Priyadharshini (HR)'}</span>
+              </div>
+
+              <div className="flex justify-between items-center border-b border-slate-200/60 pb-2">
+                <span className="text-slate-500 font-semibold uppercase text-[10px]">Visit Purpose</span>
+                <span className="font-semibold text-purple-700 bg-purple-50 px-2 py-0.5 rounded">{visitor.purpose || visitor.visitPurpose || 'Business Meeting'}</span>
+              </div>
+
+              <div className="flex justify-between items-center border-b border-slate-200/60 pb-2">
+                <span className="text-slate-500 font-semibold uppercase text-[10px]">Date of Visit</span>
+                <span className="font-semibold text-slate-800">{visitor.visitDate || 'Today'}</span>
+              </div>
+
+              <div className="flex justify-between items-center border-b border-slate-200/60 pb-2">
+                <span className="text-slate-500 font-semibold uppercase text-[10px]">Expected Time</span>
+                <span className="font-semibold text-slate-800">{visitor.expectedArrivalTime || '10:00 AM'}</span>
+              </div>
+
+              <div className="flex justify-between items-center border-b border-slate-200/60 pb-2">
+                <span className="text-slate-500 font-semibold uppercase text-[10px]">Branch Location</span>
+                <span className="font-semibold text-slate-800">{visitor.branch || 'Head Office'}</span>
+              </div>
+
+              {visitor.vehicleNumber && (
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-semibold uppercase text-[10px]">Vehicle Registration</span>
+                  <span className="font-mono font-bold text-slate-800">{visitor.vehicleNumber}</span>
+                </div>
+              )}
+
             </div>
+
+            {/* Embedded Gate QR Code */}
+            <div className="mt-5 p-4 bg-slate-900 rounded-2xl flex flex-col items-center justify-center text-center space-y-2 border border-slate-800">
+              <div className="p-3 bg-white rounded-xl shadow-md">
+                <QRCodeSVG 
+                  value={`http://${window.location.hostname === 'localhost' ? (import.meta.env.VITE_NETWORK_IP || '192.168.1.10') : window.location.hostname}:${window.location.port || '5173'}/pass/${visitor.visitId}`} 
+                  size={120} 
+                />
+              </div>
+              <span className="text-[10px] font-mono text-indigo-300 font-bold uppercase tracking-wider">
+                SCAN AT GATE / RECEPTION KIOSK
+              </span>
+            </div>
+
           </div>
         </div>
         
-        {/* Notes Section */}
+        {/* Checkout Notes Section */}
         {visitor.status === 'Inside' && (
-          <div className="bg-white p-6 shadow-md border border-gray-100 rounded-3xl animate-in slide-in-from-bottom-4 duration-300">
-            <label className="font-semibold text-[var(--color-brand-indigo)] uppercase text-xs tracking-wider block mb-3 flex items-center gap-2">
-              <FileText size={14} /> Checkout Notes (Required)
+          <div className="bg-white p-5 shadow-md border border-gray-100 rounded-2xl animate-in slide-in-from-bottom-4 duration-300">
+            <label className="font-semibold text-[var(--color-brand-indigo)] uppercase text-xs tracking-wider block mb-2 flex items-center gap-2">
+              <FileText size={14} /> Mandatory Exit Notes
             </label>
             <textarea 
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Please enter any remarks or meeting outcomes before checking out..."
-              className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-indigo)] focus:bg-white resize-none transition-all"
-              rows="3"
+              placeholder="Enter exit remarks / meeting outcome before checking out..."
+              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-indigo)] focus:bg-white resize-none text-xs"
+              rows="2"
               required
             ></textarea>
           </div>
@@ -278,12 +291,12 @@ const VisitorPass = () => {
 
         {/* Action Buttons */}
         <div className="pt-2">
-          {visitor.status === 'Approved' && !visitor.entryTime && (
+          {(visitor.status === 'Approved' || visitor.status === 'Pending') && !visitor.entryTime && (
             <button 
               onClick={() => updateStatus('checkIn')}
-              className="w-full bg-green-500 hover:bg-green-600 text-white py-4 rounded-2xl font-bold text-lg shadow-xl shadow-green-500/20 flex items-center justify-center gap-2 transition-all active:scale-95 active:shadow-sm"
+              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3.5 rounded-2xl font-bold text-base shadow-xl shadow-emerald-600/20 flex items-center justify-center gap-2 transition-all active:scale-95"
             >
-              <LogIn size={24} /> Swipe / Tap to Check In
+              <LogIn size={20} /> Tap to Check In at Gate
             </button>
           )}
 
@@ -291,33 +304,26 @@ const VisitorPass = () => {
             <button 
               onClick={() => updateStatus('checkOut')}
               disabled={notes.trim().length === 0}
-              className={`w-full py-4 rounded-2xl font-bold text-lg shadow-xl flex items-center justify-center gap-2 transition-all active:scale-95 ${
+              className={`w-full py-3.5 rounded-2xl font-bold text-base shadow-xl flex items-center justify-center gap-2 transition-all active:scale-95 ${
                 notes.trim().length === 0 
                   ? 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none' 
-                  : 'bg-orange-500 hover:bg-orange-600 text-white shadow-orange-500/20 active:shadow-sm'
+                  : 'bg-orange-500 hover:bg-orange-600 text-white shadow-orange-500/20'
               }`}
             >
-              <LogOut size={24} /> {notes.trim().length === 0 ? 'Fill Notes to Check Out' : 'Tap to Check Out'}
+              <LogOut size={20} /> {notes.trim().length === 0 ? 'Fill Exit Notes to Check Out' : 'Tap to Check Out'}
             </button>
           )}
 
-          {visitor.status === 'Pending' && (
-            <div className="w-full bg-yellow-50 border border-yellow-200 text-yellow-800 py-4 rounded-2xl font-medium text-center shadow-sm flex flex-col items-center justify-center gap-2">
-              <Clock3 size={24} className="text-yellow-600" />
-              <span>Pass is awaiting approval</span>
-            </div>
-          )}
-
           {visitor.status === 'Rejected' && (
-            <div className="w-full bg-red-50 border border-red-200 text-red-800 py-4 rounded-2xl font-medium text-center shadow-sm flex flex-col items-center justify-center gap-2">
-              <AlertCircle size={24} className="text-red-600" />
-              <span>This pass has been rejected</span>
+            <div className="w-full bg-red-50 border border-red-200 text-red-800 py-3 rounded-2xl font-medium text-center text-xs flex flex-col items-center justify-center gap-1">
+              <AlertCircle size={20} className="text-red-600" />
+              <span>This visitor pass has been rejected.</span>
             </div>
           )}
           
           {visitor.status === 'Exited' && (
-            <div className="w-full bg-gray-100 border border-gray-200 text-gray-600 py-4 rounded-2xl font-medium text-center shadow-sm flex flex-col items-center justify-center gap-2">
-              <ShieldCheck size={24} className="text-green-600" />
+            <div className="w-full bg-gray-100 border border-gray-200 text-gray-600 py-3 rounded-2xl font-medium text-center text-xs flex flex-col items-center justify-center gap-1">
+              <ShieldCheck size={20} className="text-green-600" />
               <span>Visit Completed Successfully</span>
             </div>
           )}

@@ -12,7 +12,7 @@ const sendNotification = require('../utils/firebaseNotification');
 const User = require('../models/User');
 
 router.use((req, res, next) => {
-  if (req.path.startsWith('/pass/')) {
+  if (req.path.startsWith('/pass/') || req.path === '/public-prebook' || req.path === '/upload') {
     return next();
   }
   authMiddleware(req, res, next);
@@ -49,6 +49,93 @@ const upload = multer({
   }
 });
 
+
+// Public Pre-Booking endpoint for Landing Page
+router.post('/public-prebook', async (req, res) => {
+  try {
+    const {
+      visitorName,
+      mobileNumber,
+      email,
+      companyName,
+      hostName,
+      purpose,
+      visitDate,
+      expectedArrivalTime,
+      expectedDuration,
+      vehicleNumber,
+      branch,
+      notes,
+      photoUrl
+    } = req.body;
+
+    if (!visitorName || !mobileNumber || !hostName || !purpose) {
+      return res.status(400).json({ message: 'Full Name, Mobile Number, Host, and Purpose are required.' });
+    }
+
+    const companyId = req.headers['x-company-id'] || 'FIC001';
+    const targetBranch = branch || 'Chennai';
+    const profileId = 'VP-' + Date.now().toString().slice(-6);
+
+    // Generate Order-Wise Sequential Visitor ID (e.g. VISIT1001, VISIT1002, VISIT1003...)
+    const lastVisitor = await Visitor.findOne().sort({ createdAt: -1 });
+    let nextSeq = 1001;
+    if (lastVisitor && lastVisitor.visitId) {
+      const match = lastVisitor.visitId.match(/\d+$/);
+      if (match) {
+        nextSeq = parseInt(match[0], 10) + 1;
+      }
+    }
+    const visitId = `VISIT${nextSeq.toString().padStart(4, '0')}`;
+
+    const newVisitor = new Visitor({
+      companyId,
+      profileId,
+      visitId,
+      visitorName,
+      mobileNumber,
+      email: email || '',
+      companyName: companyName || 'Forge India Connect Private Limited',
+      hostName,
+      purpose,
+      visitDate: visitDate || new Date().toISOString().split('T')[0],
+      expectedArrivalTime: expectedArrivalTime || '10:00 AM',
+      expectedDuration: expectedDuration || '1 Hour',
+      vehicleNumber: vehicleNumber || '',
+      branch: targetBranch,
+      notes: notes || '',
+      photoUrl: photoUrl || '',
+      registrationType: 'Pre-Booking',
+      status: 'PENDING',
+      createdBy: 'Public Pre-Booking Landing Page'
+    });
+
+    const savedVisitor = await newVisitor.save();
+
+    // Create Notification for Host / Admin
+    try {
+      await Notification.create({
+        companyId,
+        title: 'New Public Pre-Booking Request',
+        message: `Visitor ${visitorName} pre-booked a visit to meet ${hostName} on ${visitDate}.`,
+        type: 'visitor',
+        branch: targetBranch,
+        read: false
+      });
+    } catch (notifErr) {
+      console.warn('Could not create notification:', notifErr.message);
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Pre-booking pass generated successfully!',
+      visitor: savedVisitor
+    });
+  } catch (err) {
+    console.error('Public Pre-booking Error:', err);
+    res.status(500).json({ message: err.message || 'Failed to complete pre-booking' });
+  }
+});
 
 // Upload Visitor Photo Endpoint
 router.post('/upload', upload.single('photo'), (req, res) => {
@@ -328,16 +415,67 @@ router.get('/search/:query', async (req, res) => {
 // Get a single visitor by visitId (for public pass page)
 router.get('/pass/:visitId', async (req, res) => {
   try {
-    const isValidObjectId = require('mongoose').isValidObjectId(req.params.visitId);
-    let query = { visitId: req.params.visitId };
-    if (isValidObjectId) {
-      query = { $or: [{ visitId: req.params.visitId }, { _id: req.params.visitId }, { bookingId: req.params.visitId }] };
+    const { visitId } = req.params;
+    const isValidObjectId = require('mongoose').isValidObjectId(visitId);
+
+    // 1. Try finding in Visitor collection
+    let visitor = await Visitor.findOne({
+      $or: [
+        { visitId: visitId },
+        { profileId: visitId },
+        { bookingId: visitId },
+        ...(isValidObjectId ? [{ _id: visitId }] : [])
+      ]
+    });
+
+    // 2. If not found in Visitor, find in PreBooking collection
+    if (!visitor) {
+      const PreBooking = require('../models/PreBooking');
+      const pb = await PreBooking.findOne({
+        $or: [
+          { visitorId: visitId },
+          { qrToken: visitId },
+          ...(isValidObjectId ? [{ _id: visitId }] : [])
+        ]
+      });
+
+      if (pb) {
+        visitor = {
+          id: pb._id,
+          _id: pb._id,
+          visitId: pb.visitorId,
+          profileId: pb.visitorId,
+          visitorName: pb.fullName,
+          fullName: pb.fullName,
+          mobileNumber: pb.mobileNumber,
+          email: pb.email,
+          companyName: pb.visitingCompany || 'Forge India Connect Private Limited',
+          hostName: pb.hostEmployee,
+          purpose: pb.visitPurpose,
+          visitDate: pb.visitDate,
+          expectedArrivalTime: pb.expectedTime,
+          branch: pb.branchLocation || 'Head Office',
+          vehicleNumber: pb.vehicleNumber,
+          photoUrl: pb.facePhoto,
+          status: pb.status === 'PENDING' ? 'Pending' : (pb.status === 'APPROVED' ? 'Approved' : (pb.status === 'CHECKED_IN' ? 'Inside' : pb.status)),
+          createdAt: pb.createdAt
+        };
+      }
     }
-    const visitor = await Visitor.findOne(query);
-    if (!visitor) return res.status(404).json({ message: 'Visitor not found' });
-    res.json(visitor);
+
+    if (!visitor) {
+      return res.status(404).json({
+        success: false,
+        message: 'Visitor pass not found or invalid QR code.'
+      });
+    }
+
+    return res.json(visitor);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    return res.status(500).json({
+      success: false,
+      message: err.message
+    });
   }
 });
 

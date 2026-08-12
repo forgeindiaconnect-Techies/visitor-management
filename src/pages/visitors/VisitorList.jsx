@@ -5,7 +5,7 @@ import { useBranch } from '../../context/BranchContext';
 import { useNotification } from '../../context/NotificationContext';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Plus, Search, Filter, MoreVertical, QrCode, X, FileText, Edit, Save, CalendarCheck, UserPlus } from 'lucide-react';
+import { Plus, Search, Filter, MoreVertical, QrCode, X, FileText, Edit, Save, CalendarCheck, UserPlus, Eye, User } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 
 const VisitorList = () => {
@@ -20,6 +20,7 @@ const VisitorList = () => {
   const [selectedVisitorHistory, setSelectedVisitorHistory] = useState(null);
   const [selectedVisitorUpdateZone, setSelectedVisitorUpdateZone] = useState(null);
   const [selectedVisitorEdit, setSelectedVisitorEdit] = useState(null);
+  const [selectedVisitorDetails, setSelectedVisitorDetails] = useState(null);
   const [selectedZone, setSelectedZone] = useState('');
   const [openDropdownId, setOpenDropdownId] = useState(null);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -252,21 +253,30 @@ const VisitorList = () => {
                   </td>
                   {user?.role !== 'HR' && (
                     <td className="px-6 py-4 text-right">
-                      <div className="relative inline-block">
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            e.nativeEvent.stopImmediatePropagation();
-                            setOpenDropdownId(openDropdownId === visitor.id ? null : visitor.id);
-                          }}
-                          className="text-gray-400 hover:text-gray-600 p-1 rounded-md hover:bg-gray-100 transition-colors"
-                        >
-                          <MoreVertical size={18} />
-                        </button>
+                      <div className="flex items-center justify-end gap-2">
+
+
+                        <div className="relative inline-block">
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              e.nativeEvent.stopImmediatePropagation();
+                              setOpenDropdownId(openDropdownId === visitor.id ? null : visitor.id);
+                            }}
+                            className="text-gray-400 hover:text-gray-600 p-1.5 rounded-md hover:bg-gray-100 transition-colors"
+                          >
+                            <MoreVertical size={18} />
+                          </button>
                         
                         {openDropdownId === visitor.id && (
                           <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-xl border border-gray-200 z-50">
                             <div className="py-1">
+                              <button 
+                                onClick={() => { setSelectedVisitorDetails(visitor); setOpenDropdownId(null); }} 
+                                className="block w-full text-left px-4 py-2 text-sm text-slate-800 font-bold hover:bg-indigo-50 flex items-center gap-2 border-b border-gray-100"
+                              >
+                                <Eye size={15} className="text-indigo-600" /> View Details
+                              </button>
                               <button onClick={() => { setSelectedVisitorEdit(visitor); setOpenDropdownId(null); }} className="block w-full text-left px-4 py-2 text-sm text-gray-700 font-medium hover:bg-slate-50 flex items-center gap-2">
                                 <Edit size={14} /> Edit Details
                               </button>
@@ -292,8 +302,9 @@ const VisitorList = () => {
                           </div>
                         )}
                       </div>
-                    </td>
-                  )}
+                    </div>
+                  </td>
+                )}
                 </tr>
               ))}
               
@@ -567,6 +578,94 @@ const VisitorList = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Visitor Details Modal */}
+      {selectedVisitorDetails && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl relative space-y-5 animate-fadeIn">
+            <button 
+              onClick={() => setSelectedVisitorDetails(null)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-full p-1.5 transition-colors"
+            >
+              <X size={18} />
+            </button>
+            
+            <div className="flex items-center gap-4 border-b border-gray-100 pb-4">
+              <div className="w-20 h-20 bg-slate-900 rounded-2xl overflow-hidden flex items-center justify-center border-2 border-indigo-500/20 shadow-md flex-shrink-0">
+                {selectedVisitorDetails.photoUrl ? (
+                  <img src={selectedVisitorDetails.photoUrl} alt={selectedVisitorDetails.visitorName} className="w-full h-full object-cover" />
+                ) : (
+                  <User size={36} className="text-gray-400" />
+                )}
+              </div>
+              <div>
+                <span className="text-[10px] font-mono font-bold text-indigo-600 uppercase tracking-wider block">Visitor Profile Details</span>
+                <h3 className="text-xl font-bold text-gray-900">{selectedVisitorDetails.visitorName}</h3>
+                <span className="text-xs font-semibold text-slate-500">{selectedVisitorDetails.companyName || 'Forge India Connect Private Limited'}</span>
+                <div className="mt-1">
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                    {selectedVisitorDetails.status}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50 p-4 rounded-2xl border border-slate-200">
+              <div>
+                <span className="text-slate-400 font-semibold uppercase text-[10px] block">Visitor ID</span>
+                <span className="font-mono font-bold text-indigo-700 text-sm">{selectedVisitorDetails.visitId || selectedVisitorDetails.id}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 font-semibold uppercase text-[10px] block">Mobile Number</span>
+                <span className="font-bold text-slate-800">{selectedVisitorDetails.mobileNumber || 'N/A'}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 font-semibold uppercase text-[10px] block">Host Employee</span>
+                <span className="font-bold text-slate-800">{selectedVisitorDetails.hostName || 'Priyadharshini (HR)'}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 font-semibold uppercase text-[10px] block">Purpose</span>
+                <span className="font-semibold text-purple-700">{selectedVisitorDetails.purpose || 'Business Meeting'}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 font-semibold uppercase text-[10px] block">Date & Time</span>
+                <span className="font-semibold text-slate-800">{selectedVisitorDetails.visitDate || 'Today'} @ {selectedVisitorDetails.expectedArrivalTime || '10:00 AM'}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 font-semibold uppercase text-[10px] block">Branch</span>
+                <span className="font-semibold text-slate-800">{selectedVisitorDetails.branch || 'Chennai'}</span>
+              </div>
+            </div>
+
+            {/* QR Code Section */}
+            <div className="p-4 bg-slate-900 rounded-2xl flex items-center justify-between">
+              <div className="bg-white p-2 rounded-xl shadow-md">
+                <QRCodeSVG 
+                  value={`http://${window.location.hostname === 'localhost' ? (import.meta.env.VITE_NETWORK_IP || '192.168.1.10') : window.location.hostname}:${window.location.port || '5173'}/pass/${selectedVisitorDetails.visitId || selectedVisitorDetails.id}`} 
+                  size={70} 
+                />
+              </div>
+              <div className="text-right">
+                <span className="text-[10px] font-mono text-indigo-300 font-bold uppercase tracking-wider block">DIGITAL GATE PASS</span>
+                <button 
+                  onClick={() => window.open(`/pass/${selectedVisitorDetails.visitId || selectedVisitorDetails.id}`, '_blank')}
+                  className="mt-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-sm transition-colors"
+                >
+                  Open Digital Pass ↗
+                </button>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <button
+                onClick={() => setSelectedVisitorDetails(null)}
+                className="px-5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
