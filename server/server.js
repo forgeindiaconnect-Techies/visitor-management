@@ -58,9 +58,12 @@ app.use(cors({
     if (origin.includes('localhost') || 
         origin.includes('192.168') || 
         origin.includes('10.') || 
+        origin.includes('onrender.com') ||
+        origin.includes('vercel.app') ||
         origin === 'https://fic-visitor-1.vercel.app') {
       return callback(null, true);
     }
+    console.warn('CORS Blocked Origin:', origin);
     return callback(new Error('Not allowed by CORS'), false);
   },
   credentials: true
