@@ -24,6 +24,10 @@ const sendNotification = async (token, title, body) => {
       console.log(`Expo Push notification sent to ${token}`, await response.json());
     } else {
       // Send via Firebase Admin for Web FCM tokens
+      if (!app) {
+        console.warn("Firebase Admin SDK is not initialized. Skipping Firebase Push notification.");
+        return;
+      }
       const messaging = getMessaging(app);
       await messaging.send({
         token: token,
