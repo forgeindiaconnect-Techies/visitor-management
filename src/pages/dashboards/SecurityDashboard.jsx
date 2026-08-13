@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNotification } from '../../context/NotificationContext';
 import { useVisitors } from '../../context/VisitorContext';
 import { useBranch } from '../../context/BranchContext';
+import { useAuth } from '../../context/AuthContext';
 import { Users, UserCheck, QrCode, ShieldAlert, Ban, Search, Clock, AlertTriangle, FileText, Settings, Camera } from 'lucide-react';
 import Webcam from 'react-webcam';
 import { Html5Qrcode } from 'html5-qrcode';
@@ -30,6 +31,7 @@ const SecurityDashboard = () => {
   const { visitors } = useVisitors();
   const { activeBranch } = useBranch();
   const { attendance, checkIn, checkOut } = useAttendance();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSubTab, setActiveSubTab] = useState('prebooking'); // 'prebooking' | 'attendance' | 'all'
@@ -114,6 +116,78 @@ const SecurityDashboard = () => {
     }
   };
 
+  const handlePbApprove = async () => {
+    if (!pbVisitor) return;
+    const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+    const isVisitorCollection = pbVisitor._isVisitorCollection || pbVisitor.visitId != null;
+
+    let approveUrl, approveMethod;
+    if (isVisitorCollection) {
+      approveUrl = `${API_URL}/api/visitors/${encodeURIComponent(pbVisitor._id || pbVisitor.id)}/approve`;
+      approveMethod = 'PATCH';
+    } else {
+      approveUrl = `${API_URL}/api/prebookings/${encodeURIComponent(pbVisitor._id || pbVisitor.id)}/approve`;
+      approveMethod = 'PUT';
+    }
+
+    try {
+      const response = await fetch(approveUrl, {
+        method: approveMethod,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': user?.token ? `Bearer ${user.token}` : ''
+        }
+      });
+      const resData = await response.json();
+      if (response.ok && (resData.success || resData._id)) {
+        const updatedStatus = isVisitorCollection ? 'Approved' : 'APPROVED';
+        setPbVisitor(prev => ({ ...prev, status: updatedStatus }));
+        addNotification('Visitor Approved', `${pbVisitor.fullName || pbVisitor.visitorName} approved successfully!`, 'success');
+      } else {
+        alert(`❌ Approval Failed: ${resData.message || 'Unknown error'}`);
+      }
+    } catch (e) {
+      console.error('Approval Error:', e);
+      alert('Failed to connect to backend server for Approval.');
+    }
+  };
+
+  const handlePbReject = async () => {
+    if (!pbVisitor) return;
+    const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+    const isVisitorCollection = pbVisitor._isVisitorCollection || pbVisitor.visitId != null;
+
+    let rejectUrl, rejectMethod;
+    if (isVisitorCollection) {
+      rejectUrl = `${API_URL}/api/visitors/${encodeURIComponent(pbVisitor._id || pbVisitor.id)}/reject`;
+      rejectMethod = 'PATCH';
+    } else {
+      rejectUrl = `${API_URL}/api/prebookings/${encodeURIComponent(pbVisitor._id || pbVisitor.id)}/reject`;
+      rejectMethod = 'PUT';
+    }
+
+    try {
+      const response = await fetch(rejectUrl, {
+        method: rejectMethod,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': user?.token ? `Bearer ${user.token}` : ''
+        }
+      });
+      const resData = await response.json();
+      if (response.ok && (resData.success || resData._id)) {
+        const updatedStatus = isVisitorCollection ? 'Rejected' : 'REJECTED';
+        setPbVisitor(prev => ({ ...prev, status: updatedStatus }));
+        addNotification('Visitor Rejected', `${pbVisitor.fullName || pbVisitor.visitorName} has been rejected.`, 'info');
+      } else {
+        alert(`❌ Rejection Failed: ${resData.message || 'Unknown error'}`);
+      }
+    } catch (e) {
+      console.error('Rejection Error:', e);
+      alert('Failed to connect to backend server for Rejection.');
+    }
+  };
+
   const handlePbCheckIn = async () => {
     if (!pbVisitor) return;
 
@@ -124,12 +198,28 @@ const SecurityDashboard = () => {
     }
 
     try {
-      const targetId = pbVisitor.visitorId || pbVisitor._id;
+      const targetId = pbVisitor._id || pbVisitor.id;
       const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+      const isVisitorCollection = pbVisitor._isVisitorCollection || pbVisitor.visitId != null;
 
-      const response = await fetch(`${API_URL}/api/prebookings/visitor/${encodeURIComponent(targetId)}/check-in`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' }
+      let checkInUrl, checkInMethod, checkInBody;
+      if (isVisitorCollection) {
+        checkInUrl = `${API_URL}/api/visitors/${encodeURIComponent(targetId)}`;
+        checkInMethod = 'PATCH';
+        checkInBody = JSON.stringify({ status: 'Inside' });
+      } else {
+        checkInUrl = `${API_URL}/api/prebookings/${encodeURIComponent(targetId)}/check-in`;
+        checkInMethod = 'PUT';
+        checkInBody = null;
+      }
+
+      const response = await fetch(checkInUrl, {
+        method: checkInMethod,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': user?.token ? `Bearer ${user.token}` : ''
+        },
+        body: checkInBody
       });
       const data = await response.json();
       if (response.ok && data.success) {
@@ -158,13 +248,28 @@ const SecurityDashboard = () => {
     }
 
     try {
-      const targetId = pbVisitor.visitorId || pbVisitor._id;
+      const targetId = pbVisitor._id || pbVisitor.id;
       const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+      const isVisitorCollection = pbVisitor._isVisitorCollection || pbVisitor.visitId != null;
 
-      const response = await fetch(`${API_URL}/api/prebookings/visitor/${encodeURIComponent(targetId)}/check-out`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notes: checkoutNotes.trim(), checkOutNotes: checkoutNotes.trim() })
+      let checkOutUrl, checkOutMethod, checkOutBody;
+      if (isVisitorCollection) {
+        checkOutUrl = `${API_URL}/api/visitors/${encodeURIComponent(targetId)}`;
+        checkOutMethod = 'PATCH';
+        checkOutBody = JSON.stringify({ status: 'Completed', exitNotes: checkoutNotes.trim() });
+      } else {
+        checkOutUrl = `${API_URL}/api/prebookings/${encodeURIComponent(targetId)}/check-out`;
+        checkOutMethod = 'PUT';
+        checkOutBody = JSON.stringify({ exitNotes: checkoutNotes.trim(), notes: checkoutNotes.trim() });
+      }
+
+      const response = await fetch(checkOutUrl, {
+        method: checkOutMethod,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': user?.token ? `Bearer ${user.token}` : ''
+        },
+        body: checkOutBody
       });
       const data = await response.json();
       if (response.ok && data.success) {
@@ -378,6 +483,7 @@ const SecurityDashboard = () => {
         setPbVisitor({
           id: raw._id || raw.id,
           _id: raw._id || raw.id,
+          _isVisitorCollection: !!raw.visitId,
           visitorId: raw.visitorId || raw.visitId || raw._id,
           fullName: raw.fullName || raw.visitorName || 'Visitor',
           mobileNumber: raw.mobileNumber || '-',
@@ -563,15 +669,15 @@ const SecurityDashboard = () => {
                 </div>
                 <div>
                   <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                    pbVisitor.status === 'PENDING' ? 'bg-amber-100 text-amber-800' :
-                    pbVisitor.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' :
-                    pbVisitor.status === 'CHECKED_IN' ? 'bg-green-100 text-green-800' :
-                    pbVisitor.status === 'CHECKED_OUT' ? 'bg-slate-100 text-slate-800' : 'bg-red-100 text-red-800'
+                    (pbVisitor.status === 'PENDING' || pbVisitor.status === 'Pending' || pbVisitor.status === 'Pending Approval') ? 'bg-amber-100 text-amber-800' :
+                    (pbVisitor.status === 'APPROVED' || pbVisitor.status === 'Approved') ? 'bg-emerald-100 text-emerald-800' :
+                    (pbVisitor.status === 'CHECKED_IN' || pbVisitor.status === 'Checked In') ? 'bg-green-100 text-green-800' :
+                    (pbVisitor.status === 'CHECKED_OUT' || pbVisitor.status === 'Checked Out') ? 'bg-slate-100 text-slate-800' : 'bg-red-100 text-red-800'
                   }`}>
-                    {pbVisitor.status === 'PENDING' ? '🟠 PENDING' :
-                     pbVisitor.status === 'APPROVED' ? '🟢 APPROVED' :
-                     pbVisitor.status === 'CHECKED_IN' ? '🟢 CHECKED IN' :
-                     pbVisitor.status === 'CHECKED_OUT' ? '🔵 CHECKED OUT' : pbVisitor.status}
+                    {(pbVisitor.status === 'PENDING' || pbVisitor.status === 'Pending' || pbVisitor.status === 'Pending Approval') ? '🟠 PENDING' :
+                     (pbVisitor.status === 'APPROVED' || pbVisitor.status === 'Approved') ? '🟢 APPROVED' :
+                     (pbVisitor.status === 'CHECKED_IN' || pbVisitor.status === 'Checked In') ? '🟢 CHECKED IN' :
+                     (pbVisitor.status === 'CHECKED_OUT' || pbVisitor.status === 'Checked Out') ? '🔵 CHECKED OUT' : pbVisitor.status}
                   </span>
                 </div>
               </div>
@@ -666,13 +772,26 @@ const SecurityDashboard = () => {
                   <span className="text-xs font-semibold text-gray-500">Status: {pbVisitor.status}</span>
 
                   <div>
-                    {pbVisitor.status === 'PENDING' && (
-                      <span className="px-6 py-3 bg-amber-50 text-amber-800 border border-amber-300 rounded-xl font-bold text-sm">
-                        Waiting for Super Admin approval
-                      </span>
+                    {(pbVisitor.status === 'PENDING' || pbVisitor.status === 'Pending' || pbVisitor.status === 'Pending Approval') && (
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={handlePbApprove}
+                          className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-md transition-transform active:scale-95 text-sm"
+                        >
+                          APPROVE
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handlePbReject}
+                          className="px-6 py-3 bg-red-100 hover:bg-red-200 text-red-700 font-bold rounded-xl shadow-sm transition-transform active:scale-95 text-sm border border-red-200"
+                        >
+                          REJECT
+                        </button>
+                      </div>
                     )}
 
-                    {pbVisitor.status === 'REJECTED' && (
+                    {(pbVisitor.status === 'REJECTED' || pbVisitor.status === 'Rejected') && (
                       <span className="px-6 py-3 bg-red-50 text-red-800 border border-red-300 rounded-xl font-bold text-sm">
                         ❌ Visitor rejected
                       </span>

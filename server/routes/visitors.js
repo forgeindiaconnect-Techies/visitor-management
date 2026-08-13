@@ -114,14 +114,63 @@ router.post('/public-prebook', async (req, res) => {
 
     // Create Notification for Host / Admin
     try {
-      await Notification.create({
+      const superAdmins = await User.find({
+        companyId: companyId,
+        role: 'Super Admin'
+      });
+
+      const superAdminNotifications = superAdmins.map((admin) => ({
         companyId,
         title: 'New Public Pre-Booking Request',
         message: `Visitor ${visitorName} pre-booked a visit to meet ${hostName} on ${visitDate}.`,
-        type: 'visitor',
+        type: 'Visitor',
         branch: targetBranch,
+        recipient: admin._id,
         read: false
-      });
+      }));
+
+      if (superAdminNotifications.length > 0) {
+        await Notification.insertMany(superAdminNotifications);
+      }
+
+      // Check if hostName matches an HR
+      let matchedHr = null;
+      if (hostName && hostName !== 'New Visitors') {
+        matchedHr = await User.findOne({
+          companyId: companyId,
+          role: 'HR',
+          name: new RegExp(`^${hostName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i')
+        });
+
+        if (matchedHr) {
+          await Notification.create({
+            companyId,
+            title: 'New Public Pre-Booking Assigned',
+            message: `Visitor ${visitorName} pre-booked a visit to meet you on ${visitDate}.`,
+            type: 'Visitor',
+            branch: targetBranch,
+            recipient: matchedHr._id,
+            read: false
+          });
+        }
+      }
+
+      const io = req.app.get('io');
+      if (io) {
+        io.emit('new_notification', {
+          _id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+          createdAt: new Date().toISOString(),
+          type: 'Visitor',
+          title: 'New Public Pre-Booking Request',
+          message: `Visitor ${visitorName} pre-booked a visit to meet ${hostName} on ${visitDate}.`,
+          companyId: companyId,
+          branchId: targetBranch,
+          recipients: [
+            ...superAdmins.map(admin => admin._id.toString()),
+            ...(matchedHr ? [matchedHr._id.toString()] : [])
+          ]
+        });
+      }
     } catch (notifErr) {
       console.warn('Could not create notification:', notifErr.message);
     }
@@ -179,6 +228,17 @@ router.get('/todays-summary', async (req, res) => {
       matchStage.branch = { $regex: new RegExp(`^(${searchRegexStr})$`, 'i') };
     }
 
+    // Isolate HR users to ONLY see their own visitor counts
+    if (req.userRole === 'HR') {
+      const User = require('../models/User');
+      const hrUser = await User.findById(req.userId);
+      if (hrUser && hrUser.name) {
+        matchStage.hostName = new RegExp(`^${hrUser.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+      } else {
+        matchStage.hostName = 'DO_NOT_MATCH_ANYTHING';
+      }
+    }
+
     const totalAggregation = await Visitor.aggregate([
       { $match: matchStage },
       { $group: { _id: null, total: { $sum: { $ifNull: ["$visitorCount", 1] } } } }
@@ -212,6 +272,10 @@ router.get('/', async (req, res) => {
   try {
     let query = { companyId: req.companyId };
 
+    if (req.query.status) {
+      query.status = req.query.status;
+    }
+
     // Enforce strict branch isolation based on role
     if (req.userRole === 'Security' || req.userRole === 'Admin' || req.userRole === 'MD') {
       query.branch = req.branchId;
@@ -229,6 +293,18 @@ router.get('/', async (req, res) => {
         searchRegexStr = `${searchRegexStr}|Bangalore`;
       }
       query.branch = { $regex: new RegExp(`^(${searchRegexStr})$`, 'i') };
+    }
+
+    // Isolate HR users to ONLY see visitors explicitly tagged to them
+    if (req.userRole === 'HR') {
+      const User = require('../models/User');
+      const hrUser = await User.findById(req.userId);
+      if (hrUser && hrUser.name) {
+        // Find exact matches or case-insensitive matches for the HR user's name
+        query.hostName = new RegExp(`^${hrUser.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+      } else {
+        query.hostName = 'DO_NOT_MATCH_ANYTHING';
+      }
     }
 
     const visitors = await Visitor.find(query).sort({ createdAt: -1 });
@@ -596,7 +672,7 @@ router.patch('/:id', async (req, res) => {
     if (req.body.status === 'Checked In' || req.body.status === 'Inside') {
       req.body.entryTime = req.body.entryTime || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
       req.body.checkedIn = true;
-    } else if (req.body.status === 'Checked Out' || req.body.status === 'Exited') {
+    } else if (req.body.status === 'Checked Out' || req.body.status === 'Exited' || req.body.status === 'Completed') {
       req.body.exitTime = req.body.exitTime || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
     }
 

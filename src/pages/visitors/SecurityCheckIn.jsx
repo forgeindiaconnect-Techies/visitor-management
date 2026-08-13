@@ -1,72 +1,152 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useVisitors } from '../../context/VisitorContext';
 import { useNotification } from '../../context/NotificationContext';
 import { useAuth } from '../../context/AuthContext';
 import { Search, QrCode, LogIn, LogOut, User, Camera, ShieldCheck, Clock, Building, Calendar, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 import Webcam from 'react-webcam';
+import { io } from "socket.io-client";
 
 const SecurityCheckIn = () => {
+  const location = useLocation();
   const { updateVisitorStatus, updateVisitor, networkIp } = useVisitors();
   const { addNotification } = useNotification();
   const { user } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchError, setSearchError] = useState('');
   const [visitor, setVisitor] = useState(null);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [showWebcam, setShowWebcam] = useState(false);
   const [capturedPhotoUrl, setCapturedPhotoUrl] = useState('');
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [pendingVisitors, setPendingVisitors] = useState([]);
+
+  const fetchPendingVisitors = async () => {
+    try {
+      const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+      const authHeader = { 'Authorization': user?.token ? `Bearer ${user.token}` : '' };
+
+      // Fetch from BOTH PreBooking model and Visitor model simultaneously
+      const [pbRes, vResPending, vResPENDING] = await Promise.all([
+        fetch(`${API_URL}/api/prebookings?status=PENDING`, { headers: authHeader }),
+        fetch(`${API_URL}/api/visitors?status=Pending`, { headers: authHeader }),
+        fetch(`${API_URL}/api/visitors?status=PENDING`, { headers: authHeader })
+      ]);
+
+      const pbData = await pbRes.json();
+      const vDataPending = await vResPending.json();
+      const vDataPENDING = await vResPENDING.json();
+
+      let merged = [];
+      // Add PreBooking records (from preBookingController → PreBooking model)
+      if (pbRes.ok && pbData.data) merged = merged.concat(pbData.data);
+      // Add Walk-in Visitor records (from Visitor model, status 'Pending')
+      if (vResPending.ok && Array.isArray(vDataPending)) merged = merged.concat(vDataPending);
+      // Add Public Pre-Booking Visitor records (from Visitor model, status 'PENDING')
+      if (vResPENDING.ok && Array.isArray(vDataPENDING)) merged = merged.concat(vDataPENDING);
+
+      // Remove duplicates by _id
+      const seen = new Set();
+      merged = merged.filter(v => {
+        const id = String(v._id);
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
+
+      merged.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      setPendingVisitors(merged);
+    } catch (error) {
+      console.error("Failed to fetch pending visitors:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchPendingVisitors();
+
+    const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+    const socket = io(API_URL);
+
+    socket.on('new_notification', (data) => {
+      if (data && data.type === 'PREBOOKING_CREATED' && data.preBookingId) {
+        fetchPendingVisitors();
+      }
+    });
+
+    return () => socket.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const searchId = params.get('searchId');
+    if (searchId) {
+      setSearchQuery(searchId);
+      handleSearch(null, searchId);
+    }
+  }, [location.search]);
 
   const webcamRef = useRef(null);
 
-  const handleSearch = async (e) => {
+  const handleSearch = async (e, overrideQuery = null) => {
     if (e) e.preventDefault();
-    if (!searchQuery.trim()) return;
+    
+    const targetQuery = overrideQuery || searchQuery;
+    
+    setVisitor(null);
+    setSearchError("");
+    setCapturedPhotoUrl('');
+    setSearched(true);
+
+    if (!targetQuery.trim()) {
+      setSearchError("Enter visitor number or scan QR");
+      return;
+    }
 
     setLoading(true);
-    setSearched(true);
-    setVisitor(null);
-    setCapturedPhotoUrl('');
-
-    const cleanQuery = searchQuery.trim();
+    const cleanQuery = targetQuery.trim();
 
     try {
-      const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? `http://${networkIp || '192.168.1.10'}:5000` : 'https://fic-visitor-1.onrender.com');
+      const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+      const authHeader = {
+        'x-company-id': user?.companyId || 'FIC001',
+        'Authorization': user?.token ? `Bearer ${user.token}` : ''
+      };
 
-      let response = await fetch(`${API_URL}/api/prebookings/visitor/${encodeURIComponent(cleanQuery)}`, {
-        headers: {
-          'x-company-id': user?.companyId || 'FIC001',
-          'Authorization': user?.token ? `Bearer ${user.token}` : ''
-        }
-      });
+      // Search in BOTH PreBooking model and Visitor model simultaneously
+      const [pbRes, vRes] = await Promise.all([
+        fetch(`${API_URL}/api/prebookings/visitor/${encodeURIComponent(cleanQuery)}`, { headers: authHeader }),
+        fetch(`${API_URL}/api/visitors/search/${encodeURIComponent(cleanQuery)}`, { headers: authHeader })
+      ]);
 
-      if (!response.ok) {
-        response = await fetch(`${API_URL}/api/visitors/search/${encodeURIComponent(cleanQuery)}`, {
-          headers: {
-            'x-company-id': user?.companyId || 'FIC001',
-            'Authorization': user?.token ? `Bearer ${user.token}` : ''
-          }
-        });
+      // Prefer PreBooking result, then Visitor result
+      let raw = null;
+      let isFromVisitorCollection = false;
+
+      if (pbRes.ok) {
+        const json = await pbRes.json();
+        raw = json.data || json;
+      } else if (vRes.ok) {
+        const json = await vRes.json();
+        raw = json.data || json;
+        isFromVisitorCollection = true;
       }
 
-      if (!response.ok) {
-        response = await fetch(`${API_URL}/api/pass-lookup/${encodeURIComponent(cleanQuery)}`);
-      }
-
-      if (response.ok) {
-        const json = await response.json();
-        const raw = json.data || json;
+      if (raw && raw._id) {
         const normalized = {
           id: raw._id || raw.id,
           _id: raw._id || raw.id,
+          // visitId: presence indicates this is from Visitor collection (has visitId field)
+          // PreBooking records use visitorId, not visitId
+          visitId: isFromVisitorCollection ? (raw.visitId || null) : null,
           visitorId: raw.visitorId || raw.visitId || raw.bookingId || raw._id,
           bookingId: raw.visitorId || raw.visitId || raw.bookingId || raw._id,
           visitorName: raw.fullName || raw.visitorName || 'Visitor',
           fullName: raw.fullName || raw.visitorName || 'Visitor',
           mobileNumber: raw.mobileNumber || '-',
           email: raw.email || '-',
-          companyName: raw.visitingCompany || raw.companyName || 'Forge India Connect Private Limited',
+          companyName: raw.visitingCompany || raw.companyName || raw.visitingCompany || 'Forge India Connect Private Limited',
           visitingCompany: raw.visitingCompany || raw.companyName || 'Forge India Connect Private Limited',
           hostName: raw.hostEmployee || raw.hostName || 'Staff',
           hostEmployee: raw.hostEmployee || raw.hostName || 'Staff',
@@ -83,15 +163,20 @@ const SecurityCheckIn = () => {
           status: raw.status || 'PENDING',
           entryTime: raw.entryTime || null,
           exitTime: raw.exitTime || null,
-          exitNotes: raw.exitNotes || ''
+          exitNotes: raw.exitNotes || '',
+          checkInTime: raw.checkInTime || null,
+          checkOutTime: raw.checkOutTime || null,
+          // Internal flag to know which API to call for approve/checkin/checkout
+          _isVisitorCollection: isFromVisitorCollection
         };
         setVisitor(normalized);
       } else {
         setVisitor(null);
+        setSearchError(`No visitor found for "${cleanQuery}". Check the visitor number or mobile number and try again.`);
       }
     } catch (err) {
       console.error('Search error:', err);
-      addNotification('Search Error', 'Failed to search visitor details.', 'error');
+      setSearchError('Failed to connect to the server. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -106,7 +191,7 @@ const SecurityCheckIn = () => {
       const data = new FormData();
       data.append('photo', file);
 
-      const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? `http://${networkIp}:5000` : 'https://fic-visitor-1.onrender.com');
+      const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
       const response = await fetch(`${API_URL}/api/visitors/upload`, {
         method: 'POST',
         body: data,
@@ -132,28 +217,31 @@ const SecurityCheckIn = () => {
     }
   };
 
-  // Exit Notes Modal State
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [exitNotes, setExitNotes] = useState('');
   const [checkoutError, setCheckoutError] = useState('');
 
-  const handleCheckIn = async () => {
+  const handleApprove = async () => {
     if (!visitor) return;
+    const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
 
-    // STRICT APPROVAL VALIDATION
-    const isApproved = visitor.status === 'APPROVED' || visitor.status === 'Approved' || visitor.status === 'Pre-Booked';
-    if (!isApproved && visitor.status !== 'CHECKED_IN' && visitor.status !== 'Checked In') {
-      alert(`❌ Check-In Blocked: Visitor cannot check in. Current status: ${visitor.status}`);
-      addNotification('Check-In Denied', `Visitor status is ${visitor.status}. Super Admin must approve first.`, 'error');
-      return;
+    // Use _isVisitorCollection flag to determine which API to call
+    const isVisitorCollection = visitor._isVisitorCollection || visitor.visitId != null;
+
+    let approveUrl, approveMethod;
+    if (isVisitorCollection) {
+      // Visitor model record → use PATCH /api/visitors/:id/approve
+      approveUrl = `${API_URL}/api/visitors/${encodeURIComponent(visitor._id || visitor.id)}/approve`;
+      approveMethod = 'PATCH';
+    } else {
+      // PreBooking model record → use PUT /api/prebookings/:id/approve
+      approveUrl = `${API_URL}/api/prebookings/${encodeURIComponent(visitor._id || visitor.id)}/approve`;
+      approveMethod = 'PUT';
     }
 
-    const targetId = visitor.visitorId || visitor.visitId || visitor._id || visitor.id;
-
     try {
-      const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? `http://${networkIp || '192.168.1.10'}:5000` : 'https://fic-visitor-1.onrender.com');
-      const response = await fetch(`${API_URL}/api/prebookings/visitor/${encodeURIComponent(targetId)}/check-in`, {
-        method: 'PUT',
+      const response = await fetch(approveUrl, {
+        method: approveMethod,
         headers: {
           'Content-Type': 'application/json',
           'Authorization': user?.token ? `Bearer ${user.token}` : ''
@@ -161,15 +249,93 @@ const SecurityCheckIn = () => {
       });
 
       const resData = await response.json();
-      if (response.ok && resData.success) {
-        const updated = resData.data || resData;
-        setVisitor(prev => ({
-          ...prev,
-          status: 'CHECKED_IN',
-          checkInTime: updated.checkInTime || new Date(),
-          checkInBy: updated.checkInBy || user?.name || user?.fullName || 'Security',
-          entryTime: updated.entryTime || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
-        }));
+      if (response.ok && (resData.success || resData._id)) {
+        const updatedStatus = isVisitorCollection ? 'Approved' : 'APPROVED';
+        setVisitor(prev => ({ ...prev, status: updatedStatus }));
+        fetchPendingVisitors();
+        addNotification('Visitor Approved', `${visitor.fullName || visitor.visitorName} approved successfully!`, 'success');
+      } else {
+        alert(`❌ Approval Failed: ${resData.message || 'Unknown error'}`);
+      }
+    } catch (e) {
+      console.error('Approval Error:', e);
+      alert('Failed to connect to backend server for Approval.');
+    }
+  };
+
+  const handleReject = async () => {
+    if (!visitor) return;
+    const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+
+    const isVisitorCollection = visitor._isVisitorCollection || visitor.visitId != null;
+
+    let rejectUrl, rejectMethod;
+    if (isVisitorCollection) {
+      rejectUrl = `${API_URL}/api/visitors/${encodeURIComponent(visitor._id || visitor.id)}/reject`;
+      rejectMethod = 'PATCH';
+    } else {
+      rejectUrl = `${API_URL}/api/prebookings/${encodeURIComponent(visitor._id || visitor.id)}/reject`;
+      rejectMethod = 'PUT';
+    }
+
+    try {
+      const response = await fetch(rejectUrl, {
+        method: rejectMethod,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': user?.token ? `Bearer ${user.token}` : ''
+        }
+      });
+
+      const resData = await response.json();
+      if (response.ok && (resData.success || resData._id)) {
+        const updatedStatus = isVisitorCollection ? 'Rejected' : 'REJECTED';
+        setVisitor(prev => ({ ...prev, status: updatedStatus }));
+        fetchPendingVisitors();
+        addNotification('Visitor Rejected', `${visitor.fullName || visitor.visitorName} has been rejected.`, 'info');
+      } else {
+        alert(`❌ Rejection Failed: ${resData.message || 'Unknown error'}`);
+      }
+    } catch (e) {
+      console.error('Rejection Error:', e);
+      alert('Failed to connect to backend server for Rejection.');
+    }
+  };
+
+  const handleCheckIn = async () => {
+    if (!visitor) return;
+    const targetId = visitor._id || visitor.id;
+    const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+
+    const isVisitorCollection = visitor._isVisitorCollection || visitor.visitId != null;
+
+    let checkInUrl, checkInMethod, checkInBody;
+    if (isVisitorCollection) {
+      // Walk-in Visitor model record: use PATCH /api/visitors/:id with status 'Inside'
+      checkInUrl = `${API_URL}/api/visitors/${encodeURIComponent(targetId)}`;
+      checkInMethod = 'PATCH';
+      checkInBody = JSON.stringify({ status: 'Inside' });
+    } else {
+      // PreBooking model record: use POST /api/prebookings/:id/check-in
+      checkInUrl = `${API_URL}/api/prebookings/${encodeURIComponent(targetId)}/check-in`;
+      checkInMethod = 'POST';
+      checkInBody = null;
+    }
+
+    try {
+      const response = await fetch(checkInUrl, {
+        method: checkInMethod,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': user?.token ? `Bearer ${user.token}` : ''
+        },
+        body: checkInBody
+      });
+
+      const resData = await response.json();
+      if (response.ok && (resData.success || resData._id)) {
+        const updatedObj = resData.data || resData.visitor || resData;
+        setVisitor(prev => ({ ...prev, ...updatedObj, status: updatedObj.status || 'Inside' }));
         alert('✅ Visitor checked in successfully!');
         addNotification('Visitor Checked In', `${visitor.fullName || visitor.visitorName} checked in successfully!`, 'success');
       } else {
@@ -193,39 +359,44 @@ const SecurityCheckIn = () => {
 
     const notes = exitNotes ? exitNotes.trim() : '';
     if (!notes) {
-      setCheckoutError('Exit notes are mandatory before checking out. Please enter your exit notes.');
+      setCheckoutError('Exit notes are mandatory before checking out.');
       return;
     }
 
     if (!visitor) return;
-    const targetId = visitor.visitorId || visitor.visitId || visitor._id || visitor.id;
+    const targetId = visitor._id || visitor.id;
+    const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+
+    const isVisitorCollection = visitor._isVisitorCollection || visitor.visitId != null;
+
+    let checkOutUrl, checkOutMethod, checkOutBody;
+    if (isVisitorCollection) {
+      checkOutUrl = `${API_URL}/api/visitors/${encodeURIComponent(targetId)}`;
+      checkOutMethod = 'PATCH';
+      checkOutBody = JSON.stringify({ status: 'Completed', exitNotes: notes });
+    } else {
+      checkOutUrl = `${API_URL}/api/prebookings/${encodeURIComponent(targetId)}/check-out`;
+      checkOutMethod = 'POST';
+      checkOutBody = JSON.stringify({ exitNotes: notes, notes: notes });
+    }
 
     try {
-      const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? `http://${networkIp || '192.168.1.10'}:5000` : 'https://fic-visitor-1.onrender.com');
-      const response = await fetch(`${API_URL}/api/prebookings/visitor/${encodeURIComponent(targetId)}/check-out`, {
-        method: 'PUT',
+      const response = await fetch(checkOutUrl, {
+        method: checkOutMethod,
         headers: {
           'Content-Type': 'application/json',
           'Authorization': user?.token ? `Bearer ${user.token}` : ''
         },
-        body: JSON.stringify({ checkOutNotes: notes, exitNotes: notes })
+        body: checkOutBody
       });
 
       const resData = await response.json();
-      if (response.ok && resData.success) {
-        const updated = resData.data || resData;
-        setVisitor(prev => ({
-          ...prev,
-          status: 'CHECKED_OUT',
-          checkOutTime: updated.checkOutTime || new Date(),
-          checkOutBy: updated.checkOutBy || user?.name || user?.fullName || 'Security',
-          checkOutNotes: notes,
-          exitNotes: notes,
-          exitTime: updated.exitTime || new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
-        }));
+      if (response.ok && (resData.success || resData._id)) {
+        const updatedObj = resData.data || resData.visitor || resData;
+        setVisitor(prev => ({ ...prev, ...updatedObj, status: updatedObj.status || 'Completed' }));
         setShowCheckoutModal(false);
         alert('✅ Visitor checked out successfully!');
-        addNotification('Visitor Checked Out', `${visitor.fullName || visitor.visitorName} checked out with exit notes recorded!`, 'success');
+        addNotification('Visitor Checked Out', `${visitor.fullName || visitor.visitorName} checked out!`, 'success');
       } else {
         setCheckoutError(resData.message || 'Check-out failed.');
       }
@@ -255,9 +426,8 @@ const SecurityCheckIn = () => {
       case 'Checked Out':
       case 'Exited':
       case 'CHECKED_OUT':
+      case 'Completed':
         return <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-bold border border-gray-200">🚪 Checked Out</span>;
-      case 'Cancelled':
-        return <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-xs font-bold border border-red-200">❌ Cancelled</span>;
       default:
         return <span className="px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-xs font-bold">{status}</span>;
     }
@@ -265,23 +435,19 @@ const SecurityCheckIn = () => {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-500 pb-12">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <ShieldCheck className="text-[var(--color-brand-indigo)]" size={28} />
             Security Pre-Booking Search & Desk Check-In
           </h1>
-          <p className="text-gray-500 mt-1">Search visitor by Generated Number (VIS-20260812-XXX) or Mobile, verify details, and check in.</p>
+          <p className="text-gray-500 mt-1">Search visitor by Generated Number or Mobile, verify details, and check in.</p>
         </div>
       </div>
 
-      {/* Search Card */}
       <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6">
         <form onSubmit={handleSearch} className="space-y-4">
-          <label className="block text-sm font-bold text-gray-700">
-            PRE-BOOKING SEARCH
-          </label>
+          <label className="block text-sm font-bold text-gray-700">PRE-BOOKING SEARCH</label>
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
               <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
@@ -291,7 +457,7 @@ const SecurityCheckIn = () => {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Enter Visitor Number (e.g. VIS-20260812-001) or Mobile Number..."
+                placeholder="Enter Visitor Number or Mobile Number..."
                 className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[var(--color-brand-indigo)] focus:border-transparent outline-none text-sm font-medium"
               />
             </div>
@@ -300,21 +466,57 @@ const SecurityCheckIn = () => {
               disabled={loading}
               className="px-6 py-3 bg-[var(--color-brand-indigo)] hover:bg-[var(--color-brand-indigo-light)] text-white font-bold rounded-xl transition-colors shadow-md flex items-center justify-center gap-2 shrink-0"
             >
-              {loading ? (
-                <RefreshCw className="animate-spin" size={18} />
-              ) : (
-                <Search size={18} />
-              )}
+              {loading ? <RefreshCw className="animate-spin" size={18} /> : <Search size={18} />}
               <span>SEARCH</span>
             </button>
           </div>
-          <p className="text-xs text-gray-400">
-            Tip: You can also paste or scan QR payload directly in the search box.
-          </p>
+          {searchError && <p className="text-sm text-red-600 font-medium bg-red-50 p-2 rounded-lg border border-red-100">{searchError}</p>}
         </form>
       </div>
 
-      {/* Search Results / Visitor Pass Card */}
+      {!visitor && !searched && pendingVisitors.length > 0 && (
+        <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6 animate-in slide-in-from-bottom-2 duration-500">
+          <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+            <User className="text-amber-500" size={20} />
+            New Visitor Requests ({pendingVisitors.length})
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {pendingVisitors.map((pv) => {
+              // Detect if this is from Visitor collection (has visitId) or PreBooking collection
+              const isFromVisitorColl = !!(pv.visitId);
+              const displayId = pv.visitId || pv.visitorId || pv._id;
+              const displayName = pv.fullName || pv.visitorName;
+              const displayHost = pv.hostEmployee || pv.hostName || pv.assignedHr?.name;
+              const displayMobile = pv.mobileNumber;
+              return (
+                <div key={pv._id} className="border border-amber-200 rounded-xl p-4 bg-amber-50 flex flex-col justify-between hover:shadow-md transition-shadow">
+                  <div className="space-y-1.5">
+                    <h4 className="font-bold text-gray-900 text-base">{displayName}</h4>
+                    {displayId && <p className="text-xs text-indigo-700 font-mono font-bold bg-indigo-50 px-2 py-0.5 rounded inline-block">{displayId}</p>}
+                    {displayMobile && <p className="text-sm text-gray-600">📞 {displayMobile}</p>}
+                    {displayHost && <p className="text-sm text-gray-600">Host: <span className="font-medium">{displayHost}</span></p>}
+                    <span className="inline-block px-2 py-0.5 bg-amber-200 text-amber-900 rounded text-xs font-bold uppercase">{pv.status}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchError('');
+                      setSearched(true);
+                      // Preserve the _isVisitorCollection flag so approve/checkin/checkout use the right API
+                      setVisitor({ ...pv, _isVisitorCollection: isFromVisitorColl });
+                    }}
+                    className="mt-4 w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition-colors text-sm flex items-center justify-center gap-1.5"
+                  >
+                    <ShieldCheck size={16} />
+                    View &amp; Approve
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {loading && (
         <div className="bg-white rounded-xl shadow-sm border p-12 text-center text-gray-500">
           <RefreshCw className="animate-spin mx-auto mb-2 text-[var(--color-brand-indigo)]" size={28} />
@@ -322,72 +524,37 @@ const SecurityCheckIn = () => {
         </div>
       )}
 
-      {!loading && searched && !visitor && (
+      {!loading && searched && !visitor && searchError && (
         <div className="bg-white rounded-xl shadow-sm border border-red-200 p-8 text-center animate-in zoom-in-95">
           <AlertCircle className="mx-auto text-red-500 mb-2" size={36} />
           <h3 className="text-lg font-bold text-gray-900">Visitor Not Found</h3>
-          <p className="text-sm text-gray-500 mt-1">No visitor record found for "{searchQuery}". Please verify the Visitor Number or Mobile Number.</p>
+          <p className="text-sm text-gray-500 mt-1">{searchError}</p>
         </div>
       )}
 
-      {!loading && visitor && (
-        <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
-          {/* Card Header */}
+      {visitor && (
+        <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden">
           <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-indigo-600 rounded-lg text-white font-mono text-xs font-bold tracking-wider">
-                {visitor.visitorId || visitor.visitId}
-              </div>
-              <div>
-                <h3 className="text-lg font-bold">VISITOR PASS</h3>
-                <p className="text-xs text-slate-300">{visitor.visitingCompany || visitor.companyName || 'Forge India Connect Private Limited'}</p>
-              </div>
-            </div>
-            <div>
-              {getStatusBadge(visitor.status)}
-            </div>
+            <h3 className="text-lg font-bold">VISITOR PASS</h3>
+            {getStatusBadge(visitor.status)}
           </div>
-
           <div className="p-6 sm:p-8 space-y-6">
-            {/* Grid details */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Photo Column */}
               <div className="flex flex-col items-center justify-center p-5 bg-slate-50 border border-slate-200 rounded-2xl">
-                <div className="relative w-40 h-40 rounded-full overflow-hidden border-4 border-white shadow-md bg-indigo-100 flex items-center justify-center mb-3">
-                  {capturedPhotoUrl || visitor.facePhoto || visitor.photoUrl ? (
-                    <img src={capturedPhotoUrl || visitor.facePhoto || visitor.photoUrl} alt={visitor.fullName} className="w-full h-full object-cover" />
-                  ) : (
-                    <User size={72} className="text-indigo-400" />
-                  )}
+                <div className="w-32 h-32 rounded-full overflow-hidden bg-slate-200 mb-3 border-2 border-white shadow-md">
+                   {capturedPhotoUrl || visitor.facePhoto || visitor.photoUrl ? <img src={capturedPhotoUrl || visitor.facePhoto || visitor.photoUrl} className="w-full h-full object-cover" /> : <User className="w-full h-full p-4 text-slate-400" />}
                 </div>
-
-                <p className="text-xs font-semibold text-gray-500 mb-3">Visitor Face Photo</p>
-                <button
-                  type="button"
-                  onClick={() => setShowWebcam(true)}
-                  className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 shadow-sm transition-colors"
-                >
-                  <Camera size={14} /> Update Photo
-                </button>
+                <button type="button" onClick={() => setShowWebcam(true)} className="px-3 py-1 bg-blue-600 text-white text-xs font-bold rounded-lg">Update Photo</button>
               </div>
-
-              {/* Information Columns */}
               <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                 <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-100">
-                  <span className="text-xs text-gray-400 block font-medium uppercase tracking-wider">Visitor Number</span>
-                  <span className="font-mono font-bold text-indigo-900 text-base">{visitor.visitorId || visitor.visitId}</span>
-                </div>
-
-                <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-100">
-                  <span className="text-xs text-gray-400 block font-medium uppercase tracking-wider">Full Name</span>
+                  <span className="text-xs text-gray-400 block font-medium uppercase">Visitor Name</span>
                   <span className="font-bold text-gray-900 text-base">{visitor.fullName || visitor.visitorName}</span>
                 </div>
-
                 <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-100">
-                  <span className="text-xs text-gray-400 block font-medium uppercase tracking-wider">Mobile Number</span>
+                  <span className="text-xs text-gray-400 block font-medium uppercase">Mobile</span>
                   <span className="font-bold text-gray-900">{visitor.mobileNumber}</span>
                 </div>
-
                 <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-100">
                   <span className="text-xs text-gray-400 block font-medium uppercase tracking-wider">Email Address</span>
                   <span className="font-medium text-gray-800">{visitor.email || '-'}</span>
@@ -402,6 +569,13 @@ const SecurityCheckIn = () => {
                   <span className="text-xs text-gray-400 block font-medium uppercase tracking-wider">Host Employee</span>
                   <span className="font-bold text-indigo-900">{visitor.hostEmployee || visitor.hostName}</span>
                 </div>
+
+                {visitor.visitorType === 'NEW_VISITOR' && (
+                  <div className="bg-amber-50 p-3.5 rounded-xl border border-amber-200">
+                    <span className="text-xs text-amber-700 block font-bold uppercase tracking-wider">Visitor Type</span>
+                    <span className="font-bold text-amber-900">NEW VISITOR</span>
+                  </div>
+                )}
 
                 <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-100">
                   <span className="text-xs text-gray-400 block font-medium uppercase tracking-wider">Purpose of Visit</span>
@@ -423,7 +597,7 @@ const SecurityCheckIn = () => {
                   <span className="font-semibold text-gray-800">🚗 {visitor.vehicleNumber || '-'}</span>
                 </div>
 
-                {(visitor.status === 'CHECKED_IN' || visitor.status === 'Checked In' || visitor.checkInTime) && (
+                {(visitor.status === 'CHECKED_IN' || visitor.status === 'Checked In' || visitor.status === 'Inside' || visitor.checkInTime) && (
                   <>
                     <div className="bg-emerald-50 p-3.5 rounded-xl border border-emerald-200">
                       <span className="text-xs text-emerald-700 block font-bold uppercase tracking-wider">Check-In Time</span>
@@ -437,7 +611,7 @@ const SecurityCheckIn = () => {
                   </>
                 )}
 
-                {(visitor.status === 'CHECKED_OUT' || visitor.status === 'Checked Out' || visitor.checkOutTime) && (
+                {(visitor.status === 'CHECKED_OUT' || visitor.status === 'Checked Out' || visitor.status === 'Completed' || visitor.checkOutTime) && (
                   <>
                     <div className="bg-red-50 p-3.5 rounded-xl border border-red-200">
                       <span className="text-xs text-red-700 block font-bold uppercase tracking-wider">Check-Out Time</span>
@@ -462,8 +636,21 @@ const SecurityCheckIn = () => {
               <div className="flex items-center gap-3 w-full sm:w-auto">
                 {/* PENDING CHECK-IN DISABLED */}
                 {(visitor.status === 'PENDING' || visitor.status === 'Pending Approval' || visitor.status === 'Pending') && (
-                  <div className="px-6 py-3 bg-amber-50 text-amber-800 border border-amber-300 rounded-xl font-bold text-sm flex items-center gap-2">
-                    <span>⚠️ Waiting for Super Admin approval before Check-In</span>
+                  <div className="flex gap-2 w-full sm:w-auto">
+                    <button
+                      type="button"
+                      onClick={handleApprove}
+                      className="flex-1 sm:flex-initial px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-md transition-transform active:scale-95 text-sm"
+                    >
+                      APPROVE
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleReject}
+                      className="flex-1 sm:flex-initial px-6 py-3.5 bg-red-100 hover:bg-red-200 text-red-700 font-bold rounded-xl shadow-sm transition-transform active:scale-95 text-sm border border-red-200"
+                    >
+                      REJECT
+                    </button>
                   </div>
                 )}
 

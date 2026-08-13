@@ -93,12 +93,10 @@ const LandingPage = () => {
   const [hrUsers, setHrUsers] = useState([]);
 
   const getHrId = (dbName) => {
+    if (!dbName || dbName === 'NEW VISITORS') return null;
     const found = hrUsers.find(u => u.name.toUpperCase().replace(/\s/g, '') === dbName.replace(/\s/g, ''));
     if (found) return found._id || found.id;
-    // Fallback to Priyadharshini's ID
-    const priya = hrUsers.find(u => u.name.toUpperCase().includes('PRIYA'));
-    if (priya) return priya._id || priya.id;
-    return hrUsers.length > 0 ? (hrUsers[0]._id || hrUsers[0].id) : '';
+    return null;
   };
 
   const branchesList = ['Chennai', 'Head Office(KRISHNAGIRI)', 'Bangalore', 'Coimbatore'];
@@ -1132,7 +1130,7 @@ const LandingPage = () => {
                     {/* Centered Large QR Code */}
                     <div className="p-5 bg-white rounded-3xl shadow-xl flex flex-col items-center justify-center">
                       <QRCodeSVG 
-                        value={`http://${window.location.hostname === 'localhost' ? (import.meta.env.VITE_NETWORK_IP || '192.168.1.10') : window.location.hostname}:${window.location.port || '5173'}/pass/${preBookResult.visitId}`} 
+                        value={window.location.hostname === 'localhost' ? `http://${import.meta.env.VITE_NETWORK_IP || '192.168.1.10'}:5173/pass/${preBookResult.visitId}` : `${window.location.origin}/pass/${preBookResult.visitId}`}
                         size={180} 
                       />
                       <span className="text-[11px] font-mono text-slate-800 mt-3 font-bold uppercase tracking-wider">
@@ -1163,7 +1161,7 @@ const LandingPage = () => {
                           mobileNumber: '',
                           email: '',
                           companyName: 'Forge India Connect Private Limited',
-                          hostName: 'Priyadharshini (HR)',
+                          hostName: '',
                           purpose: 'Business Meeting',
                           visitDate: new Date().toISOString().split('T')[0],
                           expectedArrivalTime: '10:00 AM',

@@ -36,31 +36,37 @@ const createPreBooking = async (req, res) => {
       !visitDate ||
       !expectedTime ||
       !branchLocation ||
-      !facePhoto ||
-      !assignedHr
+      !facePhoto
     ) {
       return res.status(400).json({
         success: false,
-        message: "Please fill all required fields, including HR selection.",
+        message: "Please fill all required fields.",
       });
     }
 
-    const User = require("../models/User");
-    const hrUser = await User.findOne({
-      _id: assignedHr,
-      role: "HR",
-      status: "Active"
-    });
-
-    if (!hrUser) {
-      return res.status(400).json({
-        success: false,
-        message: "Selected HR is invalid or inactive."
+    let hrUser = null;
+    if (assignedHr) {
+      const User = require("../models/User");
+      hrUser = await User.findOne({
+        _id: assignedHr,
+        role: "HR",
+        status: "Active"
       });
+
+      if (!hrUser) {
+        return res.status(400).json({
+          success: false,
+          message: "Selected HR is invalid or inactive."
+        });
+      }
     }
 
     const visitorId = createVisitorId();
     const qrToken = `vms_${crypto.randomBytes(16).toString("hex")}`;
+
+    const isNewVisitor = hostEmployee === "New Visitors" || hostEmployee === "New Visitor";
+    const finalAssignedHr = isNewVisitor ? null : assignedHr;
+    const visitorType = isNewVisitor ? "NEW_VISITOR" : "NORMAL";
 
     const preBooking = await PreBooking.create({
       visitorId,
@@ -78,7 +84,8 @@ const createPreBooking = async (req, res) => {
       facePhoto,
       idType: idType || "",
       idProofUrl: idProofUrl || "",
-      assignedHr,
+      assignedHr: finalAssignedHr,
+      visitorType,
       status: "PENDING",
     });
 
@@ -90,7 +97,7 @@ const createPreBooking = async (req, res) => {
       // 1. Find all Super Admin and Security users
       const superAdmins = await User.find({
         companyId: preBooking.companyId || 'FIC001',
-        role: { $in: ['Super Admin', 'Security'] }
+        role: 'Super Admin'
       });
 
       // 2. Create notification for each Super Admin
@@ -110,8 +117,9 @@ const createPreBooking = async (req, res) => {
       }
 
       // 3. Create notification for the assigned HR user only
-      const selectedHrUser = await User.findById(assignedHr);
-      if (selectedHrUser) {
+      if (finalAssignedHr) {
+        const selectedHrUser = await User.findById(finalAssignedHr);
+        if (selectedHrUser) {
         await Notification.create({
           companyId: preBooking.companyId || 'FIC001',
           branchId: branchLocation,
@@ -122,9 +130,9 @@ const createPreBooking = async (req, res) => {
           preBookingId: preBooking._id,
           createdBy: "Visitor Registration"
         });
+        }
       }
 
-      // 4. Emit live socket alert to Super Admins and the assigned HR
       const io = req.app.get('io');
       if (io) {
         io.emit('new_notification', {
@@ -138,7 +146,7 @@ const createPreBooking = async (req, res) => {
           branchId: branchLocation,
           recipients: [
             ...superAdmins.map(admin => admin._id.toString()),
-            assignedHr ? assignedHr.toString() : null
+            ...(finalAssignedHr ? [finalAssignedHr.toString()] : [])
           ].filter(Boolean)
         });
       }
@@ -164,7 +172,20 @@ const createPreBooking = async (req, res) => {
 
 const getAllPreBookings = async (req, res) => {
   try {
-    const preBookings = await PreBooking.find()
+    const filter = {};
+    if (req.query.status) {
+      // Support matching single status or an array/comma-separated list if needed
+      filter.status = req.query.status;
+    }
+
+    // Role-based filtering: HR users only see their assigned visitors
+    if (req.userRole === 'HR' || req.userRole === 'Employee') {
+      filter.assignedHr = req.userId;
+      filter.visitorType = { $ne: 'NEW_VISITOR' };
+    }
+
+    const preBookings = await PreBooking.find(filter)
+      .populate('assignedHr', 'name email')
       .sort({ createdAt: -1 });
 
     return res.status(200).json({
@@ -197,10 +218,24 @@ const approvePreBooking = async (req, res) => {
       });
     }
 
+    if (!['Super Admin', 'Security', 'HR'].includes(req.userRole)) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to approve pre-bookings. Security or Admin role required."
+      });
+    }
+
     if (req.userRole === 'HR' && preBooking.assignedHr && preBooking.assignedHr.toString() !== req.userId) {
       return res.status(403).json({
         success: false,
         message: "You are not authorized to approve this pre-booking assignment."
+      });
+    }
+
+    if (preBooking.visitorType === "NEW_VISITOR" && req.userRole !== "Security") {
+      return res.status(403).json({
+        success: false,
+        message: "Only Security can approve a new visitor"
       });
     }
 
@@ -313,6 +348,13 @@ const rejectPreBooking = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: "Pre-Booking not found.",
+      });
+    }
+
+    if (!['Super Admin', 'Security', 'HR'].includes(req.userRole)) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to reject pre-bookings. Security or Admin role required."
       });
     }
 
@@ -505,6 +547,7 @@ const getPreBookingByVisitId = async (req, res) => {
       facePhoto: pb.facePhoto,
       photoUrl: pb.facePhoto,
       status: pb.status,
+      visitorType: pb.visitorType || 'NORMAL',
       qrToken: pb.qrToken || null,
       checkInTime: pb.checkInTime || null,
       checkInBy: pb.checkInBy || null,
@@ -590,6 +633,7 @@ const getPreBookingByQR = async (req, res) => {
       facePhoto: pb.facePhoto,
       photoUrl: pb.facePhoto,
       status: pb.status,
+      visitorType: pb.visitorType || 'NORMAL',
       checkInTime: pb.checkInTime || null,
       checkInBy: pb.checkInBy || null,
       checkOutTime: pb.checkOutTime || null,
@@ -668,12 +712,33 @@ const checkInPreBooking = async (req, res) => {
       });
     }
 
-    // Visitor must be approved first
-    const isApproved = preBooking.status === "APPROVED" || preBooking.status === "Approved" || preBooking.status === "Pre-Booked";
-    if (!isApproved && preBooking.status !== "CHECKED_IN" && preBooking.status !== "Checked In") {
+    if (req.userRole !== "Security") {
       return res.status(403).json({
         success: false,
-        message: `Visitor cannot check in. Current status: ${preBooking.status}`
+        message: "Only Security can check in this visitor"
+      });
+    }
+
+    if (preBooking.status === "CHECKED_IN" || preBooking.status === "Checked In") {
+      return res.status(400).json({
+        success: false,
+        message: "Visitor is already checked in."
+      });
+    }
+
+    if (preBooking.status === "CHECKED_OUT" || preBooking.status === "Checked Out") {
+      return res.status(400).json({
+        success: false,
+        message: "Visitor has already checked out."
+      });
+    }
+
+    // Visitor must be approved first
+    const isApproved = preBooking.status === "APPROVED" || preBooking.status === "Approved" || preBooking.status === "Pre-Booked";
+    if (!isApproved) {
+      return res.status(403).json({
+        success: false,
+        message: "Visitor must be approved before check-in"
       });
     }
 
@@ -808,6 +873,13 @@ const checkOutPreBooking = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: "Visitor not found."
+      });
+    }
+
+    if (preBooking.status !== "CHECKED_IN" && preBooking.status !== "Checked In") {
+      return res.status(400).json({
+        success: false,
+        message: "Only checked-in visitors can be checked out."
       });
     }
 

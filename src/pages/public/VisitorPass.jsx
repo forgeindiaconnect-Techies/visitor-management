@@ -253,7 +253,7 @@ const VisitorPass = () => {
 
               <div className="flex justify-between items-center border-b border-slate-200/60 pb-2">
                 <span className="text-slate-500 font-semibold uppercase text-[10px]">Host Employee</span>
-                <span className="font-bold text-slate-900">{visitor.assignedHr?.name || visitor.hostName || 'Priyadharshini (HR)'}</span>
+                <span className="font-bold text-slate-900">{visitor.assignedHr?.name || visitor.hostName || 'Not Assigned'}</span>
               </div>
 
               {visitor.assignedHr?.email && (
@@ -296,7 +296,7 @@ const VisitorPass = () => {
             <div className="mt-5 p-4 bg-slate-900 rounded-2xl flex flex-col items-center justify-center text-center space-y-2 border border-slate-800">
               <div className="p-3 bg-white rounded-xl shadow-md">
                 <QRCodeSVG 
-                  value={`http://${window.location.hostname === 'localhost' ? (import.meta.env.VITE_NETWORK_IP || '192.168.1.10') : window.location.hostname}:${window.location.port || '5173'}/pass/${visitor.visitId}`} 
+                  value={window.location.hostname === 'localhost' ? `http://${import.meta.env.VITE_NETWORK_IP || '192.168.1.10'}:5173/pass/${visitor.visitId}` : `${window.location.origin}/pass/${visitor.visitId}`}
                   size={120} 
                 />
               </div>

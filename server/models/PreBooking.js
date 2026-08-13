@@ -74,13 +74,20 @@ const preBookingSchema = new mongoose.Schema(
     assignedHr: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      required: false,
       index: true,
     },
 
     facePhoto: {
       type: String,
       required: true,
+    },
+
+    visitorType: {
+      type: String,
+      enum: ["NORMAL", "NEW_VISITOR"],
+      default: "NORMAL",
+      index: true
     },
 
     status: {

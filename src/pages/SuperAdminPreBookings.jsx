@@ -201,7 +201,7 @@ export default function SuperAdminPreBookings() {
     if (filteredReports.length === 0) return;
     const headers = [
       "Visitor Number", "Visitor Name", "Email", "Company", 
-      "Assigned HR", "Purpose", "Visit Date", "Visit Time", "Branch", 
+      "Host Employee", "Assigned HR", "Purpose", "Visit Date", "Visit Time", "Branch", 
       "QR Token", "Status", "Created Date", 
       "Approved Date", "Check-In Time", "Check-Out Time", "Duration", "Exit Notes"
     ];
@@ -210,7 +210,8 @@ export default function SuperAdminPreBookings() {
       r.fullName || '',
       r.email || '',
       r.visitingCompany || '',
-      r.assignedHr?.name || r.hostEmployee || '',
+      r.hostEmployee || '',
+      r.assignedHr?.name || '',
       r.visitPurpose || '',
       r.visitDate ? new Date(r.visitDate).toLocaleDateString() : '',
       r.expectedTime || '',
@@ -238,7 +239,7 @@ export default function SuperAdminPreBookings() {
   const exportToPDF = () => {
     if (filteredReports.length === 0) return;
     const printWindow = window.open('', '_blank');
-    const headers = ["Visitor No", "Name", "Company", "Assigned HR", "Status", "Visit Date", "Check-In", "Check-Out", "Duration"];
+    const headers = ["Visitor No", "Name", "Company", "Host Employee", "Status", "Visit Date", "Check-In", "Check-Out", "Duration"];
     const htmlContent = `
       <html>
         <head>
@@ -266,7 +267,7 @@ export default function SuperAdminPreBookings() {
                   <td>${r.visitorId || ''}</td>
                   <td>${r.fullName || ''}</td>
                   <td>${r.visitingCompany || ''}</td>
-                  <td>${r.assignedHr?.name || r.hostEmployee || ''}</td>
+                  <td>${r.hostEmployee || ''} ${r.assignedHr ? `(HR: ${r.assignedHr.name})` : ''}</td>
                   <td>${r.status || ''}</td>
                   <td>${r.visitDate ? new Date(r.visitDate).toLocaleDateString() : ''}</td>
                   <td>${r.checkInTime ? new Date(r.checkInTime).toLocaleTimeString() : ''}</td>
@@ -532,7 +533,7 @@ export default function SuperAdminPreBookings() {
                     <th className="px-4 py-3 font-semibold">Photo</th>
                     <th className="px-4 py-3 font-semibold">Visitor Name</th>
                     <th className="px-4 py-3 font-semibold">Company</th>
-                    <th className="px-4 py-3 font-semibold">Assigned HR</th>
+                    <th className="px-4 py-3 font-semibold">Host Employee</th>
                     <th className="px-4 py-3 font-semibold">Purpose</th>
                     <th className="px-4 py-3 font-semibold">Visit Date</th>
                     <th className="px-4 py-3 font-semibold">Expected Time</th>
@@ -577,8 +578,8 @@ export default function SuperAdminPreBookings() {
                         <td className="px-4 py-3 font-semibold text-gray-900">{r.fullName}</td>
                         <td className="px-4 py-3 text-gray-600">{r.visitingCompany || 'N/A'}</td>
                         <td className="px-4 py-3">
-                          <div className="font-semibold text-gray-900">{r.assignedHr?.name || r.hostEmployee}</div>
-                          {r.assignedHr?.email && <div className="text-xs text-gray-400">{r.assignedHr.email}</div>}
+                          <div className="font-semibold text-gray-900">{r.hostEmployee || 'N/A'}</div>
+                          {r.assignedHr?.name && <div className="text-xs text-indigo-600 mt-0.5">HR: {r.assignedHr.name}</div>}
                         </td>
                         <td className="px-4 py-3 text-gray-600">{r.visitPurpose}</td>
                         <td className="px-4 py-3 text-gray-600">

@@ -133,7 +133,11 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
     setShowDropdown(false);
     const preBookingId = notification.preBookingId?._id || notification.preBookingId;
     if (preBookingId) {
-      navigate(`/pre-bookings?preBookingId=${preBookingId}`);
+      if (user?.role === 'Security') {
+        navigate(`/visitors/security?searchId=${preBookingId}`);
+      } else {
+        navigate(`/pre-bookings?preBookingId=${preBookingId}`);
+      }
     }
   };
 

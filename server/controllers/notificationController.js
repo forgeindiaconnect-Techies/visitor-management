@@ -30,7 +30,7 @@ exports.getNotifications = async (req, res) => {
         { recipient: req.userId },
         {
           recipient: { $exists: false },
-          type: { $nin: ['Attendance', 'PREBOOKING_CREATED'] }
+          type: { $nin: ['Attendance', 'PREBOOKING_CREATED', 'Visitor', 'visitor'] }
         }
       ];
     } else if (role === 'Security') {
@@ -41,7 +41,7 @@ exports.getNotifications = async (req, res) => {
         { recipient: req.userId },
         {
           recipient: { $exists: false },
-          type: { $nin: ['Attendance', 'PREBOOKING_CREATED'] }
+          type: { $nin: ['Attendance', 'PREBOOKING_CREATED', 'Visitor', 'visitor'] }
         }
       ];
     } else {
@@ -51,7 +51,7 @@ exports.getNotifications = async (req, res) => {
         { recipient: req.userId },
         {
           recipient: { $exists: false },
-          type: { $nin: ['Attendance', 'Visitor', 'PREBOOKING_CREATED'] }
+          type: { $nin: ['Attendance', 'PREBOOKING_CREATED', 'Visitor', 'visitor'] }
         }
       ];
     }

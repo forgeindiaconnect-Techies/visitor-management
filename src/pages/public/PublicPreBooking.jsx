@@ -70,9 +70,10 @@ const PublicPreBooking = () => {
   const [hrUsers, setHrUsers] = useState([]);
 
   const getHrId = (dbName) => {
+    if (!dbName || dbName === 'NEW VISITORS') return '';
     const found = hrUsers.find(u => u.name.toUpperCase().replace(/\s/g, '') === dbName.replace(/\s/g, ''));
     if (found) return found._id || found.id;
-    // Fallback to Priyadharshini's ID
+    // Fallback to Priyadharshini's ID for other normal visitors
     const priya = hrUsers.find(u => u.name.toUpperCase().includes('PRIYA'));
     if (priya) return priya._id || priya.id;
     return hrUsers.length > 0 ? (hrUsers[0]._id || hrUsers[0].id) : '';
@@ -556,7 +557,7 @@ const PublicPreBooking = () => {
 
               <div className="p-5 bg-white rounded-3xl shadow-md flex flex-col items-center justify-center border border-gray-100">
                 <QRCodeSVG 
-                  value={`http://${window.location.hostname === 'localhost' ? (import.meta.env.VITE_NETWORK_IP || '192.168.1.10') : window.location.hostname}:${window.location.port || '5173'}/pass/${preBookResult.visitId}`} 
+                  value={window.location.hostname === 'localhost' ? `http://${import.meta.env.VITE_NETWORK_IP || '192.168.1.10'}:5173/pass/${preBookResult.visitId}` : `${window.location.origin}/pass/${preBookResult.visitId}`}
                   size={180} 
                 />
                 <span className="text-[10px] font-mono text-slate-700 mt-3 font-bold uppercase tracking-wider">
@@ -582,7 +583,7 @@ const PublicPreBooking = () => {
                     mobileNumber: '',
                     email: '',
                     companyName: 'Forge India Connect Private Limited',
-                    hostName: 'Priyadharshini (HR)',
+                    hostName: '',
                     purpose: 'Business Meeting',
                     visitDate: new Date().toISOString().split('T')[0],
                     expectedArrivalTime: '10:00 AM',

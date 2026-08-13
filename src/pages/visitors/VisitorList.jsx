@@ -623,7 +623,7 @@ const VisitorList = () => {
               </div>
               <div>
                 <span className="text-slate-400 font-semibold uppercase text-[10px] block">Host Employee</span>
-                <span className="font-bold text-slate-800">{selectedVisitorDetails.hostName || 'Priyadharshini (HR)'}</span>
+                <span className="font-bold text-slate-800">{selectedVisitorDetails.hostName || 'Not Assigned'}</span>
               </div>
               <div>
                 <span className="text-slate-400 font-semibold uppercase text-[10px] block">Purpose</span>
@@ -643,7 +643,7 @@ const VisitorList = () => {
             <div className="p-4 bg-slate-900 rounded-2xl flex items-center justify-between">
               <div className="bg-white p-2 rounded-xl shadow-md">
                 <QRCodeSVG 
-                  value={`http://${window.location.hostname === 'localhost' ? (import.meta.env.VITE_NETWORK_IP || '192.168.1.10') : window.location.hostname}:${window.location.port || '5173'}/pass/${selectedVisitorDetails.visitId || selectedVisitorDetails.id}`} 
+                  value={window.location.hostname === 'localhost' ? `http://${import.meta.env.VITE_NETWORK_IP || '192.168.1.10'}:5173/pass/${selectedVisitorDetails.visitId || selectedVisitorDetails.id}` : `${window.location.origin}/pass/${selectedVisitorDetails.visitId || selectedVisitorDetails.id}`} 
                   size={70} 
                 />
               </div>
