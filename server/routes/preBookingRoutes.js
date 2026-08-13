@@ -1,4 +1,5 @@
 const express = require("express");
+const authMiddleware = require("../middleware/authMiddleware");
 
 const {
   createPreBooking,
@@ -12,9 +13,17 @@ const {
   checkInPreBooking,
   checkOutPreBooking,
   backfillQrTokens,
+  getMyPreBookings,
+  getPreBookingReports,
 } = require("../controllers/preBookingController");
 
 const router = express.Router();
+
+// Get pre-bookings assigned to logged-in user (e.g. HR)
+router.get("/my", authMiddleware, getMyPreBookings);
+
+// Get Pre-Bookings report (Super Admin only)
+router.get("/reports", authMiddleware, getPreBookingReports);
 
 // Create Pre-Booking
 router.post("/", createPreBooking);

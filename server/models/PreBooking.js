@@ -61,6 +61,23 @@ const preBookingSchema = new mongoose.Schema(
       trim: true,
     },
 
+    idType: {
+      type: String,
+      trim: true,
+    },
+
+    idProofUrl: {
+      type: String,
+      trim: true,
+    },
+
+    assignedHr: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
+
     facePhoto: {
       type: String,
       required: true,

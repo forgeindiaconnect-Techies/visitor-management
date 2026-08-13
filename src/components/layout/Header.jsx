@@ -5,6 +5,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { Bell, User, MapPin, Check, Menu, Trash2, ExternalLink } from 'lucide-react';
 import { io } from 'socket.io-client';
 import { useNavigate } from 'react-router-dom';
+import { formatNotificationDate } from '../../utils/dateFormatter';
 
 const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.match(/^\d{1,3}\./);
 const API_URL = `${import.meta.env.VITE_API_URL || (isLocalhost ? `http://${window.location.hostname}:5000` : 'https://fic-visitor-1.onrender.com')}/api/notifications`;
@@ -79,6 +80,21 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
         return;
       }
 
+      // Filter out Security Attendance notifications for non-super users
+      if (notification.type === 'Attendance' && user?.role !== 'Super Admin' && user?.role !== 'SaaS Super Admin') {
+        return;
+      }
+
+      // If notification has a recipient or recipients list, verify match
+      const currentUserId = user?.id || user?._id;
+      if (notification.recipients && Array.isArray(notification.recipients)) {
+        if (!notification.recipients.includes(currentUserId)) {
+          return;
+        }
+      } else if (notification.recipient && notification.recipient !== currentUserId) {
+        return;
+      }
+
       setNotifications(prev => [notification, ...prev]);
       addNotification(notification.title, notification.message, 'info');
     });
@@ -107,6 +123,17 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
       }
     } catch (err) {
       console.error('Failed to mark read', err);
+    }
+  };
+
+  const handleNotificationClick = async (notification) => {
+    if (!notification.isRead) {
+      await markAsRead(notification._id);
+    }
+    setShowDropdown(false);
+    const preBookingId = notification.preBookingId?._id || notification.preBookingId;
+    if (preBookingId) {
+      navigate(`/pre-bookings?preBookingId=${preBookingId}`);
     }
   };
 
@@ -207,7 +234,7 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
                   notifications.slice(0, 10).map(notification => (
                     <div 
                       key={notification._id} 
-                      onClick={() => !notification.isRead && markAsRead(notification._id)}
+                      onClick={() => handleNotificationClick(notification)}
                       className={`p-4 transition-colors cursor-pointer flex gap-3 ${!notification.isRead ? 'bg-indigo-50/40 hover:bg-indigo-50/80' : 'hover:bg-gray-50'}`}
                     >
                       <div className="shrink-0 mt-0.5">
@@ -223,7 +250,7 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
                             {notification.title}
                           </h4>
                           <span className="text-[10px] text-gray-400 shrink-0 whitespace-nowrap">
-                            {new Date(notification.createdAt).toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit', hour12: true})}
+                            {formatNotificationDate(notification.createdAt)}
                           </span>
                         </div>
                         <p className={`text-xs ${!notification.isRead ? 'text-gray-700' : 'text-gray-500'} line-clamp-2 leading-relaxed`}>

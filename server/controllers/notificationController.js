@@ -11,22 +11,49 @@ exports.getNotifications = async (req, res) => {
       query.$or = [
         { type: { $in: ['Tenant', 'Subscription', 'System', 'Branch', 'Admin', 'Announcement'] } },
         { createdBy: 'SaaS Super Admin' },
-        { companyId: 'SYSTEM' }
+        { companyId: 'SYSTEM' },
+        { recipient: req.userId }
       ];
     } else if (role === 'Super Admin') {
       // Tenant Super Admin sees everything for their own company
       query.companyId = req.companyId;
+      query.$or = [
+        { recipient: { $exists: false } },
+        { recipient: null },
+        { recipient: req.userId }
+      ];
     } else if (role === 'Admin' || role === 'MD' || role === 'Company Admin') {
       // Admin sees their own branch
       query.companyId = req.companyId;
       query.branchId = req.branchId;
+      query.$or = [
+        { recipient: req.userId },
+        {
+          recipient: { $exists: false },
+          type: { $nin: ['Attendance', 'PREBOOKING_CREATED'] }
+        }
+      ];
     } else if (role === 'Security') {
       // Security sees their own branch
       query.companyId = req.companyId;
       query.branchId = req.branchId;
+      query.$or = [
+        { recipient: req.userId },
+        {
+          recipient: { $exists: false },
+          type: { $nin: ['Attendance', 'PREBOOKING_CREATED'] }
+        }
+      ];
     } else {
-      // Fallback
+      // Fallback (like HR)
       query.companyId = req.companyId;
+      query.$or = [
+        { recipient: req.userId },
+        {
+          recipient: { $exists: false },
+          type: { $nin: ['Attendance', 'Visitor', 'PREBOOKING_CREATED'] }
+        }
+      ];
     }
 
     // Explicit query overrides

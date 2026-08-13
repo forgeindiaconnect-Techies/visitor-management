@@ -2,11 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useBranch } from '../../context/BranchContext';
 import { io } from 'socket.io-client';
+import { useNavigate } from 'react-router-dom';
 import { Search, Filter, Trash2, CheckCircle, BellOff, Info, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react';
+import { formatNotificationDate } from '../../utils/dateFormatter';
 
 const API_URL = `${import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com')}/api/notifications`;
 
 const NotificationsPage = () => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { activeBranch } = useBranch();
   
@@ -51,7 +54,11 @@ const NotificationsPage = () => {
   useEffect(() => {
     fetchNotifications();
     
-    const socket = io(`${import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com')}`);
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.match(/^\d{1,3}\./);
+    const socketUrl = import.meta.env.VITE_API_URL 
+      ? import.meta.env.VITE_API_URL.replace('/api', '')
+      : (isLocalhost ? `http://${window.location.hostname}:5000` : 'https://fic-visitor-1.onrender.com');
+    const socket = io(socketUrl);
     
     socket.on('new_notification', (notification) => {
       let queryBranch = user?.branch;
@@ -61,6 +68,21 @@ const NotificationsPage = () => {
       if (user?.role === 'SaaS Super Admin') {
         if (!['Company', 'Subscription', 'System', 'Branch', 'Admin', 'Announcement'].includes(notification.module || notification.type)) return;
       } else if (user?.role !== 'SaaS Super Admin' && notification.companyId !== 'SYSTEM' && notification.companyId !== user?.companyId) {
+        return;
+      }
+
+      // Filter out Security Attendance notifications for non-super users
+      if (notification.type === 'Attendance' && user?.role !== 'Super Admin' && user?.role !== 'SaaS Super Admin') {
+        return;
+      }
+
+      // If notification has a recipient or recipients list, verify match
+      const currentUserId = user?.id || user?._id;
+      if (notification.recipients && Array.isArray(notification.recipients)) {
+        if (!notification.recipients.includes(currentUserId)) {
+          return;
+        }
+      } else if (notification.recipient && notification.recipient !== currentUserId) {
         return;
       }
 
@@ -97,6 +119,16 @@ const NotificationsPage = () => {
       const res = await fetch(API_URL, { method: 'DELETE', headers: getHeaders() });
       if (res.ok) setNotifications([]);
     } catch (err) { console.error('Failed to clear notifications', err); }
+  };
+
+  const handleNotificationClick = async (notification) => {
+    if (!notification.isRead) {
+      await markAsRead(notification._id);
+    }
+    const preBookingId = notification.preBookingId?._id || notification.preBookingId;
+    if (preBookingId) {
+      navigate(`/pre-bookings?preBookingId=${preBookingId}`);
+    }
   };
 
   const getTypeIcon = (type) => {
@@ -199,12 +231,18 @@ const NotificationsPage = () => {
                   <div className="bg-gray-50 px-5 py-2 text-xs font-bold text-gray-500 uppercase tracking-wider">{groupName}</div>
                   <div className="divide-y divide-gray-50">
                     {items.map(notification => (
-                      <div key={notification._id} className={`p-5 flex gap-4 transition-colors relative group ${!notification.isRead ? 'bg-indigo-50/20' : 'hover:bg-gray-50'}`}>
+                      <div 
+                        key={notification._id} 
+                        onClick={() => handleNotificationClick(notification)}
+                        className={`p-5 flex gap-4 transition-colors relative group cursor-pointer ${!notification.isRead ? 'bg-indigo-50/20' : 'hover:bg-gray-50'}`}
+                      >
                         <div className="shrink-0 mt-1">{getTypeIcon(notification.type)}</div>
                         <div className="flex-1 min-w-0">
                           <div className="flex justify-between mb-1">
                             <h4 className={`text-sm font-semibold ${!notification.isRead ? 'text-gray-900' : 'text-gray-700'}`}>{notification.title}</h4>
-                            <span className="text-xs text-gray-400">{new Date(notification.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                            <span className="text-xs text-gray-400">
+                              {formatNotificationDate(notification.createdAt)}
+                            </span>
                           </div>
                           <p className={`text-sm ${!notification.isRead ? 'text-gray-800' : 'text-gray-500'}`}>{notification.message}</p>
                           <div className="mt-2 flex gap-2">
@@ -212,8 +250,26 @@ const NotificationsPage = () => {
                           </div>
                         </div>
                         <div className="opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-2 shrink-0">
-                          {!notification.isRead && <button onClick={() => markAsRead(notification._id)} className="p-1 text-indigo-600 hover:bg-indigo-50 rounded"><CheckCircle size={16} /></button>}
-                          <button onClick={() => deleteNotification(notification._id)} className="p-1 text-red-500 hover:bg-red-50 rounded"><Trash2 size={16} /></button>
+                          {!notification.isRead && (
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                markAsRead(notification._id);
+                              }} 
+                              className="p-1 text-indigo-600 hover:bg-indigo-50 rounded"
+                            >
+                              <CheckCircle size={16} />
+                            </button>
+                          )}
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteNotification(notification._id);
+                            }} 
+                            className="p-1 text-red-500 hover:bg-red-50 rounded"
+                          >
+                            <Trash2 size={16} />
+                          </button>
                         </div>
                       </div>
                     ))}

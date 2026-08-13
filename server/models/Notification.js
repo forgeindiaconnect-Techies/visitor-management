@@ -12,12 +12,22 @@ const notificationSchema = new mongoose.Schema(
     userId: {
       type: String,
     },
+    recipient: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      index: true,
+    },
+    preBookingId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'PreBooking',
+      default: null,
+    },
     type: {
       type: String,
       default: 'info',
       // The frontend can map these to icons/colors
       // Keeping original enums just in case of old data, plus new ones
-      enum: ['success', 'warning', 'error', 'info', 'Tenant', 'Visitor', 'Security', 'Attendance', 'Subscription', 'System', 'Announcement', 'Branch', 'Admin'],
+      enum: ['success', 'warning', 'error', 'info', 'Tenant', 'Visitor', 'Security', 'Attendance', 'Subscription', 'System', 'Announcement', 'Branch', 'Admin', 'PREBOOKING_CREATED', 'PREBOOKING_APPROVED', 'PREBOOKING_REJECTED'],
     },
     module: {
       type: String,
@@ -59,6 +69,10 @@ notificationSchema.post('save', async function(doc) {
       const sendPushNotification = require('../utils/pushNotificationService');
       
       let query = { fcmToken: { $exists: true, $ne: '' } };
+      
+      if (doc.type === 'Attendance') {
+        query.role = 'Super Admin';
+      }
       
       if (doc.companyId && doc.companyId !== 'SYSTEM') {
         query.companyId = doc.companyId;

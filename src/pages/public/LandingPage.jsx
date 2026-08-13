@@ -3,7 +3,7 @@ import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { 
   Calendar, ShieldCheck, QrCode, User, Clock, Building, CheckCircle2, 
-  ArrowRight, Sparkles, Phone, Mail, Lock, FileText, X, Printer, Download, 
+  ArrowRight, Sparkles, Phone, Mail, Lock, FileText, X, Printer, Download, Upload,
   Share2, Zap, Users, Shield, Bell, ChevronRight, Menu, Check, Car, IdCard,
   Camera, RotateCcw, AlertCircle, RefreshCw
 } from 'lucide-react';
@@ -11,6 +11,35 @@ import { QRCodeSVG } from 'qrcode.react';
 import Webcam from 'react-webcam';
 import logoImg from '../../assets/logo.svg';
 import FaceCamera from '../../components/FaceCamera';
+
+const formatTimeTo12Hour = (timeStr) => {
+  if (!timeStr) return '';
+  if (timeStr.toLowerCase().includes('am') || timeStr.toLowerCase().includes('pm')) {
+    return timeStr;
+  }
+  const parts = timeStr.split(':');
+  if (parts.length < 2) return timeStr;
+  let hours = parseInt(parts[0], 10);
+  const minutes = parts[1];
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  const formattedHours = hours < 10 ? '0' + hours : hours;
+  return `${formattedHours}:${minutes} ${ampm}`;
+};
+
+const hostOptions = [
+  { label: "Priyadharshini (HR)", name: "Priyadharshini", dbName: "PRIYADHARSHINI" },
+  { label: "Sandhiya (HR)", name: "Sandhiya", dbName: "SANDHIYA" },
+  { label: "Ganesh Kumar (HR)", name: "Ganesh Kumar", dbName: "GANESH KUMAR" },
+  { label: "R. Sandhiya (HR)", name: "R. Sandhiya", dbName: "R.SANDHIYA" },
+  { label: "Sandeep (CEO Sir)", name: "Sandeep", dbName: "SANDEEP" },
+  { label: "Avinash (MD Sir)", name: "Avinash", dbName: "AVINASH" },
+  { label: "Sabari (Admin)", name: "Sabari", dbName: "SABARI" },
+  { label: "Viji (Admin)", name: "Viji", dbName: "VIJI" },
+  { label: "Agila (IT)", name: "Agila", dbName: "AGILA" },
+  { label: "New Visitors", name: "New Visitors", dbName: "NEW VISITORS" }
+];
 
 const LandingPage = () => {
   const navigate = useNavigate();
@@ -34,7 +63,10 @@ const LandingPage = () => {
 
   // Real-time Face Camera State
   const webcamRef = useRef(null);
+  const idProofInputRef = useRef(null);
   const [capturedPhoto, setCapturedPhoto] = useState(null);
+  const [idProofPreview, setIdProofPreview] = useState('');
+  const [uploadingIdProof, setUploadingIdProof] = useState(false);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -42,37 +74,52 @@ const LandingPage = () => {
     mobileNumber: '',
     email: '',
     companyName: 'Forge India Connect Private Limited',
-    hostName: 'Priyadharshini (HR)',
+    hostName: '',
+    assignedHr: '',
+    selectedHostLabel: '',
     purpose: 'Business Meeting',
     visitDate: new Date().toISOString().split('T')[0],
-    expectedArrivalTime: '10:00 AM',
+    expectedArrivalTime: '10:00',
     expectedDuration: '1 Hour',
     vehicleNumber: '',
     branch: 'Chennai',
-    notes: ''
+    notes: '',
+    idType: '',
+    idProofUrl: ''
   });
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const hostsList = [
-    'Priyadharshini (HR)',
-    'Sandhiya (HR)',
-    'Ganesh Kumar (HR)',
-    'Adithiya (Senior HR)',
-    'R. Sandhiya (HR)',
-    'Monika Shree (HR)',
-    'Sandeep (CEO Sir)',
-    'Avinash (MD Sir)',
-    'Sabari (Admin)',
-    'Viji (Admin)',
-    'Agila (IT)',
-    'General Branch Reception'
-  ];
+  const [hrUsers, setHrUsers] = useState([]);
+
+  const getHrId = (dbName) => {
+    const found = hrUsers.find(u => u.name.toUpperCase().replace(/\s/g, '') === dbName.replace(/\s/g, ''));
+    if (found) return found._id || found.id;
+    // Fallback to Priyadharshini's ID
+    const priya = hrUsers.find(u => u.name.toUpperCase().includes('PRIYA'));
+    if (priya) return priya._id || priya.id;
+    return hrUsers.length > 0 ? (hrUsers[0]._id || hrUsers[0].id) : '';
+  };
 
   const branchesList = ['Chennai', 'Head Office(KRISHNAGIRI)', 'Bangalore', 'Coimbatore'];
 
   const _rawUrl = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
   const API_BASE = _rawUrl.replace(/\/api\/?$/, '');
+
+  useEffect(() => {
+    const fetchHRUsers = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/users/hr`);
+        const result = await response.json();
+        if (response.ok && result.success && result.data) {
+          setHrUsers(result.data);
+        }
+      } catch (err) {
+        console.error("Error loading HR users:", err);
+      }
+    };
+    fetchHRUsers();
+  }, [API_BASE]);
 
   // Helper for sequential order-wise visitor IDs (e.g. VISIT1001, VISIT1002...)
   const getNextSequentialVisitId = () => {
@@ -151,6 +198,42 @@ const LandingPage = () => {
     }
   };
 
+  const handleIdProofChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setIdProofPreview(reader.result);
+    };
+    reader.readAsDataURL(file);
+
+    setUploadingIdProof(true);
+    setErrorMsg('');
+    try {
+      const formDataUpload = new FormData();
+      formDataUpload.append("photo", file);
+
+      const uploadResponse = await fetch(`${API_BASE}/api/visitors/upload`, {
+        method: "POST",
+        body: formDataUpload
+      });
+
+      const uploadResult = await uploadResponse.json();
+      if (uploadResponse.ok && uploadResult.url) {
+        setFormData(prev => ({ ...prev, idProofUrl: uploadResult.url }));
+      } else {
+        console.error("Cloudinary upload failed: ", uploadResult.message);
+        setErrorMsg("Failed to upload ID proof photo. Please try again.");
+      }
+    } catch (uploadErr) {
+      console.error("Error uploading ID proof:", uploadErr);
+      setErrorMsg("Error uploading ID proof photo.");
+    } finally {
+      setUploadingIdProof(false);
+    }
+  };
+
   const requestCameraAccess = async () => {
     try {
       setCameraError(null);
@@ -200,6 +283,11 @@ const LandingPage = () => {
       return;
     }
 
+    if (uploadingIdProof) {
+      setErrorMsg('Please wait for the ID proof photo to finish uploading.');
+      return;
+    }
+
     if (!formData.hostName) {
       setErrorMsg('Please select a host to meet.');
       return;
@@ -246,10 +334,13 @@ const LandingPage = () => {
         hostEmployee: formData.hostName,
         visitPurpose: formData.purpose,
         visitDate: formData.visitDate,
-        expectedTime: formData.expectedArrivalTime,
+        expectedTime: formatTimeTo12Hour(formData.expectedArrivalTime),
         branchLocation: formData.branch,
         vehicleNumber: formData.vehicleNumber,
         facePhoto: finalPhotoUrl,
+        idType: formData.idType,
+        idProofUrl: formData.idProofUrl,
+        assignedHr: formData.assignedHr,
         // Compatibility fields:
         visitorName: formData.visitorName,
         companyName: formData.companyName || 'Forge India Connect Private Limited',
@@ -281,6 +372,8 @@ const LandingPage = () => {
           expectedArrivalTime: savedRecord.expectedTime || formData.expectedArrivalTime,
           branch: savedRecord.branchLocation || savedRecord.branch,
           photoUrl: savedRecord.facePhoto || savedRecord.photoUrl,
+          idType: savedRecord.idType || formData.idType,
+          idProofUrl: savedRecord.idProofUrl || formData.idProofUrl,
           status: savedRecord.status || 'PENDING'
         });
         setModalStep(2);
@@ -832,14 +925,25 @@ const LandingPage = () => {
                     <div>
                       <label className="block text-xs font-semibold text-slate-300 mb-1.5">Host Employee to Meet *</label>
                       <select
-                        name="hostName"
-                        value={formData.hostName}
-                        onChange={handleChange}
+                        name="assignedHr"
+                        value={formData.selectedHostLabel || ""}
+                        onChange={(e) => {
+                          const label = e.target.value;
+                          const option = hostOptions.find(o => o.label === label);
+                          const resolvedId = getHrId(option ? option.dbName : '');
+                          setFormData(prev => ({
+                            ...prev,
+                            selectedHostLabel: label,
+                            assignedHr: resolvedId,
+                            hostName: option ? option.name : ''
+                          }));
+                        }}
                         className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-sm focus:outline-none focus:border-indigo-500"
                         required
                       >
-                        {hostsList.map((h, idx) => (
-                          <option key={idx} value={h} className="bg-slate-900 text-white">{h}</option>
+                        <option value="" className="bg-slate-900 text-white">Select Host</option>
+                        {hostOptions.map((opt, idx) => (
+                          <option key={idx} value={opt.label} className="bg-slate-900 text-white">{opt.label}</option>
                         ))}
                       </select>
                     </div>
@@ -888,12 +992,12 @@ const LandingPage = () => {
                     <div>
                       <label className="block text-xs font-semibold text-slate-300 mb-1.5">Expected Time</label>
                       <input
-                        type="text"
+                        type="time"
                         name="expectedArrivalTime"
                         value={formData.expectedArrivalTime}
                         onChange={handleChange}
-                        placeholder="e.g. 10:30 AM"
-                        className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-indigo-500"
+                        style={{ colorScheme: 'dark' }}
+                        className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-indigo-500 font-semibold cursor-pointer"
                       />
                     </div>
 
@@ -913,21 +1017,63 @@ const LandingPage = () => {
                     </div>
                   </div>
 
-                  {/* Vehicle Number Optional */}
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">Vehicle Registration Number (Optional)</label>
-                    <div className="relative">
-                      <Car className="w-4 h-4 absolute left-3.5 top-3 text-slate-500" />
-                      <input
-                        type="text"
-                        name="vehicleNumber"
-                        value={formData.vehicleNumber}
+                  {/* ID Proof Fields */}
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1.5">ID Proof Type (Optional)</label>
+                      <select
+                        name="idType"
+                        value={formData.idType}
                         onChange={handleChange}
-                        placeholder="e.g. TN-01-AB-1234"
-                        className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-indigo-500"
-                      />
+                        className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-sm focus:outline-none focus:border-indigo-500 font-semibold"
+                      >
+                        <option value="" className="bg-slate-900 text-slate-400">-- Select ID Type --</option>
+                        <option value="Aadhaar Card" className="bg-slate-900">Aadhaar Card</option>
+                        <option value="PAN Card" className="bg-slate-900">PAN Card</option>
+                        <option value="Driving License" className="bg-slate-900">Driving License</option>
+                        <option value="Ration Card" className="bg-slate-900">Ration Card</option>
+                        <option value="Passport" className="bg-slate-900">Passport</option>
+                        <option value="Other" className="bg-slate-900">Other ID Proof</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1.5">Upload ID Photo (Optional)</label>
+                      <div className="relative flex items-center gap-3">
+                        <input
+                          type="file"
+                          ref={idProofInputRef}
+                          onChange={handleIdProofChange}
+                          accept="image/*"
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => idProofInputRef.current?.click()}
+                          className="flex-grow flex items-center justify-center gap-2 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 text-xs font-semibold py-2.5 px-4 rounded-xl transition-all shadow-sm h-[42px]"
+                        >
+                          <Upload size={14} className="text-indigo-400" />
+                          {uploadingIdProof ? 'Uploading ID...' : 'Choose / Capture'}
+                        </button>
+                        {idProofPreview && (
+                          <div className="w-11 h-11 rounded-xl overflow-hidden border border-slate-800 relative group flex-shrink-0">
+                            <img src={idProofPreview} alt="ID Preview" className="w-full h-full object-cover" />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIdProofPreview('');
+                                setFormData(prev => ({ ...prev, idProofUrl: '' }));
+                              }}
+                              className="absolute inset-0 bg-black/70 text-white text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
+
 
                   {/* Modal Footer Buttons */}
                   <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-3">

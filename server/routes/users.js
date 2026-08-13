@@ -5,6 +5,20 @@ const Visitor = require('../models/Visitor');
 const authMiddleware = require('../middleware/authMiddleware');
 const logAction = require('../utils/auditLogger');
 
+// Public route to fetch HR users for dropdown (accessible without login)
+router.get('/hr', async (req, res) => {
+  try {
+    const hrUsers = await User.find({
+      role: { $in: ['HR', 'MD', 'Admin', 'Company Admin', 'Employee'] },
+      status: 'Active',
+      name: { $nin: [/monika/i, /adithya/i, /adithiya/i, /test/i] }
+    }, 'name email role');
+    res.json({ success: true, data: hrUsers, users: hrUsers });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 router.use(authMiddleware);
 
 // GET branch summary

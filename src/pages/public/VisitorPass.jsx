@@ -43,40 +43,69 @@ const VisitorPass = () => {
 
   const updateStatus = async (action) => {
     try {
+      const baseUrl = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+      const targetId = visitor.visitorId || visitor.visitId || visitor._id || visitor.id;
       const now = new Date();
       const timeString = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
       
-      let updatePayload = {};
-      
+      let response;
+
       if (action === 'checkIn') {
-        updatePayload = {
-          status: 'Inside',
-          currentZone: 'Reception',
-          entryTime: timeString,
-          purpose: purpose // Send updated purpose to backend
-        };
+        // 1. Try Pre-Booking Check-In
+        response = await fetch(`${baseUrl}/api/prebookings/visitor/${encodeURIComponent(targetId)}/check-in`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        // 2. If it fails (Not Found / 404), fallback to normal Visitor check-in
+        if (!response.ok && response.status === 404) {
+          response = await fetch(`${baseUrl}/api/visitors/${targetId}/zone`, {
+            method: 'PATCH',
+            headers: { 
+              'Content-Type': 'application/json',
+              'X-Company-Id': visitor.companyId || 'FIC001'
+            },
+            body: JSON.stringify({
+              status: 'Inside',
+              currentZone: 'Reception',
+              entryTime: timeString,
+              purpose: purpose
+            })
+          });
+        }
       } else if (action === 'checkOut') {
-        updatePayload = {
-          status: 'Exited',
-          exitTime: timeString,
-          remarks: notes, // Send notes to backend
-          purpose: purpose // Send updated purpose to backend
-        };
+        // 1. Try Pre-Booking Check-Out
+        response = await fetch(`${baseUrl}/api/prebookings/visitor/${encodeURIComponent(targetId)}/check-out`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ exitNotes: notes, checkOutNotes: notes })
+        });
+
+        // 2. If it fails, fallback to normal Visitor check-out
+        if (!response.ok && response.status === 404) {
+          response = await fetch(`${baseUrl}/api/visitors/${targetId}/zone`, {
+            method: 'PATCH',
+            headers: { 
+              'Content-Type': 'application/json',
+              'X-Company-Id': visitor.companyId || 'FIC001'
+            },
+            body: JSON.stringify({
+              status: 'Exited',
+              exitTime: timeString,
+              remarks: notes,
+              purpose: purpose
+            })
+          });
+        }
       }
 
-      const apiUrl = `${import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com')}/api/visitors/${visitor.id}/zone`;
-      const response = await fetch(apiUrl, {
-        method: 'PATCH',
-        headers: { 
-          'Content-Type': 'application/json',
-          'X-Company-Id': visitor.companyId || 'FIC001'
-        },
-        body: JSON.stringify(updatePayload)
-      });
-
-      if (response.ok) {
-        const updatedVisitor = await response.json();
+      if (response && response.ok) {
+        const result = await response.json();
+        const updatedVisitor = result.data || result;
         setVisitor(updatedVisitor);
+      } else {
+        const errorData = await response.json();
+        alert(`Failed to update status: ${errorData.message || 'Validation error'}`);
       }
     } catch (err) {
       console.error('Failed to update status:', err);
@@ -224,8 +253,15 @@ const VisitorPass = () => {
 
               <div className="flex justify-between items-center border-b border-slate-200/60 pb-2">
                 <span className="text-slate-500 font-semibold uppercase text-[10px]">Host Employee</span>
-                <span className="font-bold text-slate-900">{visitor.hostName || 'Priyadharshini (HR)'}</span>
+                <span className="font-bold text-slate-900">{visitor.assignedHr?.name || visitor.hostName || 'Priyadharshini (HR)'}</span>
               </div>
+
+              {visitor.assignedHr?.email && (
+                <div className="flex justify-between items-center border-b border-slate-200/60 pb-2">
+                  <span className="text-slate-500 font-semibold uppercase text-[10px]">Host Email</span>
+                  <span className="font-medium text-slate-700">{visitor.assignedHr.email}</span>
+                </div>
+              )}
 
               <div className="flex justify-between items-center border-b border-slate-200/60 pb-2">
                 <span className="text-slate-500 font-semibold uppercase text-[10px]">Visit Purpose</span>

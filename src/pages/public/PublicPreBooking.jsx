@@ -1,15 +1,45 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Calendar, User, Clock, Building, CheckCircle2, Phone, Mail, 
-  Car, ShieldAlert, ArrowLeft, Printer, QrCode, Sparkles 
+  Car, ShieldAlert, ArrowLeft, Printer, QrCode, Sparkles, Upload, FileText
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import FaceCamera from '../../components/FaceCamera';
 import logoImg from '../../assets/logo.svg';
 
+const formatTimeTo12Hour = (timeStr) => {
+  if (!timeStr) return '';
+  if (timeStr.toLowerCase().includes('am') || timeStr.toLowerCase().includes('pm')) {
+    return timeStr;
+  }
+  const parts = timeStr.split(':');
+  if (parts.length < 2) return timeStr;
+  let hours = parseInt(parts[0], 10);
+  const minutes = parts[1];
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  const formattedHours = hours < 10 ? '0' + hours : hours;
+  return `${formattedHours}:${minutes} ${ampm}`;
+};
+
+const hostOptions = [
+  { label: "Priyadharshini (HR)", name: "Priyadharshini", dbName: "PRIYADHARSHINI" },
+  { label: "Sandhiya (HR)", name: "Sandhiya", dbName: "SANDHIYA" },
+  { label: "Ganesh Kumar (HR)", name: "Ganesh Kumar", dbName: "GANESH KUMAR" },
+  { label: "R. Sandhiya (HR)", name: "R. Sandhiya", dbName: "R.SANDHIYA" },
+  { label: "Sandeep (CEO Sir)", name: "Sandeep", dbName: "SANDEEP" },
+  { label: "Avinash (MD Sir)", name: "Avinash", dbName: "AVINASH" },
+  { label: "Sabari (Admin)", name: "Sabari", dbName: "SABARI" },
+  { label: "Viji (Admin)", name: "Viji", dbName: "VIJI" },
+  { label: "Agila (IT)", name: "Agila", dbName: "AGILA" },
+  { label: "New Visitors", name: "New Visitors", dbName: "NEW VISITORS" }
+];
+
 const PublicPreBooking = () => {
   const navigate = useNavigate();
+  const fileInputRef = useRef(null);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -17,42 +47,97 @@ const PublicPreBooking = () => {
     mobileNumber: '',
     email: '',
     companyName: 'Forge India Connect Private Limited',
-    hostName: 'Priyadharshini (HR)',
+    hostName: '',
+    assignedHr: '',
+    selectedHostLabel: '',
     purpose: 'Business Meeting',
     visitDate: new Date().toISOString().split('T')[0],
-    expectedArrivalTime: '10:00 AM',
+    expectedArrivalTime: '10:00',
     vehicleNumber: '',
     branch: 'Chennai',
+    idType: '',
+    idProofUrl: '',
   });
 
   const [capturedPhoto, setCapturedPhoto] = useState(null);
+  const [idProofPreview, setIdProofPreview] = useState('');
+  const [uploadingIdProof, setUploadingIdProof] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [preBookResult, setPreBookResult] = useState(null);
   const [step, setStep] = useState(1); // 1: Form, 2: Success QR Pass
 
-  const hostsList = [
-    'Priyadharshini (HR)',
-    'Sandhiya (HR)',
-    'Ganesh Kumar (HR)',
-    'Adithiya (Senior HR)',
-    'R. Sandhiya (HR)',
-    'Monika Shree (HR)',
-    'Sandeep (CEO Sir)',
-    'Avinash (MD Sir)',
-    'Sabari (Admin)',
-    'Viji (Admin)',
-    'Agila (IT)',
-    'General Branch Reception'
-  ];
+  const [hrUsers, setHrUsers] = useState([]);
+
+  const getHrId = (dbName) => {
+    const found = hrUsers.find(u => u.name.toUpperCase().replace(/\s/g, '') === dbName.replace(/\s/g, ''));
+    if (found) return found._id || found.id;
+    // Fallback to Priyadharshini's ID
+    const priya = hrUsers.find(u => u.name.toUpperCase().includes('PRIYA'));
+    if (priya) return priya._id || priya.id;
+    return hrUsers.length > 0 ? (hrUsers[0]._id || hrUsers[0].id) : '';
+  };
 
   const branchesList = ['Chennai', 'Head Office(KRISHNAGIRI)', 'Bangalore', 'Coimbatore'];
 
   const _rawUrl = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
   const API_BASE = _rawUrl.replace(/\/api\/?$/, '');
 
+  useEffect(() => {
+    const fetchHRUsers = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/users/hr`);
+        const result = await response.json();
+        if (response.ok && result.success && result.data) {
+          setHrUsers(result.data);
+        }
+      } catch (err) {
+        console.error("Error loading HR users:", err);
+      }
+    };
+    fetchHRUsers();
+  }, [API_BASE]);
+
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleIdProofChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Show local preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setIdProofPreview(reader.result);
+    };
+    reader.readAsDataURL(file);
+
+    // Upload to Cloudinary
+    setUploadingIdProof(true);
+    setErrorMsg('');
+    try {
+      const formDataUpload = new FormData();
+      formDataUpload.append("photo", file);
+
+      const uploadResponse = await fetch(`${API_BASE}/api/visitors/upload`, {
+        method: "POST",
+        body: formDataUpload
+      });
+
+      const uploadResult = await uploadResponse.json();
+      if (uploadResponse.ok && uploadResult.url) {
+        setFormData(prev => ({ ...prev, idProofUrl: uploadResult.url }));
+      } else {
+        console.error("Cloudinary upload failed: ", uploadResult.message);
+        setErrorMsg("Failed to upload ID proof photo. Please try again.");
+      }
+    } catch (uploadErr) {
+      console.error("Error uploading ID proof:", uploadErr);
+      setErrorMsg("Error uploading ID proof photo.");
+    } finally {
+      setUploadingIdProof(false);
+    }
   };
 
   const handlePrintPass = () => {
@@ -73,6 +158,10 @@ const PublicPreBooking = () => {
     }
     if (!capturedPhoto) {
       setErrorMsg('Face photo capture is mandatory to pre-book a visit pass.');
+      return;
+    }
+    if (uploadingIdProof) {
+      setErrorMsg('Please wait for the ID proof photo to finish uploading.');
       return;
     }
 
@@ -113,10 +202,13 @@ const PublicPreBooking = () => {
         hostEmployee: formData.hostName,
         visitPurpose: formData.purpose,
         visitDate: formData.visitDate,
-        expectedTime: formData.expectedArrivalTime,
+        expectedTime: formatTimeTo12Hour(formData.expectedArrivalTime),
         branchLocation: formData.branch,
         vehicleNumber: formData.vehicleNumber,
         facePhoto: finalPhotoUrl,
+        idType: formData.idType,
+        idProofUrl: formData.idProofUrl,
+        assignedHr: formData.assignedHr,
         // Compatibility fields:
         visitorName: formData.visitorName,
         companyName: formData.companyName || 'Forge India Connect Private Limited',
@@ -148,6 +240,8 @@ const PublicPreBooking = () => {
           expectedArrivalTime: savedRecord.expectedTime || formData.expectedArrivalTime,
           branch: savedRecord.branchLocation || savedRecord.branch,
           photoUrl: savedRecord.facePhoto || savedRecord.photoUrl,
+          idType: savedRecord.idType || formData.idType,
+          idProofUrl: savedRecord.idProofUrl || formData.idProofUrl,
           status: savedRecord.status || 'PENDING'
         });
         setStep(2);
@@ -285,13 +379,25 @@ const PublicPreBooking = () => {
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wider">Host Employee to Meet *</label>
                 <select
-                  name="hostName"
-                  value={formData.hostName}
-                  onChange={handleChange}
+                  name="assignedHr"
+                  value={formData.selectedHostLabel || ""}
+                  onChange={(e) => {
+                    const label = e.target.value;
+                    const option = hostOptions.find(o => o.label === label);
+                    const resolvedId = getHrId(option ? option.dbName : '');
+                    setFormData(prev => ({
+                      ...prev,
+                      selectedHostLabel: label,
+                      assignedHr: resolvedId,
+                      hostName: option ? option.name : ''
+                    }));
+                  }}
                   className={selectClassName}
+                  required
                 >
-                  {hostsList.map((host, idx) => (
-                    <option key={idx} value={host}>{host}</option>
+                  <option value="">Select Host</option>
+                  {hostOptions.map((opt, idx) => (
+                    <option key={idx} value={opt.label}>{opt.label}</option>
                   ))}
                 </select>
               </div>
@@ -330,12 +436,11 @@ const PublicPreBooking = () => {
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wider">Expected Arrival Time</label>
                 <input
-                  type="text"
+                  type="time"
                   name="expectedArrivalTime"
                   value={formData.expectedArrivalTime}
                   onChange={handleChange}
-                  placeholder="e.g. 10:30 AM"
-                  className="block w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[var(--color-brand-yellow)]/60 focus:border-[var(--color-brand-indigo)] outline-none bg-gray-50/50 text-gray-800 transition-shadow font-medium"
+                  className="block w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[var(--color-brand-yellow)]/60 focus:border-[var(--color-brand-indigo)] outline-none bg-gray-50/50 text-gray-800 transition-shadow font-semibold cursor-pointer"
                 />
               </div>
 
@@ -354,20 +459,62 @@ const PublicPreBooking = () => {
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wider">Vehicle Registration Number (Optional)</label>
-              <div className="relative">
-                <Car className="w-4 h-4 absolute left-3.5 top-3.5 text-[var(--color-brand-indigo)]" />
-                <input
-                  type="text"
-                  name="vehicleNumber"
-                  value={formData.vehicleNumber}
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wider">ID Proof Type (Optional)</label>
+                <select
+                  name="idType"
+                  value={formData.idType}
                   onChange={handleChange}
-                  placeholder="e.g. TN-01-AB-1234"
-                  className={inputClassName}
-                />
+                  className={selectClassName}
+                >
+                  <option value="">-- Select ID Type --</option>
+                  <option value="Aadhaar Card">Aadhaar Card</option>
+                  <option value="PAN Card">PAN Card</option>
+                  <option value="Driving License">Driving License</option>
+                  <option value="Ration Card">Ration Card</option>
+                  <option value="Passport">Passport</option>
+                  <option value="Other">Other ID Proof</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wider">Upload ID Photo (Optional)</label>
+                <div className="relative flex items-center gap-3">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleIdProofChange}
+                    accept="image/*"
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex-grow flex items-center justify-center gap-2 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 text-xs font-bold py-3 px-4 rounded-xl transition-all shadow-sm h-11"
+                  >
+                    <Upload size={14} className="text-[var(--color-brand-indigo)]" />
+                    {uploadingIdProof ? 'Uploading ID...' : 'Choose / Capture'}
+                  </button>
+                  {idProofPreview && (
+                    <div className="w-11 h-11 rounded-xl overflow-hidden border border-gray-200 relative group flex-shrink-0">
+                      <img src={idProofPreview} alt="ID Preview" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIdProofPreview('');
+                          setFormData(prev => ({ ...prev, idProofUrl: '' }));
+                        }}
+                        className="absolute inset-0 bg-black/50 text-white text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
+
 
             <button
               type="submit"

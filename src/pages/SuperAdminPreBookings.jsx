@@ -3,12 +3,16 @@ import { QRCodeSVG } from "qrcode.react";
 import { 
   Search, Filter, CalendarCheck, UserPlus, Eye, Check, X, QrCode, Trash2, MapPin, Calendar, Clock, RefreshCw, User, Building, ShieldAlert, CheckCircle2, XCircle
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
+import { useAuth } from '../context/AuthContext';
+import { io } from "socket.io-client";
 
 const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
 
 export default function SuperAdminPreBookings() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { user } = useAuth();
   const [preBookings, setPreBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedVisitor, setSelectedVisitor] = useState(null);
@@ -19,6 +23,44 @@ export default function SuperAdminPreBookings() {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [activeActionMenuId, setActiveActionMenuId] = useState(null);
 
+  // Reports State
+  const [activeTab, setActiveTab] = useState("ALL");
+  const [reportsData, setReportsData] = useState([]);
+  const [reportsLoading, setReportsLoading] = useState(false);
+  const [reportSearchQuery, setReportSearchQuery] = useState("");
+  const [reportStatusFilter, setReportStatusFilter] = useState("ALL");
+  const [reportDateFilter, setReportDateFilter] = useState("");
+  const [reportHrFilter, setReportHrFilter] = useState("ALL");
+  const [hrUsers, setHrUsers] = useState([]);
+
+  const fetchReports = async () => {
+    try {
+      setReportsLoading(true);
+      const response = await fetch(`${API_URL}/api/prebookings/reports`, {
+        headers: getHeaders()
+      });
+      if (!response.ok) throw new Error("Failed to fetch reports");
+      const result = await response.json();
+      setReportsData(result.data || []);
+    } catch (error) {
+      console.error("Fetch reports error:", error);
+    } finally {
+      setReportsLoading(false);
+    }
+  };
+
+  // Auto-open details modal if query parameter has preBookingId
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const paramId = params.get('preBookingId');
+    if (paramId && preBookings.length > 0) {
+      const match = preBookings.find(p => p._id === paramId || p.id === paramId);
+      if (match) {
+        setSelectedVisitor(match);
+      }
+    }
+  }, [location.search, preBookings]);
+
   useEffect(() => {
     const handleClickOutside = () => {
       setActiveActionMenuId(null);
@@ -28,10 +70,23 @@ export default function SuperAdminPreBookings() {
     return () => window.removeEventListener('click', handleClickOutside);
   }, []);
 
+  const getHeaders = () => ({
+    'X-Company-Id': user?.companyId || 'SYSTEM',
+    'X-User-Id': user?.id || user?._id || 'bootstrap',
+    'X-User-Role': user?.role || 'User',
+    'Authorization': `Bearer ${localStorage.getItem('token')}`
+  });
+
   const fetchPreBookings = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/api/prebookings`);
+      const endpoint = user?.role === 'HR'
+        ? `${API_URL}/api/prebookings/my`
+        : `${API_URL}/api/prebookings`;
+
+      const response = await fetch(endpoint, {
+        headers: getHeaders()
+      });
       if (!response.ok) throw new Error("Failed to fetch pre-bookings");
       const result = await response.json();
       const list = Array.isArray(result) ? result : (Array.isArray(result?.data) ? result.data : []);
@@ -46,27 +101,189 @@ export default function SuperAdminPreBookings() {
 
   useEffect(() => {
     fetchPreBookings();
+    
+    const fetchHRUsers = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/users/hr`);
+        const result = await response.json();
+        if (response.ok && result.success && result.data) {
+          setHrUsers(result.data);
+        }
+      } catch (err) {
+        console.error("Error loading HR users:", err);
+      }
+    };
+    fetchHRUsers();
+
+    const socketUrl = import.meta.env.VITE_API_URL 
+      ? import.meta.env.VITE_API_URL.replace('/api', '')
+      : (window.location.hostname === 'localhost' ? `http://localhost:5000` : 'https://fic-visitor-1.onrender.com');
+    const socket = io(socketUrl);
+
+    socket.on('new_notification', (notification) => {
+      if (notification?.type?.startsWith('PREBOOKING')) {
+        fetchPreBookings();
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+    };
   }, []);
+
+  const calculateDuration = (checkIn, checkOut) => {
+    if (!checkIn || !checkOut) return 'N/A';
+    const start = new Date(checkIn);
+    const end = new Date(checkOut);
+    if (isNaN(start) || isNaN(end)) return 'N/A';
+    
+    const diffMs = end - start;
+    if (diffMs < 0) return 'N/A';
+    
+    const diffMins = Math.floor(diffMs / 60000);
+    const hours = Math.floor(diffMins / 60);
+    const mins = diffMins % 60;
+    
+    if (hours > 0) {
+      return `${hours}h ${mins}m`;
+    }
+    return `${mins}m`;
+  };
 
   const getStatusBadge = (status) => {
     const s = (status || 'PENDING').toUpperCase();
     switch (s) {
       case 'APPROVED':
-        return <span className="px-3 py-1 text-xs font-bold rounded-full bg-green-100 text-green-800 border border-green-200 inline-flex items-center gap-1">🟢 APPROVED ✓</span>;
+        return <span className="px-3 py-1 text-xs font-bold rounded-full bg-green-100 text-green-800 border border-green-200 inline-flex items-center gap-1 whitespace-nowrap">🟢 APPROVED ✓</span>;
       case 'REJECTED':
       case 'CANCELLED':
-        return <span className="px-3 py-1 text-xs font-bold rounded-full bg-red-100 text-red-800 border border-red-200 inline-flex items-center gap-1">🔴 REJECTED ✕</span>;
+        return <span className="px-3 py-1 text-xs font-bold rounded-full bg-red-100 text-red-800 border border-red-200 inline-flex items-center gap-1 whitespace-nowrap">🔴 REJECTED ✕</span>;
       case 'CHECKED_IN':
       case 'CHECKED IN':
       case 'INSIDE':
-        return <span className="px-3 py-1 text-xs font-bold rounded-full bg-blue-100 text-blue-800 border border-blue-200 inline-flex items-center gap-1">🔵 CHECKED IN</span>;
+        return <span className="px-3 py-1 text-xs font-bold rounded-full bg-blue-100 text-blue-800 border border-blue-200 inline-flex items-center gap-1 whitespace-nowrap">🔵 CHECKED IN</span>;
       case 'CHECKED_OUT':
       case 'CHECKED OUT':
       case 'EXITED':
-        return <span className="px-3 py-1 text-xs font-bold rounded-full bg-purple-100 text-purple-800 border border-purple-200 inline-flex items-center gap-1">🟣 CHECKED OUT</span>;
+        return <span className="px-3 py-1 text-xs font-bold rounded-full bg-purple-100 text-purple-800 border border-purple-200 inline-flex items-center gap-1 whitespace-nowrap">🟣 CHECKED OUT</span>;
       default:
-        return <span className="px-3 py-1 text-xs font-bold rounded-full bg-orange-100 text-orange-800 border border-orange-200 inline-flex items-center gap-1">🟠 PENDING</span>;
+        return <span className="px-3 py-1 text-xs font-bold rounded-full bg-orange-100 text-orange-800 border border-orange-200 inline-flex items-center gap-1 whitespace-nowrap">🟠 PENDING</span>;
     }
+  };
+
+  const filteredReports = reportsData.filter((r) => {
+    const q = reportSearchQuery.toLowerCase().trim();
+    const matchesQuery =
+      !q ||
+      (r.visitorId && r.visitorId.toLowerCase().includes(q)) ||
+      (r.fullName && r.fullName.toLowerCase().includes(q)) ||
+      (r.mobileNumber && r.mobileNumber.includes(q)) ||
+      (r.email && r.email.toLowerCase().includes(q)) ||
+      (r.visitingCompany && r.visitingCompany.toLowerCase().includes(q)) ||
+      (r.hostEmployee && r.hostEmployee.toLowerCase().includes(q));
+
+    const matchesStatus =
+      reportStatusFilter === "ALL" ||
+      r.status?.toUpperCase() === reportStatusFilter.toUpperCase();
+
+    const matchesHR =
+      reportHrFilter === "ALL" ||
+      (r.assignedHr && (r.assignedHr._id === reportHrFilter || r.assignedHr.id === reportHrFilter));
+
+    const matchesDate =
+      !reportDateFilter ||
+      (r.visitDate && new Date(r.visitDate).toISOString().split("T")[0] === reportDateFilter);
+
+    return matchesQuery && matchesStatus && matchesHR && matchesDate;
+  });
+
+  const exportToExcel = () => {
+    if (filteredReports.length === 0) return;
+    const headers = [
+      "Visitor Number", "Visitor Name", "Email", "Company", 
+      "Assigned HR", "Purpose", "Visit Date", "Visit Time", "Branch", 
+      "QR Token", "Status", "Created Date", 
+      "Approved Date", "Check-In Time", "Check-Out Time", "Duration", "Exit Notes"
+    ];
+    const rows = filteredReports.map(r => [
+      r.visitorId || '',
+      r.fullName || '',
+      r.email || '',
+      r.visitingCompany || '',
+      r.assignedHr?.name || r.hostEmployee || '',
+      r.visitPurpose || '',
+      r.visitDate ? new Date(r.visitDate).toLocaleDateString() : '',
+      r.expectedTime || '',
+      r.branchLocation || '',
+      r.qrToken || '',
+      r.status || '',
+      r.createdAt ? new Date(r.createdAt).toLocaleString() : '',
+      r.approvedAt ? new Date(r.approvedAt).toLocaleString() : '',
+      r.checkInTime ? new Date(r.checkInTime).toLocaleString() : '',
+      r.checkOutTime ? new Date(r.checkOutTime).toLocaleString() : '',
+      calculateDuration(r.checkInTime, r.checkOutTime),
+      r.exitNotes || r.checkOutNotes || ''
+    ]);
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
+      + [headers.join(","), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `PreBooking_Report_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const exportToPDF = () => {
+    if (filteredReports.length === 0) return;
+    const printWindow = window.open('', '_blank');
+    const headers = ["Visitor No", "Name", "Company", "Assigned HR", "Status", "Visit Date", "Check-In", "Check-Out", "Duration"];
+    const htmlContent = `
+      <html>
+        <head>
+          <title>Pre-Booking Report</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; }
+            h1 { text-align: center; color: #333; font-size: 24px; margin-bottom: 5px; }
+            .date { text-align: center; font-size: 12px; color: #666; margin-bottom: 20px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 11px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f4f4f4; color: #333; font-weight: bold; }
+            tr:nth-child(even) { background-color: #fafafa; }
+          </style>
+        </head>
+        <body>
+          <h1>Pre-Booking Report</h1>
+          <div class="date">Generated on: ${new Date().toLocaleString()}</div>
+          <table>
+            <thead>
+              <tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>
+            </thead>
+            <tbody>
+              ${filteredReports.map(r => `
+                <tr>
+                  <td>${r.visitorId || ''}</td>
+                  <td>${r.fullName || ''}</td>
+                  <td>${r.visitingCompany || ''}</td>
+                  <td>${r.assignedHr?.name || r.hostEmployee || ''}</td>
+                  <td>${r.status || ''}</td>
+                  <td>${r.visitDate ? new Date(r.visitDate).toLocaleDateString() : ''}</td>
+                  <td>${r.checkInTime ? new Date(r.checkInTime).toLocaleTimeString() : ''}</td>
+                  <td>${r.checkOutTime ? new Date(r.checkOutTime).toLocaleTimeString() : ''}</td>
+                  <td>${calculateDuration(r.checkInTime, r.checkOutTime)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          <script>
+            window.onload = () => { window.print(); window.close(); }
+          </script>
+        </body>
+      </html>
+    `;
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
   };
 
   const filteredPreBookings = preBookings.filter((item) => {
@@ -92,7 +309,10 @@ export default function SuperAdminPreBookings() {
     try {
       const response = await fetch(`${API_URL}/api/prebookings/${id}/approve`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" }
+        headers: { 
+          "Content-Type": "application/json",
+          ...getHeaders()
+        }
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.message || "Approval failed");
@@ -109,7 +329,10 @@ export default function SuperAdminPreBookings() {
     try {
       const response = await fetch(`${API_URL}/api/prebookings/${id}/reject`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" }
+        headers: { 
+          "Content-Type": "application/json",
+          ...getHeaders()
+        }
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.message || "Rejection failed");
@@ -124,7 +347,10 @@ export default function SuperAdminPreBookings() {
   const deletePreBooking = async (id, name) => {
     if (!window.confirm(`Are you sure you want to delete pre-booking for ${name}?`)) return;
     try {
-      await fetch(`${API_URL}/api/prebookings/${id}`, { method: 'DELETE' });
+      await fetch(`${API_URL}/api/prebookings/${id}`, { 
+        method: 'DELETE',
+        headers: getHeaders()
+      });
       setPreBookings(prev => prev.filter(p => (p._id || p.id) !== id));
     } catch (err) {
       console.error("Delete Error:", err);
@@ -159,8 +385,235 @@ export default function SuperAdminPreBookings() {
 
       {/* Main Card */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-visible">
-        {/* Search & Filter Header */}
-        <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-4">
+        {/* Tabs Bar */}
+        <div className="border-b border-gray-100 flex flex-wrap px-4 pt-2 bg-slate-50/50">
+          {[
+            { label: 'All Pre-Bookings', val: 'ALL' },
+            { label: 'Pending', val: 'PENDING' },
+            { label: 'Approved', val: 'APPROVED' },
+            { label: 'Rejected', val: 'REJECTED' },
+            { label: 'Checked In', val: 'CHECKED_IN' },
+            { label: 'Checked Out', val: 'CHECKED_OUT' },
+          ].map((tab) => (
+            <button
+              key={tab.val}
+              onClick={() => {
+                setActiveTab(tab.val);
+                setStatusFilter(tab.val);
+              }}
+              className={`px-4 py-3 text-xs sm:text-sm font-semibold border-b-2 transition-all ${
+                activeTab === tab.val
+                  ? 'border-[var(--color-brand-indigo)] text-[var(--color-brand-indigo)] font-bold'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+          {(user?.role === 'Super Admin' || user?.role === 'SaaS Super Admin') && (
+            <button
+              onClick={() => {
+                setActiveTab('REPORTS');
+                fetchReports();
+              }}
+              className={`px-4 py-3 text-xs sm:text-sm font-bold border-b-2 transition-all flex items-center space-x-1.5 ${
+                activeTab === 'REPORTS'
+                  ? 'border-[var(--color-brand-indigo)] text-[var(--color-brand-indigo)]'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <span>📊 Reports</span>
+            </button>
+          )}
+        </div>
+
+        {activeTab === 'REPORTS' ? (
+          // REPORTS VIEW
+          <div className="p-4 space-y-6">
+             {/* Stats Overview */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+              {[
+                { title: 'Total Visitors', count: filteredReports.length, color: 'bg-slate-50 text-slate-800 border-slate-200' },
+                { title: 'Pending', count: filteredReports.filter(r => r.status === 'PENDING').length, color: 'bg-orange-50 text-orange-800 border-orange-200' },
+                { title: 'Approved', count: filteredReports.filter(r => r.status === 'APPROVED').length, color: 'bg-green-50 text-green-800 border-green-200' },
+                { title: 'Rejected', count: filteredReports.filter(r => r.status === 'REJECTED').length, color: 'bg-red-50 text-red-800 border-red-200' },
+                { title: 'Checked In', count: filteredReports.filter(r => r.status === 'CHECKED_IN').length, color: 'bg-blue-50 text-blue-800 border-blue-200' },
+                { title: 'Checked Out', count: filteredReports.filter(r => r.status === 'CHECKED_OUT').length, color: 'bg-purple-50 text-purple-800 border-purple-200' },
+              ].map((stat, idx) => (
+                <div key={idx} className={`p-4 rounded-xl border ${stat.color} flex flex-col`}>
+                  <span className="text-xs font-semibold uppercase tracking-wider opacity-85">{stat.title}</span>
+                  <span className="text-2xl font-bold mt-1">{stat.count}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Filter Bar */}
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-2">
+              <div className="relative flex-1 max-w-md w-full">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Search size={18} className="text-gray-400" />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Search reports by visitor name, ID, phone..."
+                  value={reportSearchQuery}
+                  onChange={(e) => setReportSearchQuery(e.target.value)}
+                  className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[var(--color-brand-indigo)] focus:border-transparent outline-none text-sm"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-end">
+                <select
+                  value={reportStatusFilter}
+                  onChange={(e) => setReportStatusFilter(e.target.value)}
+                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-indigo)] bg-white cursor-pointer"
+                >
+                  <option value="ALL">All Statuses</option>
+                  <option value="PENDING">Pending</option>
+                  <option value="APPROVED">Approved</option>
+                  <option value="REJECTED">Rejected</option>
+                  <option value="CHECKED_IN">Checked In</option>
+                  <option value="CHECKED_OUT">Checked Out</option>
+                </select>
+
+                <select
+                  value={reportHrFilter}
+                  onChange={(e) => setReportHrFilter(e.target.value)}
+                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-indigo)] bg-white cursor-pointer"
+                >
+                  <option value="ALL">All HR</option>
+                  {hrUsers.map((hr) => (
+                    <option key={hr._id || hr.id} value={hr._id || hr.id}>
+                      {hr.name.toLowerCase().replace(/\b\w/g, c => c.toUpperCase())}
+                    </option>
+                  ))}
+                </select>
+
+                <input 
+                  type="date" 
+                  value={reportDateFilter}
+                  onChange={(e) => setReportDateFilter(e.target.value)}
+                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-indigo)]"
+                />
+
+                <button
+                  onClick={() => {
+                    setReportSearchQuery("");
+                    setReportStatusFilter("ALL");
+                    setReportHrFilter("ALL");
+                    setReportDateFilter("");
+                  }}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-sm transition-colors border border-gray-200"
+                >
+                  Clear Filters
+                </button>
+
+                <button
+                  onClick={exportToExcel}
+                  className="bg-green-600 hover:bg-green-700 text-white font-bold px-3 py-1.5 rounded-lg flex items-center space-x-1.5 text-xs transition-colors shadow-sm"
+                >
+                  <span>📊 Export Excel</span>
+                </button>
+                <button
+                  onClick={exportToPDF}
+                  className="bg-red-600 hover:bg-red-700 text-white font-bold px-3 py-1.5 rounded-lg flex items-center space-x-1.5 text-xs transition-colors shadow-sm"
+                >
+                  <span>📄 Export PDF</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Reports Table */}
+            <div className="overflow-x-auto border border-gray-100 rounded-xl">
+              <table className="w-full text-left border-collapse min-w-[1500px]">
+                <thead>
+                  <tr className="bg-slate-50 text-gray-500 text-xs uppercase tracking-wider font-semibold border-b border-gray-100 whitespace-nowrap">
+                    <th className="px-4 py-3 font-semibold">Visitor No</th>
+                    <th className="px-4 py-3 font-semibold">Photo</th>
+                    <th className="px-4 py-3 font-semibold">Visitor Name</th>
+                    <th className="px-4 py-3 font-semibold">Company</th>
+                    <th className="px-4 py-3 font-semibold">Assigned HR</th>
+                    <th className="px-4 py-3 font-semibold">Purpose</th>
+                    <th className="px-4 py-3 font-semibold">Visit Date</th>
+                    <th className="px-4 py-3 font-semibold">Expected Time</th>
+                    <th className="px-4 py-3 font-semibold">Branch</th>
+                    <th className="px-4 py-3 font-semibold">Status</th>
+                    <th className="px-4 py-3 font-semibold">Approved Date</th>
+                    <th className="px-4 py-3 font-semibold">Check-In Time</th>
+                    <th className="px-4 py-3 font-semibold">Check-Out Time</th>
+                    <th className="px-4 py-3 font-semibold">Duration</th>
+                    <th className="px-4 py-3 font-semibold">Checkout Notes</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 text-sm whitespace-nowrap">
+                  {reportsLoading ? (
+                    <tr>
+                      <td colSpan="14" className="px-6 py-12 text-center text-gray-500">
+                        <RefreshCw size={24} className="animate-spin mx-auto mb-2 text-indigo-600" />
+                        Loading reports...
+                      </td>
+                    </tr>
+                  ) : filteredReports.length === 0 ? (
+                    <tr>
+                      <td colSpan="14" className="px-6 py-12 text-center text-gray-500 font-medium">
+                        No report records found.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredReports.map((r, index) => (
+                      <tr 
+                        key={index} 
+                        onClick={() => setSelectedVisitor(r)}
+                        className="hover:bg-indigo-50/20 cursor-pointer transition-colors"
+                      >
+                        <td className="px-4 py-3 font-mono font-bold text-gray-700">{r.visitorId}</td>
+                        <td className="px-4 py-3">
+                          {r.facePhoto ? (
+                            <img src={r.facePhoto} alt="Visitor" className="w-10 h-10 object-cover rounded-lg border border-gray-100" />
+                          ) : (
+                            <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center text-gray-400 text-xs">No img</div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 font-semibold text-gray-900">{r.fullName}</td>
+                        <td className="px-4 py-3 text-gray-600">{r.visitingCompany || 'N/A'}</td>
+                        <td className="px-4 py-3">
+                          <div className="font-semibold text-gray-900">{r.assignedHr?.name || r.hostEmployee}</div>
+                          {r.assignedHr?.email && <div className="text-xs text-gray-400">{r.assignedHr.email}</div>}
+                        </td>
+                        <td className="px-4 py-3 text-gray-600">{r.visitPurpose}</td>
+                        <td className="px-4 py-3 text-gray-600">
+                          {r.visitDate ? new Date(r.visitDate).toLocaleDateString() : 'N/A'}
+                        </td>
+                        <td className="px-4 py-3 text-gray-600">{r.expectedTime}</td>
+                        <td className="px-4 py-3 text-gray-600">{r.branchLocation}</td>
+                        <td className="px-4 py-3">{getStatusBadge(r.status)}</td>
+                        <td className="px-4 py-3 text-gray-500">
+                          {r.approvedAt ? new Date(r.approvedAt).toLocaleString() : 'N/A'}
+                        </td>
+                        <td className="px-4 py-3 text-gray-500">
+                          {r.checkInTime ? new Date(r.checkInTime).toLocaleString() : 'N/A'}
+                        </td>
+                        <td className="px-4 py-3 text-gray-500">
+                          {r.checkOutTime ? new Date(r.checkOutTime).toLocaleString() : 'N/A'}
+                        </td>
+                        <td className="px-4 py-3 text-indigo-600 font-semibold font-mono text-xs">
+                          {calculateDuration(r.checkInTime, r.checkOutTime)}
+                        </td>
+                        <td className="px-4 py-3 text-gray-500 max-w-[200px] truncate" title={r.exitNotes || r.checkOutNotes}>
+                          {r.exitNotes || r.checkOutNotes || 'N/A'}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : (
+          // STANDARD PRE-BOOKING VIEW
+          <>
+            {/* Search & Filter Header */}
+            <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-4">
           {/* Search Box */}
           <div className="relative flex-1 max-w-md w-full">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -399,7 +852,9 @@ export default function SuperAdminPreBookings() {
             </tbody>
           </table>
         </div>
-      </div>
+      </>
+    )}
+  </div>
 
       {/* Approved QR Popup Banner */}
       {approvedQR && (
@@ -499,6 +954,36 @@ export default function SuperAdminPreBookings() {
                   <span className="font-semibold text-gray-800">{selectedVisitor.expectedTime || '10:00 AM'}</span>
                 </div>
               </div>
+
+              {selectedVisitor.idType && (
+                <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl space-y-3">
+                  <div className="flex justify-between items-center text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    <span>Verification Document</span>
+                    <span className="text-[var(--color-brand-indigo)] font-bold">{selectedVisitor.idType}</span>
+                  </div>
+                  {selectedVisitor.idProofUrl ? (
+                    <div className="relative rounded-lg overflow-hidden border border-gray-200 aspect-[1.6/1] bg-slate-900 group">
+                      <img
+                        src={selectedVisitor.idProofUrl}
+                        alt="ID Proof Document"
+                        className="w-full h-full object-contain"
+                      />
+                      <a
+                        href={selectedVisitor.idProofUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="absolute inset-0 bg-black/45 text-white font-semibold text-xs opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
+                      >
+                        View Full Screen
+                      </a>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-amber-600 font-bold bg-amber-50 p-2 rounded-lg border border-amber-100 text-center">
+                      No document image uploaded.
+                    </p>
+                  )}
+                </div>
+              )}
 
               {selectedVisitor.status === 'PENDING' && (
                 <div className="flex gap-3 pt-2">

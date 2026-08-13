@@ -22,6 +22,9 @@ const createPreBooking = async (req, res) => {
       branchLocation,
       vehicleNumber,
       facePhoto,
+      idType,
+      idProofUrl,
+      assignedHr,
     } = req.body;
 
     // Required field validation
@@ -33,11 +36,26 @@ const createPreBooking = async (req, res) => {
       !visitDate ||
       !expectedTime ||
       !branchLocation ||
-      !facePhoto
+      !facePhoto ||
+      !assignedHr
     ) {
       return res.status(400).json({
         success: false,
-        message: "Please fill all required fields.",
+        message: "Please fill all required fields, including HR selection.",
+      });
+    }
+
+    const User = require("../models/User");
+    const hrUser = await User.findOne({
+      _id: assignedHr,
+      role: "HR",
+      status: "Active"
+    });
+
+    if (!hrUser) {
+      return res.status(400).json({
+        success: false,
+        message: "Selected HR is invalid or inactive."
       });
     }
 
@@ -58,8 +76,75 @@ const createPreBooking = async (req, res) => {
       branchLocation,
       vehicleNumber,
       facePhoto,
+      idType: idType || "",
+      idProofUrl: idProofUrl || "",
+      assignedHr,
       status: "PENDING",
     });
+
+    // Create Notifications
+    try {
+      const User = require("../models/User");
+      const Notification = require("../models/Notification");
+
+      // 1. Find all Super Admin and Security users
+      const superAdmins = await User.find({
+        companyId: preBooking.companyId || 'FIC001',
+        role: { $in: ['Super Admin', 'Security'] }
+      });
+
+      // 2. Create notification for each Super Admin
+      const superAdminNotifications = superAdmins.map((admin) => ({
+        companyId: preBooking.companyId || 'FIC001',
+        branchId: branchLocation,
+        recipient: admin._id,
+        type: "PREBOOKING_CREATED",
+        title: "New Pre-Booking Request",
+        message: `${preBooking.fullName} has submitted a new pre-booking.`,
+        preBookingId: preBooking._id,
+        createdBy: "Visitor Registration"
+      }));
+
+      if (superAdminNotifications.length > 0) {
+        await Notification.insertMany(superAdminNotifications);
+      }
+
+      // 3. Create notification for the assigned HR user only
+      const selectedHrUser = await User.findById(assignedHr);
+      if (selectedHrUser) {
+        await Notification.create({
+          companyId: preBooking.companyId || 'FIC001',
+          branchId: branchLocation,
+          recipient: selectedHrUser._id,
+          type: "PREBOOKING_CREATED",
+          title: "New Pre-Booking Assigned",
+          message: `${preBooking.fullName} has submitted a pre-booking assigned to you.`,
+          preBookingId: preBooking._id,
+          createdBy: "Visitor Registration"
+        });
+      }
+
+      // 4. Emit live socket alert to Super Admins and the assigned HR
+      const io = req.app.get('io');
+      if (io) {
+        io.emit('new_notification', {
+          _id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+          createdAt: new Date().toISOString(),
+          type: 'PREBOOKING_CREATED',
+          title: 'New Pre-Booking Request',
+          message: `${preBooking.fullName} has submitted a pre-booking request.`,
+          preBookingId: preBooking._id,
+          companyId: preBooking.companyId || 'FIC001',
+          branchId: branchLocation,
+          recipients: [
+            ...superAdmins.map(admin => admin._id.toString()),
+            assignedHr ? assignedHr.toString() : null
+          ].filter(Boolean)
+        });
+      }
+    } catch (notifErr) {
+      console.error("Error creating pre-booking notifications:", notifErr);
+    }
 
     return res.status(201).json({
       success: true,
@@ -112,6 +197,13 @@ const approvePreBooking = async (req, res) => {
       });
     }
 
+    if (req.userRole === 'HR' && preBooking.assignedHr && preBooking.assignedHr.toString() !== req.userId) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to approve this pre-booking assignment."
+      });
+    }
+
     if (preBooking.status !== "PENDING") {
       return res.status(400).json({
         success: false,
@@ -126,6 +218,69 @@ const approvePreBooking = async (req, res) => {
     preBooking.approvedAt = new Date();
 
     await preBooking.save();
+
+    // Send notifications to Super Admins and the assigned HR
+    try {
+      const User = require("../models/User");
+      const Notification = require("../models/Notification");
+
+      // 1. Find all Super Admin and Security users
+      const superAdmins = await User.find({
+        companyId: preBooking.companyId || 'FIC001',
+        role: { $in: ['Super Admin', 'Security'] }
+      });
+
+      // 2. Create notification for each Super Admin
+      const superAdminNotifications = superAdmins.map((admin) => ({
+        companyId: preBooking.companyId || 'FIC001',
+        branchId: preBooking.branchLocation,
+        recipient: admin._id,
+        type: "PREBOOKING_APPROVED",
+        title: "Pre-Booking Approved",
+        message: `Visitor pre-booking for ${preBooking.fullName} has been approved.`,
+        preBookingId: preBooking._id,
+        createdBy: "System Approval"
+      }));
+
+      if (superAdminNotifications.length > 0) {
+        await Notification.insertMany(superAdminNotifications);
+      }
+
+      // 3. Create notification for the assigned HR user
+      if (preBooking.assignedHr) {
+        await Notification.create({
+          companyId: preBooking.companyId || 'FIC001',
+          branchId: preBooking.branchLocation,
+          recipient: preBooking.assignedHr,
+          type: "PREBOOKING_APPROVED",
+          title: "Pre-Booking Approved",
+          message: `Visitor pre-booking for ${preBooking.fullName} has been approved.`,
+          preBookingId: preBooking._id,
+          createdBy: "System Approval"
+        });
+      }
+
+      // 4. Emit live socket alert to both Super Admins and the HR
+      const io = req.app.get('io');
+      if (io) {
+        io.emit('new_notification', {
+          _id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+          createdAt: new Date().toISOString(),
+          type: 'PREBOOKING_APPROVED',
+          title: 'Pre-Booking Approved',
+          message: `Visitor pre-booking for ${preBooking.fullName} has been approved.`,
+          preBookingId: preBooking._id,
+          companyId: preBooking.companyId || 'FIC001',
+          branchId: preBooking.branchLocation,
+          recipients: [
+            ...superAdmins.map(admin => admin._id.toString()),
+            preBooking.assignedHr ? preBooking.assignedHr.toString() : null
+          ].filter(Boolean)
+        });
+      }
+    } catch (notifErr) {
+      console.error("Error creating approval notifications:", notifErr);
+    }
 
     return res.status(200).json({
       success: true,
@@ -161,6 +316,13 @@ const rejectPreBooking = async (req, res) => {
       });
     }
 
+    if (req.userRole === 'HR' && preBooking.assignedHr && preBooking.assignedHr.toString() !== req.userId) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to reject this pre-booking assignment."
+      });
+    }
+
     if (preBooking.status !== "PENDING") {
       return res.status(400).json({
         success: false,
@@ -173,6 +335,69 @@ const rejectPreBooking = async (req, res) => {
     preBooking.qrToken = undefined;
 
     await preBooking.save();
+
+    // Send notifications to Super Admins and the assigned HR
+    try {
+      const User = require("../models/User");
+      const Notification = require("../models/Notification");
+
+      // 1. Find all Super Admin and Security users
+      const superAdmins = await User.find({
+        companyId: preBooking.companyId || 'FIC001',
+        role: { $in: ['Super Admin', 'Security'] }
+      });
+
+      // 2. Create notification for each Super Admin
+      const superAdminNotifications = superAdmins.map((admin) => ({
+        companyId: preBooking.companyId || 'FIC001',
+        branchId: preBooking.branchLocation,
+        recipient: admin._id,
+        type: "PREBOOKING_REJECTED",
+        title: "Pre-Booking Rejected",
+        message: `Visitor pre-booking for ${preBooking.fullName} has been rejected.`,
+        preBookingId: preBooking._id,
+        createdBy: "System Rejection"
+      }));
+
+      if (superAdminNotifications.length > 0) {
+        await Notification.insertMany(superAdminNotifications);
+      }
+
+      // 3. Create notification for the assigned HR user
+      if (preBooking.assignedHr) {
+        await Notification.create({
+          companyId: preBooking.companyId || 'FIC001',
+          branchId: preBooking.branchLocation,
+          recipient: preBooking.assignedHr,
+          type: "PREBOOKING_REJECTED",
+          title: "Pre-Booking Rejected",
+          message: `Visitor pre-booking for ${preBooking.fullName} has been rejected.`,
+          preBookingId: preBooking._id,
+          createdBy: "System Rejection"
+        });
+      }
+
+      // 4. Emit live socket alert to both Super Admins and the HR
+      const io = req.app.get('io');
+      if (io) {
+        io.emit('new_notification', {
+          _id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+          createdAt: new Date().toISOString(),
+          type: 'PREBOOKING_REJECTED',
+          title: 'Pre-Booking Rejected',
+          message: `Visitor pre-booking for ${preBooking.fullName} has been rejected.`,
+          preBookingId: preBooking._id,
+          companyId: preBooking.companyId || 'FIC001',
+          branchId: preBooking.branchLocation,
+          recipients: [
+            ...superAdmins.map(admin => admin._id.toString()),
+            preBooking.assignedHr ? preBooking.assignedHr.toString() : null
+          ].filter(Boolean)
+        });
+      }
+    } catch (notifErr) {
+      console.error("Error creating rejection notifications:", notifErr);
+    }
 
     return res.status(200).json({
       success: true,
@@ -237,12 +462,19 @@ const getPreBookingByVisitId = async (req, res) => {
         { qrToken: rawId },
         ...(isValidObjectId ? [{ _id: rawId }] : [])
       ]
-    });
+    }).populate("assignedHr");
 
     if (!pb) {
       return res.status(404).json({
         success: false,
         message: "Visitor not found.",
+      });
+    }
+
+    if (req.userRole === 'HR' && pb.assignedHr && pb.assignedHr.toString() !== req.userId) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to view this pre-booking assignment."
       });
     }
 
@@ -268,6 +500,8 @@ const getPreBookingByVisitId = async (req, res) => {
       branchLocation: pb.branchLocation || 'Head Office',
       branch: pb.branchLocation || 'Head Office',
       vehicleNumber: pb.vehicleNumber,
+      idType: pb.idType || '',
+      idProofUrl: pb.idProofUrl || '',
       facePhoto: pb.facePhoto,
       photoUrl: pb.facePhoto,
       status: pb.status,
@@ -277,6 +511,12 @@ const getPreBookingByVisitId = async (req, res) => {
       checkOutTime: pb.checkOutTime || null,
       checkOutBy: pb.checkOutBy || null,
       checkOutNotes: pb.checkOutNotes || pb.exitNotes || '',
+      assignedHr: pb.assignedHr ? {
+        id: pb.assignedHr._id,
+        _id: pb.assignedHr._id,
+        name: pb.assignedHr.name,
+        email: pb.assignedHr.email
+      } : null,
       createdAt: pb.createdAt
     };
 
@@ -314,7 +554,7 @@ const getPreBookingByQR = async (req, res) => {
         { visitorId: searchRegex },
         ...(isValidObjectId ? [{ _id: token }] : [])
       ]
-    });
+    }).populate("assignedHr");
 
     if (!pb) {
       return res.status(404).json({
@@ -345,6 +585,8 @@ const getPreBookingByQR = async (req, res) => {
       branchLocation: pb.branchLocation || 'Head Office',
       branch: pb.branchLocation || 'Head Office',
       vehicleNumber: pb.vehicleNumber,
+      idType: pb.idType || '',
+      idProofUrl: pb.idProofUrl || '',
       facePhoto: pb.facePhoto,
       photoUrl: pb.facePhoto,
       status: pb.status,
@@ -353,6 +595,12 @@ const getPreBookingByQR = async (req, res) => {
       checkOutTime: pb.checkOutTime || null,
       checkOutBy: pb.checkOutBy || null,
       checkOutNotes: pb.checkOutNotes || pb.exitNotes || '',
+      assignedHr: pb.assignedHr ? {
+        id: pb.assignedHr._id,
+        _id: pb.assignedHr._id,
+        name: pb.assignedHr.name,
+        email: pb.assignedHr.email
+      } : null,
       createdAt: pb.createdAt
     };
 
@@ -435,6 +683,53 @@ const checkInPreBooking = async (req, res) => {
 
     await preBooking.save();
 
+    try {
+      const User = require("../models/User");
+      const Notification = require("../models/Notification");
+
+      const notifiableUsers = await User.find({
+        companyId: preBooking.companyId || 'FIC001',
+        role: { $in: ['Super Admin', 'Security'] }
+      });
+
+      const recipientIds = notifiableUsers.map(u => u._id.toString());
+      if (preBooking.assignedHr) {
+        recipientIds.push(preBooking.assignedHr.toString());
+      }
+
+      const notificationDocs = recipientIds.map(id => ({
+        companyId: preBooking.companyId || 'FIC001',
+        branchId: preBooking.branchLocation,
+        recipient: id,
+        type: "PREBOOKING_CHECKED_IN",
+        title: "Pre-Booking Checked In",
+        message: `Visitor ${preBooking.fullName} has checked in.`,
+        preBookingId: preBooking._id,
+        createdBy: req.user?.fullName || "Security"
+      }));
+
+      if (notificationDocs.length > 0) {
+        await Notification.insertMany(notificationDocs);
+      }
+
+      const io = req.app.get('io');
+      if (io) {
+        io.emit('new_notification', {
+          _id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+          createdAt: new Date().toISOString(),
+          type: 'PREBOOKING_CHECKED_IN',
+          title: 'Pre-Booking Checked In',
+          message: `Visitor ${preBooking.fullName} has checked in.`,
+          preBookingId: preBooking._id,
+          companyId: preBooking.companyId || 'FIC001',
+          branchId: preBooking.branchLocation,
+          recipients: recipientIds
+        });
+      }
+    } catch (notifErr) {
+      console.error("Error creating check-in notifications:", notifErr);
+    }
+
     const dataObj = {
       id: preBooking._id,
       _id: preBooking._id,
@@ -456,6 +751,8 @@ const checkInPreBooking = async (req, res) => {
       branchLocation: preBooking.branchLocation,
       branch: preBooking.branchLocation,
       vehicleNumber: preBooking.vehicleNumber,
+      idType: preBooking.idType || '',
+      idProofUrl: preBooking.idProofUrl || '',
       facePhoto: preBooking.facePhoto,
       photoUrl: preBooking.facePhoto,
       status: "CHECKED_IN",
@@ -522,6 +819,53 @@ const checkOutPreBooking = async (req, res) => {
 
     await preBooking.save();
 
+    try {
+      const User = require("../models/User");
+      const Notification = require("../models/Notification");
+
+      const notifiableUsers = await User.find({
+        companyId: preBooking.companyId || 'FIC001',
+        role: { $in: ['Super Admin', 'Security'] }
+      });
+
+      const recipientIds = notifiableUsers.map(u => u._id.toString());
+      if (preBooking.assignedHr) {
+        recipientIds.push(preBooking.assignedHr.toString());
+      }
+
+      const notificationDocs = recipientIds.map(id => ({
+        companyId: preBooking.companyId || 'FIC001',
+        branchId: preBooking.branchLocation,
+        recipient: id,
+        type: "PREBOOKING_CHECKED_OUT",
+        title: "Pre-Booking Checked Out",
+        message: `Visitor ${preBooking.fullName} has checked out.`,
+        preBookingId: preBooking._id,
+        createdBy: req.user?.fullName || "Security"
+      }));
+
+      if (notificationDocs.length > 0) {
+        await Notification.insertMany(notificationDocs);
+      }
+
+      const io = req.app.get('io');
+      if (io) {
+        io.emit('new_notification', {
+          _id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+          createdAt: new Date().toISOString(),
+          type: 'PREBOOKING_CHECKED_OUT',
+          title: 'Pre-Booking Checked Out',
+          message: `Visitor ${preBooking.fullName} has checked out.`,
+          preBookingId: preBooking._id,
+          companyId: preBooking.companyId || 'FIC001',
+          branchId: preBooking.branchLocation,
+          recipients: recipientIds
+        });
+      }
+    } catch (notifErr) {
+      console.error("Error creating check-out notifications:", notifErr);
+    }
+
     const dataObj = {
       id: preBooking._id,
       _id: preBooking._id,
@@ -560,6 +904,56 @@ const checkOutPreBooking = async (req, res) => {
   }
 };
 
+const getMyPreBookings = async (req, res) => {
+  try {
+    const visitors = await PreBooking.find({
+      assignedHr: req.userId
+    })
+      .populate("assignedHr", "name email")
+      .sort({
+        createdAt: -1
+      });
+
+    return res.status(200).json({
+      success: true,
+      data: visitors
+    });
+  } catch (error) {
+    console.error("HR Pre-bookings error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch pre-bookings."
+    });
+  }
+};
+
+const getPreBookingReports = async (req, res) => {
+  try {
+    if (req.userRole !== "Super Admin" && req.userRole !== "SaaS Super Admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Only Super Admin can access pre-booking reports"
+      });
+    }
+
+    const reports = await PreBooking.find({})
+      .populate("assignedHr", "name email")
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      count: reports.length,
+      data: reports
+    });
+  } catch (error) {
+    console.error("Get pre-booking reports error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch pre-booking reports"
+    });
+  }
+};
+
 module.exports = {
   createPreBooking,
   getAllPreBookings,
@@ -572,4 +966,6 @@ module.exports = {
   checkInPreBooking,
   checkOutPreBooking,
   backfillQrTokens,
+  getMyPreBookings,
+  getPreBookingReports,
 };
