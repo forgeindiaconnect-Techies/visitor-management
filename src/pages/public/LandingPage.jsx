@@ -11,6 +11,9 @@ import { QRCodeSVG } from 'qrcode.react';
 import Webcam from 'react-webcam';
 import logoImg from '../../assets/logo.svg';
 import FaceCamera from '../../components/FaceCamera';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
+import TimeDropdown from '../../components/TimeDropdown';
 
 const formatTimeTo12Hour = (timeStr) => {
   if (!timeStr) return '';
@@ -961,7 +964,6 @@ const LandingPage = () => {
                         <option value="Vendor / Client Work" className="bg-slate-900">Vendor / Client Work</option>
                         <option value="Delivery / Courier" className="bg-slate-900">Delivery / Courier</option>
                         <option value="Personal Visit" className="bg-slate-900">Personal Visit</option>
-                        <option value="Audit / Inspection" className="bg-slate-900">Audit / Inspection</option>
                       </select>
                     </div>
                   </div>
@@ -971,16 +973,18 @@ const LandingPage = () => {
                     <div>
                       <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
                         <span>Date of Visit *</span>
-                        <span className="text-[10px] text-indigo-400 font-normal">Click icon for calendar</span>
+                        <span className="text-[10px] text-indigo-400 font-normal">Click for calendar</span>
                       </label>
                       <div className="relative">
-                        <input
-                          type="date"
-                          name="visitDate"
-                          min={new Date().toISOString().split('T')[0]}
-                          value={formData.visitDate}
-                          onChange={handleChange}
-                          style={{ colorScheme: 'dark' }}
+                        <DatePicker
+                          selected={formData.visitDate ? new Date(formData.visitDate) : null}
+                          onChange={(date) => {
+                            if (date) {
+                              handleChange({ target: { name: 'visitDate', value: date.toISOString().split('T')[0] }});
+                            }
+                          }}
+                          minDate={new Date()}
+                          dateFormat="yyyy-MM-dd"
                           className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-indigo-500 font-medium cursor-pointer"
                         />
                       </div>
@@ -989,13 +993,11 @@ const LandingPage = () => {
                     {/* Expected Arrival */}
                     <div>
                       <label className="block text-xs font-semibold text-slate-300 mb-1.5">Expected Time</label>
-                      <input
-                        type="time"
+                      <TimeDropdown
                         name="expectedArrivalTime"
                         value={formData.expectedArrivalTime}
                         onChange={handleChange}
-                        style={{ colorScheme: 'dark' }}
-                        className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-indigo-500 font-semibold cursor-pointer"
+                        className="w-full py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-indigo-500 font-semibold cursor-pointer"
                       />
                     </div>
 

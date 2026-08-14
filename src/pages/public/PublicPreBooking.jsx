@@ -7,6 +7,9 @@ import {
 import { QRCodeSVG } from 'qrcode.react';
 import FaceCamera from '../../components/FaceCamera';
 import logoImg from '../../assets/logo.svg';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
+import TimeDropdown from '../../components/TimeDropdown';
 
 const formatTimeTo12Hour = (timeStr) => {
   if (!timeStr) return '';
@@ -410,7 +413,6 @@ const PublicPreBooking = () => {
                   <option value="Vendor / Client visit">Vendor / Client visit</option>
                   <option value="Delivery / Courier">Delivery / Courier</option>
                   <option value="Personal Visit">Personal Visit</option>
-                  <option value="Audit / Inspection">Audit / Inspection</option>
                 </select>
               </div>
             </div>
@@ -418,24 +420,26 @@ const PublicPreBooking = () => {
             <div className="grid sm:grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wider">Date of Visit *</label>
-                <input
-                  type="date"
-                  name="visitDate"
-                  min={new Date().toISOString().split('T')[0]}
-                  value={formData.visitDate}
-                  onChange={handleChange}
-                  className="block w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[var(--color-brand-yellow)]/60 focus:border-[var(--color-brand-indigo)] outline-none bg-gray-50/50 text-gray-800 transition-shadow font-semibold"
+                <DatePicker
+                  selected={formData.visitDate ? new Date(formData.visitDate) : null}
+                  onChange={(date) => {
+                    if (date) {
+                      handleChange({ target: { name: 'visitDate', value: date.toISOString().split('T')[0] }});
+                    }
+                  }}
+                  minDate={new Date()}
+                  dateFormat="yyyy-MM-dd"
+                  className="block w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[var(--color-brand-yellow)]/60 focus:border-[var(--color-brand-indigo)] outline-none bg-gray-50/50 text-gray-800 transition-shadow font-semibold cursor-pointer"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wider">Expected Arrival Time</label>
-                <input
-                  type="time"
+                <TimeDropdown
                   name="expectedArrivalTime"
                   value={formData.expectedArrivalTime}
                   onChange={handleChange}
-                  className="block w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[var(--color-brand-yellow)]/60 focus:border-[var(--color-brand-indigo)] outline-none bg-gray-50/50 text-gray-800 transition-shadow font-semibold cursor-pointer"
+                  className="block w-full py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[var(--color-brand-yellow)]/60 focus:border-[var(--color-brand-indigo)] outline-none bg-gray-50/50 text-gray-800 transition-shadow font-semibold cursor-pointer"
                 />
               </div>
 

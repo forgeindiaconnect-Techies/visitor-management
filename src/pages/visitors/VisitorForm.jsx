@@ -8,6 +8,9 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Save, Upload, User, Calendar, FileText, Camera, IdCard, Info, Search, AlertCircle, QrCode, X, Ban } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import Webcam from 'react-webcam';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
+import TimeDropdown from '../../components/TimeDropdown';
 
 const VisitorForm = () => {
   const { addVisitor, allVisitors, networkIp } = useVisitors();
@@ -390,11 +393,27 @@ const VisitorForm = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Expected Visit Date *</label>
-                <input required type="date" name="visitDate" value={formData.visitDate} onChange={handleChange} className={inputClassName} />
+                <DatePicker
+                  required
+                  selected={formData.visitDate ? new Date(formData.visitDate) : null}
+                  onChange={(date) => {
+                    if (date) {
+                      handleChange({ target: { name: 'visitDate', value: date.toISOString().split('T')[0] }});
+                    }
+                  }}
+                  minDate={new Date()}
+                  dateFormat="yyyy-MM-dd"
+                  className={inputClassName}
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Expected Arrival Time</label>
-                <input type="time" name="expectedArrivalTime" value={formData.expectedArrivalTime} onChange={handleChange} className={inputClassName} />
+                <TimeDropdown
+                  name="expectedArrivalTime"
+                  value={formData.expectedArrivalTime}
+                  onChange={handleChange}
+                  className={`${inputClassName} !px-0`}
+                />
               </div>
               <div className="sm:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Notes for Host (Optional)</label>

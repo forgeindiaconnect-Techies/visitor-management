@@ -6,7 +6,10 @@ import { useBranch } from '../../context/BranchContext';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Save, Upload, User, Calendar, FileText, Camera, Shield, CheckCircle, Clock, Car, IdCard, Info, AlertCircle, QrCode, X, Ban } from 'lucide-react';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 import { QRCodeSVG } from 'qrcode.react';
+import TimeDropdown from '../../components/TimeDropdown';
 
 const PreBookingForm = () => {
   const { addVisitor, allVisitors, networkIp } = useVisitors();
@@ -370,14 +373,30 @@ const PreBookingForm = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Expected Visit Date *</label>
-                <input required type="date" name="visitDate" value={formData.visitDate} onChange={handleChange} className={inputClassName} />
+                <DatePicker
+                  required
+                  selected={formData.visitDate ? new Date(formData.visitDate) : null}
+                  onChange={(date) => {
+                    if (date) {
+                      handleChange({ target: { name: 'visitDate', value: date.toISOString().split('T')[0] }});
+                    }
+                  }}
+                  minDate={new Date()}
+                  dateFormat="yyyy-MM-dd"
+                  className={inputClassName}
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1.5">
                   <Clock size={16} className="text-gray-500" />
                   <span>Expected Arrival Time</span>
                 </label>
-                <input type="time" name="expectedArrivalTime" value={formData.expectedArrivalTime} onChange={handleChange} className={inputClassName} />
+                <TimeDropdown
+                  name="expectedArrivalTime"
+                  value={formData.expectedArrivalTime}
+                  onChange={handleChange}
+                  className={`${inputClassName} !px-0`}
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Expected Duration</label>
