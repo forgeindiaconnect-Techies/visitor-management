@@ -271,13 +271,7 @@ const PublicPreBooking = () => {
       <div className="fixed top-1/3 right-1/4 w-72 h-72 bg-indigo-100/30 rounded-full blur-[90px] pointer-events-none animate-float-bg -z-10" />
 
       {/* Header Bar */}
-      <div className="max-w-3xl w-full mx-auto flex items-center justify-between mb-8 z-10">
-        <button 
-          onClick={() => navigate('/login')}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white hover:bg-slate-50 border border-gray-200 text-gray-600 hover:text-gray-900 shadow-sm transition-all text-xs font-semibold"
-        >
-          <ArrowLeft size={14} /> Back to Sign In
-        </button>
+      <div className="max-w-3xl w-full mx-auto flex items-center justify-end mb-8 z-10">
         <div className="flex items-center gap-2">
           <img src={logoImg} alt="Forge India Logo" className="h-14 w-14 object-contain" />
           <span className="font-black text-gray-950 text-base tracking-tight">Forge India Connect</span>
