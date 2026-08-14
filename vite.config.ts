@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import 'C:/Users/Forgeindiaconnect/.gemini/antigravity-ide/brain/7a16b408-ea42-48d9-9a8a-6e59a3994474/scratch/check_syntax.js';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -55,3 +56,7 @@ export default defineConfig({
     })
   ],
 });
+
+
+
+

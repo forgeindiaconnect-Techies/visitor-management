@@ -605,7 +605,6 @@ router.get('/pass/:visitId', async (req, res) => {
       success: false,
       message: err.message
     });
-    });
   }
 });
 
@@ -733,6 +732,7 @@ router.post('/scan-pass', async (req, res) => {
   } catch (err) {
     return res.status(500).json({ valid: false, message: err.message });
   }
+});
 // POST /:id/check-in - Secure Check-In
 router.post('/:id/check-in', async (req, res) => {
   try {
