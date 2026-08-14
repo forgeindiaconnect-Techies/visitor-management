@@ -23,7 +23,7 @@ const io = new Server(server, {
       if (origin.includes('localhost') || 
           origin.includes('192.168') || 
           origin.includes('10.') || 
-          origin === 'https://fic-visitor-1.vercel.app') {
+          origin.includes('vercel.app')) {
         return callback(null, true);
       }
       return callback(new Error('Not allowed by CORS'), false);
