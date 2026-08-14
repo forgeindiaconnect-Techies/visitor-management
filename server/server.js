@@ -107,6 +107,7 @@ const auditLogsRouter = require('./routes/auditLogs');
 const paymentRoutes = require('./routes/paymentRoutes');
 const testNotification = require('./routes/testNotification');
 const invitationsRouter = require('./routes/invitations');
+const visitorInvitationRoutes = require('./routes/visitorInvitationRoutes');
 const preBookingRoutes = require('./routes/preBookingRoutes');
 
 app.use('/api/prebookings', preBookingRoutes);
@@ -177,6 +178,7 @@ app.use('/api/zones', zonesRouter);
 app.use('/api/blacklist', blacklistRouter);
 app.use('/api/alerts', alertsRouter);
 app.use('/api/invitations', invitationsRouter);
+app.use('/api/visitor-invitations', visitorInvitationRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/attendance', attendanceRouter);
 app.use('/api/branch-settings', branchSettingsRouter);

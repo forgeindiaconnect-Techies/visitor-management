@@ -84,7 +84,7 @@ const PreBookingRegistration = () => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleGenerate = async (sendEmailNow = true) => {
+  const handleGenerate = async () => {
     if (!formData.email) {
       addNotification('Validation Error', 'Visitor Email Address is required.', 'error');
       return;
@@ -92,32 +92,42 @@ const PreBookingRegistration = () => {
 
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/invitations/create`, {
+      const response = await fetch(`${API_BASE}/visitor-invitations`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(user?.token && { 'Authorization': `Bearer ${user.token}` })
         },
         body: JSON.stringify({
-          ...formData,
-          sendEmailNow
+          visitorName: formData.visitorName,
+          email: formData.email,
+          mobile: formData.mobileNumber,
+          companyName: formData.companyName,
+          purposeOfVisit: formData.purpose,
+          visitDate: formData.visitDate,
+          visitTime: formData.visitTime,
+          branch: formData.branch,
+          numberOfVisitors: formData.visitorCount,
+          notes: formData.notes,
         })
       });
 
       const data = await response.json();
       if (response.ok && data.success) {
-        setGeneratedLink(data.registrationLink);
-        if (sendEmailNow) {
-          addNotification('Invitation Sent', `Invitation email sent to ${formData.email}`, 'success');
-        } else {
-          addNotification('Registration Link Generated', 'Secure registration link created successfully.', 'info');
-        }
+        alert("Invitation created successfully!");
+        console.log("Invitation URL:", data.invitationUrl);
+        console.log("QR Code:", data.qrCode);
+        
+        setGeneratedLink(data.invitationUrl);
         fetchInvitations();
       } else {
         addNotification('Error', data.message || 'Failed to generate invitation.', 'error');
+        alert(data.message || "Failed to create invitation");
       }
     } catch (err) {
       addNotification('Error', 'Network error generating invitation.', 'error');
+      console.error("Invitation error:", err);
+      alert("Failed to create invitation");
     } finally {
       setLoading(false);
     }

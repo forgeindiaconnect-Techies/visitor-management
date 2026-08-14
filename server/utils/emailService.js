@@ -100,6 +100,36 @@ const sendRegistrationConfirmation = async ({ visitorName, email, passUrl, booki
   return await sendEmail(email, subject, htmlBody);
 };
 
+const sendVisitorInvitationEmail = async ({ visitorName, email, companyName, purposeOfVisit, visitDate, visitTime, branch, numberOfVisitors, qrUrl, invitationUrl }) => {
+  const subject = "Visitor Invitation";
+  const htmlContent = `
+  <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
+    <h2 style="text-align: center;">FIC VMS</h2>
+    <h3>Visitor Invitation</h3>
+    <p>Hello <strong>${visitorName}</strong>,</p>
+    <p>Your visitor invitation has been created successfully.</p>
+    <div style="background: #f5f5f5; padding: 20px; border-radius: 10px;">
+      <p><strong>Visitor Name:</strong> ${visitorName}</p>
+      <p><strong>Company:</strong> ${companyName || "Not provided"}</p>
+      <p><strong>Purpose:</strong> ${purposeOfVisit || "Not provided"}</p>
+      <p><strong>Date:</strong> ${visitDate}</p>
+      <p><strong>Time:</strong> ${visitTime}</p>
+      <p><strong>Branch:</strong> ${branch}</p>
+      <p><strong>Visitors:</strong> ${numberOfVisitors || 1}</p>
+    </div>
+    <div style="text-align: center; margin: 30px 0;">
+      <p><strong>Scan this QR code to view your invitation</strong></p>
+      <img src="${qrUrl}" alt="Visitor Invitation QR Code" width="250" style="display: block; margin: 20px auto;" />
+      <a href="${invitationUrl}" style="display: inline-block; padding: 12px 24px; background: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold;">
+        View Invitation
+      </a>
+    </div>
+    <p style="text-align: center; color: #777;">This invitation is valid for 24 hours.</p>
+  </div>
+  `;
+  return await sendEmail(email, subject, htmlContent);
+};
+
 const EmailTemplates = {
   welcome: (companyName, adminName) => ({
     subject: 'Welcome to Zone Monitor Visitor Management System',
@@ -111,5 +141,6 @@ module.exports = {
   sendEmail,
   sendPreBookingInvitation,
   sendRegistrationConfirmation,
+  sendVisitorInvitationEmail,
   EmailTemplates
 };

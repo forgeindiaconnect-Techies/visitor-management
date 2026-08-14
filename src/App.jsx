@@ -30,6 +30,7 @@ import PreRegister from './pages/public/PreRegister';
 import LandingPage from './pages/public/LandingPage';
 import PublicPreBooking from './pages/public/PublicPreBooking';
 import PreBookingRegistration from './pages/visitors/PreBookingRegistration';
+import VisitorInvitation from './pages/VisitorInvitation';
 import ApprovalList from './pages/approvals/ApprovalList';
 import ApprovalDetails from './pages/approvals/ApprovalDetails';
 import SuperAdminPreBookings from './pages/SuperAdminPreBookings';
@@ -89,6 +90,7 @@ const AppRoutes = () => {
       <Route path="/prebook" element={<PublicPreBooking />} />
       <Route path="/pass/:visitId" element={<VisitorPass />} />
       <Route path="/pre-register" element={<PreRegister />} />
+      <Route path="/visitor-invitation/:token" element={<VisitorInvitation />} />
 
       {/* Main Authenticated Layout */}
       <Route element={user ? <MainLayout /> : <Navigate to="/login" replace />}>
