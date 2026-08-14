@@ -38,6 +38,7 @@ const hostOptions = [
   { label: "Sabari (Admin)", name: "Sabari", dbName: "SABARI" },
   { label: "Viji (Admin)", name: "Viji", dbName: "VIJI" },
   { label: "Agila (IT)", name: "Agila", dbName: "AGILA" },
+  { label: "Joe Christo (Senior HR)", name: "Joe Christo", dbName: "JOE CHRISTO" },
   { label: "New Visitors", name: "New Visitors", dbName: "NEW VISITORS" }
 ];
 

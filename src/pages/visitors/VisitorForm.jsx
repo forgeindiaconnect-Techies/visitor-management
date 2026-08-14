@@ -29,6 +29,7 @@ const VisitorForm = () => {
     'Sabari (Admin)',
     'Viji (Admin)',
     'Agila (IT)',
+    'Joe Christo (Senior HR)',
     'New Visitors'
   ]);
 

@@ -56,6 +56,11 @@ const FaceCamera = ({ onCapture }) => {
 
     const imageData = canvas.toDataURL("image/jpeg", 0.85);
 
+    // Stop the camera stream immediately to turn off the webcam light
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+    }
+
     setPhoto(imageData);
     onCapture(imageData);
   };
@@ -63,6 +68,7 @@ const FaceCamera = ({ onCapture }) => {
   const retakePhoto = () => {
     setPhoto(null);
     onCapture(null);
+    startCamera(); // Restart camera when user wants to retake
   };
 
   useEffect(() => {
