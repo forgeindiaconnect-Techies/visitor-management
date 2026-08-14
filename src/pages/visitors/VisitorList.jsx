@@ -36,7 +36,6 @@ const VisitorList = () => {
     'SANDEEP(CEO SIR)',
     'AVINASH(MD SIR)',
     'SABARI(ADMIN)',
-    'VIJI(ADMIN)',
     'AGILA(IT)',
     'NEW VISITORS'
   ]);

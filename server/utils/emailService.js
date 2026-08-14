@@ -8,7 +8,7 @@ const SMTP_PASS = process.env.SMTP_PASS || 'nuyy dzpp ysfp tcdl';
 const transporter = nodemailer.createTransport({
   host: SMTP_HOST,
   port: SMTP_PORT,
-  secure: false, // true for 465, false for 587
+  secure: SMTP_PORT === 465, // true for 465, false for other ports
   auth: {
     user: SMTP_USER,
     pass: SMTP_PASS

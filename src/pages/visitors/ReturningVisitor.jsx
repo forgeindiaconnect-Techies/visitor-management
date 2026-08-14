@@ -30,7 +30,6 @@ const ReturningVisitor = () => {
     'Sandeep (CEO Sir)',
     'Avinash (MD Sir)',
     'Sabari (Admin)',
-    'Viji (Admin)',
     'Agila (IT)',
     'Joe Christo (Senior HR)',
     'New Visitors'
