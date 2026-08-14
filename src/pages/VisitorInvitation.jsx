@@ -11,7 +11,8 @@ const VisitorInvitation = () => {
     const fetchInvitation = async () => {
       try {
         // Using fetch instead of axios to avoid missing dependency errors
-        const response = await fetch(`http://localhost:5000/api/visitor-invitations/${token}`);
+        const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+        const response = await fetch(`${API_URL}/visitor-invitations/${token}`);
         const data = await response.json();
         
         if (response.ok) {
