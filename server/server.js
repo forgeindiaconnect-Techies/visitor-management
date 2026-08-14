@@ -84,7 +84,29 @@ if (missingVars.length > 0) {
 // MongoDB Connection
 console.log('Connecting to MongoDB...');
 mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('✅ MongoDB connected successfully'))
+  .then(async () => {
+    console.log('✅ MongoDB connected successfully');
+    
+    // Initialize default approval permissions
+    const ApprovalPermission = require('./models/ApprovalPermission');
+    try {
+      const defaultRoles = [
+        { role: 'SUPER_ADMIN', canApprove: true },
+        { role: 'MD', canApprove: true },
+        { role: 'SENIOR_HR', canApprove: true },
+        { role: 'IT', canApprove: false }
+      ];
+      for (const roleDef of defaultRoles) {
+        await ApprovalPermission.findOneAndUpdate(
+          { role: roleDef.role },
+          { $setOnInsert: { canApprove: roleDef.canApprove } },
+          { upsert: true }
+        );
+      }
+    } catch (err) {
+      console.error('Error initializing default approval permissions:', err);
+    }
+  })
   .catch(err => {
     console.error('❌ MongoDB connection error:', err.message);
     process.exit(1);
@@ -106,6 +128,7 @@ const auditLogsRouter = require('./routes/auditLogs');
 
 const paymentRoutes = require('./routes/paymentRoutes');
 const testNotification = require('./routes/testNotification');
+const approvalPermissionRoutes = require('./routes/approvalPermissionRoutes');
 const invitationsRouter = require('./routes/invitations');
 const visitorInvitationRoutes = require('./routes/visitorInvitationRoutes');
 const preBookingRoutes = require('./routes/preBookingRoutes');
@@ -187,6 +210,7 @@ app.use('/api/company', companyRouter);
 app.use('/api/audit-logs', auditLogsRouter);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/test', testNotification);
+app.use('/api/approval-permissions', approvalPermissionRoutes);
 
 app.get('/api/network-ip', (req, res) => {
   const os = require('os');

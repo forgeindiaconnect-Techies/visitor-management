@@ -9,6 +9,34 @@ export const AuthProvider = ({ children }) => {
     const saved = localStorage.getItem('zmvms_user') || sessionStorage.getItem('zmvms_user');
     return saved ? JSON.parse(saved) : null;
   });
+  
+  const [approvalRoles, setApprovalRoles] = useState([]);
+  const [hasApprovalPermission, setHasApprovalPermission] = useState(false);
+
+  // Fetch current user's approval permissions
+  useEffect(() => {
+    if (user && user.role) {
+      const fetchMyPermission = async () => {
+        try {
+          const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+          const res = await fetch(`${API_URL}/api/approval-permissions/my-permission`, {
+            headers: { 
+              'Authorization': `Bearer ${user.token || localStorage.getItem('token')}`,
+              'x-user-role': user.role
+            }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setHasApprovalPermission(data.canApprove === true);
+          }
+        } catch (e) {
+          console.error("Failed to fetch my approval permission", e);
+          setHasApprovalPermission(false);
+        }
+      };
+      fetchMyPermission();
+    }
+  }, [user]);
 
   // Global API Interceptor (Phase 25 & Step 8)
   useEffect(() => {
@@ -145,7 +173,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, login, logout, updateUser, approvalRoles, hasApprovalPermission }}>
       {children}
     </AuthContext.Provider>
   );

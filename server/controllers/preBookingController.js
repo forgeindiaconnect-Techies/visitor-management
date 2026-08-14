@@ -1,5 +1,9 @@
 const crypto = require("crypto");
 const PreBooking = require("../models/PreBooking");
+const QRCode = require('qrcode');
+const { generatePassBase64 } = require('../utils/generatePass');
+const visitorNotificationService = require('../services/visitorNotificationService');
+const logAction = require('../utils/auditLogger');
 
 const createVisitorId = () => {
   const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
@@ -64,8 +68,8 @@ const createPreBooking = async (req, res) => {
     const visitorId = createVisitorId();
     const qrToken = `vms_${crypto.randomBytes(16).toString("hex")}`;
 
-    const isNewVisitor = hostEmployee === "New Visitors" || hostEmployee === "New Visitor";
-    const finalAssignedHr = isNewVisitor ? null : assignedHr;
+    const isNewVisitor = hostEmployee === "New Visitors" || hostEmployee === "New Visitor" || hostEmployee === "Direct Visits" || hostEmployee === "Direct Visit";
+    const finalAssignedHr = (isNewVisitor || !assignedHr) ? null : assignedHr;
     const visitorType = isNewVisitor ? "NEW_VISITOR" : "NORMAL";
 
     const preBooking = await PreBooking.create({
@@ -89,67 +93,27 @@ const createPreBooking = async (req, res) => {
       status: "PENDING",
     });
 
-    // Create Notifications
+    // Create Notifications via Service
     try {
-      const User = require("../models/User");
-      const Notification = require("../models/Notification");
-
-      // 1. Find all Super Admin and Security users
-      const superAdmins = await User.find({
+      // Map PreBooking model to the common structure expected by the service
+      const visitorObj = {
+        _id: preBooking._id,
+        visitorName: preBooking.fullName,
+        visitDate: preBooking.visitDate,
+        expectedArrivalTime: preBooking.expectedTime,
+        hostName: preBooking.hostEmployee,
+        hostId: preBooking.assignedHr, // Map assigned HR as the explicit host if provided
         companyId: preBooking.companyId || 'FIC001',
-        role: 'Super Admin'
+        branch: preBooking.branchLocation,
+        email: preBooking.email
+      };
+
+      await visitorNotificationService.notifyVisitorStatusChange({
+        visitor: visitorObj,
+        event: visitorNotificationService.EVENTS.VISITOR_REGISTERED,
+        io: req.app.get('io')
       });
 
-      // 2. Create notification for each Super Admin
-      const superAdminNotifications = superAdmins.map((admin) => ({
-        companyId: preBooking.companyId || 'FIC001',
-        branchId: branchLocation,
-        recipient: admin._id,
-        type: "PREBOOKING_CREATED",
-        title: "New Pre-Booking Request",
-        message: `${preBooking.fullName} has submitted a new pre-booking.`,
-        preBookingId: preBooking._id,
-        createdBy: "Visitor Registration"
-      }));
-
-      if (superAdminNotifications.length > 0) {
-        await Notification.insertMany(superAdminNotifications);
-      }
-
-      // 3. Create notification for the assigned HR user only
-      if (finalAssignedHr) {
-        const selectedHrUser = await User.findById(finalAssignedHr);
-        if (selectedHrUser) {
-        await Notification.create({
-          companyId: preBooking.companyId || 'FIC001',
-          branchId: branchLocation,
-          recipient: selectedHrUser._id,
-          type: "PREBOOKING_CREATED",
-          title: "New Pre-Booking Assigned",
-          message: `${preBooking.fullName} has submitted a pre-booking assigned to you.`,
-          preBookingId: preBooking._id,
-          createdBy: "Visitor Registration"
-        });
-        }
-      }
-
-      const io = req.app.get('io');
-      if (io) {
-        io.emit('new_notification', {
-          _id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-          createdAt: new Date().toISOString(),
-          type: 'PREBOOKING_CREATED',
-          title: 'New Pre-Booking Request',
-          message: `${preBooking.fullName} has submitted a pre-booking request.`,
-          preBookingId: preBooking._id,
-          companyId: preBooking.companyId || 'FIC001',
-          branchId: branchLocation,
-          recipients: [
-            ...superAdmins.map(admin => admin._id.toString()),
-            ...(finalAssignedHr ? [finalAssignedHr.toString()] : [])
-          ].filter(Boolean)
-        });
-      }
     } catch (notifErr) {
       console.error("Error creating pre-booking notifications:", notifErr);
     }
@@ -218,10 +182,13 @@ const approvePreBooking = async (req, res) => {
       });
     }
 
-    if (!['Super Admin', 'Security', 'HR'].includes(req.userRole)) {
+    const company = await require('../models/Company').findOne({ code: req.companyId || 'FIC001' });
+    const approvalRoles = company?.approvalRoles || ['Super Admin', 'MD', 'Senior HR', 'IT'];
+
+    if (!approvalRoles.includes(req.userRole)) {
       return res.status(403).json({
         success: false,
-        message: "You are not authorized to approve pre-bookings. Security or Admin role required."
+        message: "You are not authorized to approve pre-bookings."
       });
     }
 
@@ -229,13 +196,6 @@ const approvePreBooking = async (req, res) => {
       return res.status(403).json({
         success: false,
         message: "You are not authorized to approve this pre-booking assignment."
-      });
-    }
-
-    if (preBooking.visitorType === "NEW_VISITOR" && req.userRole !== "Security") {
-      return res.status(403).json({
-        success: false,
-        message: "Only Security can approve a new visitor"
       });
     }
 
@@ -251,6 +211,21 @@ const approvePreBooking = async (req, res) => {
     preBooking.status = "APPROVED";
     preBooking.qrToken = qrToken;
     preBooking.approvedAt = new Date();
+
+    preBooking.approvalDetails = {
+      approvedBy: req.userId,
+      approvedByRole: req.userRole,
+      approvedAt: new Date(),
+      method: 'Dashboard'
+    };
+
+    preBooking.statusHistory.push({
+      status: 'APPROVED',
+      changedBy: req.userId,
+      changedByRole: req.userRole,
+      changedAt: new Date(),
+      reason: ''
+    });
 
     await preBooking.save();
 

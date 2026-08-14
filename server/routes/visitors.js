@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const visitorNotificationService = require('../services/visitorNotificationService');
 const multer = require('multer');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const cloudinary = require('../config/cloudinary');
@@ -10,9 +11,11 @@ const authMiddleware = require('../middleware/authMiddleware');
 const logAction = require('../utils/auditLogger');
 const sendNotification = require('../utils/firebaseNotification');
 const User = require('../models/User');
+const Company = require('../models/Company');
+const checkApprovalPermission = require('../middleware/approvalPermission');
 
 router.use((req, res, next) => {
-  if (req.path.startsWith('/pass/') || req.path === '/public-prebook' || req.path === '/upload') {
+  if (req.path.startsWith('/pass/') || req.path.startsWith('/status/') || req.path.startsWith('/public-status/') || req.path === '/public-prebook' || req.path === '/upload') {
     return next();
   }
   authMiddleware(req, res, next);
@@ -107,7 +110,9 @@ router.post('/public-prebook', async (req, res) => {
       photoUrl: photoUrl || '',
       registrationType: 'Pre-Booking',
       status: 'PENDING',
-      createdBy: 'Public Pre-Booking Landing Page'
+      createdBy: 'Public Pre-Booking Landing Page',
+      trackingToken: require('crypto').randomBytes(32).toString('hex'),
+      trackingTokenExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
     });
 
     const savedVisitor = await newVisitor.save();
@@ -173,6 +178,40 @@ router.post('/public-prebook', async (req, res) => {
       }
     } catch (notifErr) {
       console.warn('Could not create notification:', notifErr.message);
+    }
+
+    // Send tracking link email to visitor
+    if (email) {
+      const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+      const trackingUrl = `${FRONTEND_URL}/visitor-status/${savedVisitor.trackingToken}`;
+      const visitDateFormatted = visitDate ? new Date(visitDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'TBD';
+      const emailHtml = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
+          <div style="background-color: #0f172a; color: white; padding: 16px 24px; border-radius: 8px 8px 0 0; text-align: center;">
+            <h2 style="margin: 0; font-size: 20px;">Pre-Booking Submitted</h2>
+          </div>
+          <div style="padding: 24px; background-color: #ffffff;">
+            <p style="font-size: 16px; color: #1e293b;">Hello <strong>${visitorName}</strong>,</p>
+            <p style="font-size: 14px; color: #475569;">Your visitor appointment request has been successfully submitted.</p>
+            <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; padding: 16px; border-radius: 8px; margin: 20px 0;">
+              <p style="margin: 4px 0; font-size: 14px;"><strong>Status:</strong> <span style="color: #d97706; font-weight: bold;">Pending Approval</span></p>
+              <p style="margin: 4px 0; font-size: 14px;"><strong>Host:</strong> ${hostName}</p>
+              <p style="margin: 4px 0; font-size: 14px;"><strong>Appointment:</strong> ${visitDateFormatted}, ${expectedArrivalTime || '10:00 AM'}</p>
+            </div>
+            <p style="font-size: 14px; color: #475569;">You can track your appointment status here:</p>
+            <div style="text-align: center; margin: 24px 0;">
+              <a href="${trackingUrl}" target="_blank" style="background-color: #4f46e5; color: #ffffff; padding: 12px 28px; text-decoration: none; font-weight: bold; border-radius: 6px; display: inline-block; font-size: 14px;">TRACK MY VISIT</a>
+            </div>
+            <p style="font-size: 12px; color: #64748b;">You will receive another email when your appointment is approved.</p>
+            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+            <p style="font-size: 14px; color: #1e293b; margin: 0;">Thank You,<br/><strong>FIC Visitor Management</strong></p>
+          </div>
+        </div>
+      `;
+      const emailService = require('../utils/emailService');
+      emailService.sendEmail(email, 'Pre-Booking Submitted — Track Your Visit', emailHtml).catch(err => {
+        console.warn('Could not send tracking email:', err.message);
+      });
     }
 
     res.status(201).json({
@@ -307,7 +346,10 @@ router.get('/', async (req, res) => {
       }
     }
 
-    const visitors = await Visitor.find(query).sort({ createdAt: -1 });
+    const visitors = await Visitor.find(query)
+      .populate('approvedBy', 'name email role')
+      .populate('statusHistory.changedBy', 'name email role')
+      .sort({ createdAt: -1 });
     res.json(visitors);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -408,8 +450,17 @@ router.post('/', async (req, res) => {
       mobile: mobileNumber
     };
 
-    // 4. Save the Visit Record
-    const initialStatus = req.body.isDraft ? 'Draft' : (req.body.status || 'Pending');
+    // Determine visitType and initialStatus
+    let visitType = 'PRE_BOOKING';
+    if (hostName === 'New Visitors' || hostName === 'Direct Visit' || req.body.registrationType === 'Walk-in') {
+      visitType = 'DIRECT_VISIT';
+    }
+
+    let initialStatus = req.body.isDraft ? 'Draft' : (req.body.status || 'Pending');
+    if (visitType === 'DIRECT_VISIT' && !req.body.isDraft) {
+      initialStatus = 'Approved'; // Bypass Pending Approval for Direct Visits
+    }
+
     const visitor = new Visitor({
       ...req.body,
       companyId: req.companyId,
@@ -419,7 +470,9 @@ router.post('/', async (req, res) => {
       bookingId,
       qrCode,
       qrPayload,
-      status: initialStatus
+      visitType,
+      status: initialStatus,
+      approvalStatus: initialStatus === 'Approved' ? 'APPROVED' : 'PENDING'
     });
     const newVisitor = await visitor.save();
 
@@ -552,6 +605,493 @@ router.get('/pass/:visitId', async (req, res) => {
       success: false,
       message: err.message
     });
+    });
+  }
+});
+
+// POST /scan-pass - Unified secure QR Validation
+router.post('/scan-pass', async (req, res) => {
+  try {
+    const { passToken } = req.body;
+    if (!passToken) {
+      return res.status(400).json({ valid: false, message: 'Invalid pass token provided.' });
+    }
+    
+    // Clean token if a full URL was scanned
+    let cleanToken = passToken.trim();
+    if (cleanToken.includes('/pass/')) {
+      const parts = cleanToken.split('/pass/');
+      cleanToken = parts[parts.length - 1];
+    }
+    
+    const isValidObjectId = require('mongoose').isValidObjectId(cleanToken);
+    
+    // 1. Try finding in Visitor collection
+    let visitor = await Visitor.findOne({
+      $or: [
+        { visitId: cleanToken },
+        { profileId: cleanToken },
+        { bookingId: cleanToken },
+        ...(isValidObjectId ? [{ _id: cleanToken }] : [])
+      ]
+    });
+    
+    // 2. If not found in Visitor, find in PreBooking collection
+    if (!visitor) {
+      const PreBooking = require('../models/PreBooking');
+      const pb = await PreBooking.findOne({
+        $or: [
+          { visitorId: cleanToken },
+          { qrToken: cleanToken },
+          ...(isValidObjectId ? [{ _id: cleanToken }] : [])
+        ]
+      });
+      if (pb) visitor = pb;
+    }
+    
+    if (!visitor) {
+      return res.status(404).json({ valid: false, message: 'Visitor pass not found or invalid QR code.' });
+    }
+    
+    const isPreBooking = visitor.visitorType === 'PRE_BOOKING' || visitor.visitType === 'PRE_BOOKING' || visitor.visitType !== 'DIRECT_VISIT'; // Handle older records safely
+    const approvalStatus = visitor.approvalStatus || visitor.status;
+    
+    if (isPreBooking) {
+      if (['PENDING', 'Pending'].includes(approvalStatus)) {
+        return res.json({ valid: false, message: '⚠ Approval Pending: This visitor has not been approved yet.' });
+      }
+      if (['REJECTED', 'Rejected'].includes(approvalStatus)) {
+        return res.json({ valid: false, message: '❌ This visitor appointment has been rejected.' });
+      }
+      if (['CANCELLED', 'Cancelled'].includes(approvalStatus)) {
+        return res.json({ valid: false, message: '✕ Appointment Cancelled: This pass cannot be used.' });
+      }
+    }
+    
+    if (['CHECKED_IN', 'Inside', 'Checked In'].includes(visitor.status) || visitor.checkedIn) {
+      return res.json({ valid: false, message: '⚠ Already Checked In' });
+    }
+    
+    if (['CHECKED_OUT', 'Exited', 'Checked Out'].includes(visitor.status)) {
+      return res.json({ valid: false, message: '⚠ Visitor has already checked out.' });
+    }
+    
+    // Date Validation
+    const today = new Date();
+    // Normalize to YYYY-MM-DD local timezone equivalent for comparison
+    const todayStr = new Date(today.getTime() - (today.getTimezoneOffset() * 60000)).toISOString().split('T')[0]; 
+    const appointmentDateStr = visitor.visitDate || visitor.appointmentDate; // E.g. '2026-08-22'
+    
+    if (appointmentDateStr && appointmentDateStr !== todayStr) {
+      return res.json({ valid: false, message: '⚠ Appointment Not Active: The appointment date is not today.' });
+    }
+    
+    // Time Validation
+    const expectedTimeStr = visitor.expectedArrivalTime || visitor.expectedTime; // e.g. "02:00 PM"
+    if (expectedTimeStr) {
+      const timeRegex = /(\d{1,2}):(\d{2})\s*(AM|PM)/i;
+      const match = expectedTimeStr.match(timeRegex);
+      if (match) {
+        let [_, hours, minutes, ampm] = match;
+        hours = parseInt(hours, 10);
+        minutes = parseInt(minutes, 10);
+        if (ampm.toUpperCase() === 'PM' && hours < 12) hours += 12;
+        if (ampm.toUpperCase() === 'AM' && hours === 12) hours = 0;
+        
+        const appointmentTime = new Date();
+        appointmentTime.setHours(hours, minutes, 0, 0);
+        
+        const diffMinutes = (today - appointmentTime) / 60000;
+        // Check-in allowed: 15 mins early to 120 mins late
+        if (diffMinutes < -15) {
+          return res.json({ valid: false, message: '⚠ Appointment Not Active: You are too early for your appointment.' });
+        }
+        if (diffMinutes > 120) {
+          return res.json({ valid: false, message: '⚠ Appointment Not Active: Your appointment time has expired.' });
+        }
+      }
+    }
+    
+    // Valid Pass
+    return res.json({
+      success: true,
+      valid: true,
+      visitor: {
+        id: visitor._id,
+        visitId: visitor.visitId || visitor.visitorId,
+        visitorName: visitor.visitorName || visitor.fullName,
+        hostName: visitor.hostName || visitor.hostEmployee,
+        appointmentDate: appointmentDateStr,
+        appointmentTime: expectedTimeStr,
+        approvalStatus: approvalStatus,
+        visitType: visitor.visitType || visitor.visitorType,
+        photoUrl: visitor.facePhoto || visitor.photoUrl,
+        mobileNumber: visitor.mobileNumber,
+        purpose: visitor.purpose || visitor.visitPurpose
+      }
+    });
+  } catch (err) {
+    return res.status(500).json({ valid: false, message: err.message });
+  }
+// POST /:id/check-in - Secure Check-In
+router.post('/:id/check-in', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const isValidObjectId = require('mongoose').isValidObjectId(id);
+    
+    let visitor = await Visitor.findOne({
+      $or: [
+        { visitId: id },
+        { profileId: id },
+        { bookingId: id },
+        ...(isValidObjectId ? [{ _id: id }] : [])
+      ]
+    });
+
+    if (!visitor) {
+      const PreBooking = require('../models/PreBooking');
+      const pb = await PreBooking.findOne({
+        $or: [
+          { visitorId: id },
+          { qrToken: id },
+          ...(isValidObjectId ? [{ _id: id }] : [])
+        ]
+      });
+      if (!pb) {
+        return res.status(404).json({ success: false, message: 'Visitor not found.' });
+      }
+      
+      // Upgrade PreBooking to Visitor record
+      visitor = new Visitor({
+        companyId: pb.companyId,
+        branch: pb.branchLocation,
+        visitorName: pb.fullName,
+        mobileNumber: pb.mobileNumber,
+        email: pb.email,
+        companyName: pb.visitingCompany,
+        hostName: pb.hostEmployee,
+        hostId: pb.assignedHr,
+        visitType: pb.visitorType || 'PRE_BOOKING',
+        purpose: pb.visitPurpose,
+        visitDate: pb.visitDate,
+        expectedArrivalTime: pb.expectedTime,
+        status: 'CHECKED_IN',
+        approvalStatus: pb.status === 'PENDING' ? 'PENDING' : 'APPROVED', // Keep current approval status
+        checkedIn: true,
+        entryTime: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
+        facePhoto: pb.facePhoto,
+        idType: pb.idType,
+        idProofUrl: pb.idProofUrl,
+        vehicleNumber: pb.vehicleNumber,
+        profileId: pb.visitorId,
+        visitId: pb.visitorId
+      });
+    }
+
+    const isPreBooking = visitor.visitorType === 'PRE_BOOKING' || visitor.visitType === 'PRE_BOOKING' || visitor.visitType !== 'DIRECT_VISIT';
+    const approvalStatus = visitor.approvalStatus || visitor.status;
+
+    // Security Validations
+    if (isPreBooking && !['APPROVED', 'DATE_CHANGED', 'TIME_CHANGED', 'Approved'].includes(approvalStatus)) {
+      return res.status(403).json({ success: false, message: 'Visitor is not approved for entry.' });
+    }
+
+    if (['CHECKED_IN', 'Inside', 'Checked In'].includes(visitor.status) || visitor.checkedIn) {
+      return res.status(400).json({ success: false, message: 'Visitor is already checked in.' });
+    }
+
+    // Set state
+    visitor.status = 'CHECKED_IN';
+    visitor.checkedIn = true;
+    visitor.entryTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+    visitor.statusHistory.push({
+      status: 'CHECKED_IN',
+      changedBy: (req.user && req.user._id) || null,
+      changedByRole: (req.user && req.user.role) || 'Security',
+      changedAt: new Date(),
+      reason: 'Verified by Security'
+    });
+
+    const updatedVisitor = await visitor.save();
+
+    await visitorNotificationService.notifyVisitorStatusChange({
+      visitor: updatedVisitor,
+      event: visitorNotificationService.EVENTS.VISITOR_CHECKED_IN,
+      io: req.app.get('io')
+    });
+
+    res.json({ success: true, visitor: updatedVisitor });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /:id/check-out - Secure Check-Out
+router.post('/:id/check-out', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const isValidObjectId = require('mongoose').isValidObjectId(id);
+    
+    let visitor = await Visitor.findOne({
+      $or: [
+        { visitId: id },
+        { profileId: id },
+        { bookingId: id },
+        ...(isValidObjectId ? [{ _id: id }] : [])
+      ]
+    });
+
+    if (!visitor) {
+      return res.status(404).json({ success: false, message: 'Visitor not found in active registry.' });
+    }
+
+    if (!['CHECKED_IN', 'Inside', 'Checked In'].includes(visitor.status) && !visitor.checkedIn) {
+      return res.status(400).json({ success: false, message: 'Visitor is not checked in.' });
+    }
+
+    visitor.status = 'CHECKED_OUT';
+    visitor.exitTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+    visitor.statusHistory.push({
+      status: 'CHECKED_OUT',
+      changedBy: (req.user && req.user._id) || null,
+      changedByRole: (req.user && req.user.role) || 'Security',
+      changedAt: new Date(),
+      reason: 'Checked out by Security'
+    });
+
+    const updatedVisitor = await visitor.save();
+
+    await visitorNotificationService.notifyVisitorStatusChange({
+      visitor: updatedVisitor,
+      event: visitorNotificationService.EVENTS.VISITOR_CHECKED_OUT,
+      io: req.app.get('io')
+    });
+
+    res.json({ success: true, visitor: updatedVisitor });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET Secure Visitor Status by Tracking Token (Public - no auth required)
+router.get('/public-status/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const PreBooking = require('../models/PreBooking');
+
+    // Search Visitor collection first
+    let visitor = await Visitor.findOne({ trackingToken: token })
+      .populate('approvedBy', 'name role')
+      .populate('statusHistory.changedBy', 'name role');
+
+    let source = 'visitor';
+
+    // Fallback to PreBooking collection
+    if (!visitor) {
+      const pb = await PreBooking.findOne({ trackingToken: token })
+        .populate('approvedBy', 'name role')
+        .populate('statusHistory.changedBy', 'name role');
+      if (pb) {
+        visitor = pb;
+        source = 'prebooking';
+      }
+    }
+
+    if (!visitor) {
+      return res.status(404).json({ success: false, message: 'Tracking link is invalid or visitor not found.' });
+    }
+
+    // Check token expiry
+    if (visitor.trackingTokenExpiresAt && visitor.trackingTokenExpiresAt < new Date()) {
+      return res.status(410).json({ success: false, expired: true, message: 'Tracking link has expired.' });
+    }
+
+    // Build safe payload — never expose internal fields
+    const approvalStatus = visitor.approvalStatus || visitor.status;
+    const approvedByUser = visitor.approvedBy;
+    const approvalData = {
+      approvedBy: (approvedByUser?.name) || visitor.approvalDetails?.approvedBy || null,
+      approvedByRole: (approvedByUser?.role) || visitor.approvedByRole || visitor.approvalDetails?.approvedByRole || null,
+      approvedAt: visitor.approvedAt || visitor.approvalDetails?.approvedAt || null,
+    };
+
+    let appointmentDate = null;
+    let appointmentStartTime = null;
+    let appointmentEndTime = null;
+    let hostName = null;
+    let visitorName = null;
+    let visitorEmail = null;
+    let visitType = null;
+
+    if (source === 'visitor') {
+      appointmentDate = visitor.visitDate;
+      appointmentStartTime = visitor.expectedArrivalTime;
+      appointmentEndTime = visitor.appointmentEndTime;
+      hostName = visitor.hostName;
+      visitorName = visitor.visitorName;
+      visitorEmail = visitor.email;
+      visitType = visitor.visitType || 'PRE_BOOKING';
+    } else {
+      appointmentDate = visitor.visitDate ? (visitor.visitDate instanceof Date ? visitor.visitDate.toISOString().split('T')[0] : visitor.visitDate) : null;
+      appointmentStartTime = visitor.expectedTime;
+      appointmentEndTime = null;
+      hostName = visitor.hostEmployee;
+      visitorName = visitor.fullName;
+      visitorEmail = visitor.email;
+      visitType = 'PRE_BOOKING';
+    }
+
+    return res.json({
+      success: true,
+      visitor: {
+        name: visitorName,
+        email: visitorEmail,
+        visitType,
+        approvalStatus,
+        appointmentDate,
+        appointmentStartTime,
+        appointmentEndTime,
+        hostName,
+        // Pass internal ID only for QR pass rendering — NOT the trackingToken
+        passId: visitor._id.toString()
+      },
+      approval: approvalData,
+      statusHistory: (visitor.statusHistory || []).map(h => ({
+        status: h.status,
+        changedByName: h.changedBy?.name || null,
+        changedByRole: h.changedByRole || h.changedBy?.role || null,
+        changedAt: h.changedAt,
+        reason: h.reason || null
+      }))
+    });
+
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET Public Visitor Status
+router.get('/:id/status', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const isValidObjectId = require('mongoose').isValidObjectId(id);
+    
+    let visitor = await Visitor.findOne({
+      $or: [
+        { visitId: id },
+        { profileId: id },
+        { bookingId: id },
+        ...(isValidObjectId ? [{ _id: id }] : [])
+      ]
+    }).populate('approvedBy', 'name role').populate('statusHistory.changedBy', 'name role');
+
+    let approvalStatus = null;
+    let appointmentDate = null;
+    let appointmentStartTime = null;
+    let appointmentEndTime = null;
+    let hostName = null;
+    let visitorName = null;
+    let email = null;
+    let visitType = null;
+    let approvedBy = null;
+    let approvedByRole = null;
+    let approvedAt = null;
+    let statusHistory = [];
+
+    if (visitor) {
+      approvalStatus = visitor.approvalStatus || visitor.status;
+      appointmentDate = visitor.visitDate;
+      appointmentStartTime = visitor.expectedArrivalTime;
+      appointmentEndTime = visitor.appointmentEndTime;
+      hostName = visitor.hostName;
+      visitorName = visitor.visitorName;
+      email = visitor.email;
+      visitType = visitor.visitType || 'PRE_BOOKING';
+      approvedBy = visitor.approvedBy?.name || visitor.approvedByRole || visitor.approvalDetails?.approvedBy || null;
+      approvedByRole = visitor.approvedBy?.role || visitor.approvalDetails?.approvedByRole || null;
+      approvedAt = visitor.approvedAt || visitor.approvalDetails?.approvedAt || null;
+      statusHistory = visitor.statusHistory || [];
+    } else {
+      const PreBooking = require('../models/PreBooking');
+      const pb = await PreBooking.findOne({
+        $or: [
+          { visitorId: id },
+          { qrToken: id },
+          ...(isValidObjectId ? [{ _id: id }] : [])
+        ]
+      }).populate('approvedBy', 'name role').populate('statusHistory.changedBy', 'name role');
+
+      if (!pb) {
+        return res.status(404).json({ success: false, message: 'Visitor not found' });
+      }
+
+      approvalStatus = pb.approvalStatus || pb.status;
+      appointmentDate = pb.visitDate ? pb.visitDate.toISOString().split('T')[0] : null;
+      appointmentStartTime = pb.expectedTime;
+      appointmentEndTime = null;
+      hostName = pb.hostEmployee;
+      visitorName = pb.fullName;
+      email = pb.email;
+      visitType = pb.visitorType || 'PRE_BOOKING';
+      
+      approvedBy = pb.approvedBy?.name || pb.approvedByRole || pb.approvalDetails?.approvedBy || null;
+      approvedByRole = pb.approvedBy?.role || pb.approvalDetails?.approvedByRole || null;
+      approvedAt = pb.approvedAt || pb.approvalDetails?.approvedAt || null;
+      statusHistory = pb.statusHistory || [];
+    }
+
+    return res.json({
+      success: true,
+      visitor: {
+        id: id,
+        name: visitorName,
+        email: email,
+        visitType: visitType,
+        approvalStatus: approvalStatus,
+        appointmentDate: appointmentDate,
+        appointmentStartTime: appointmentStartTime,
+        appointmentEndTime: appointmentEndTime,
+        hostName: hostName
+      },
+      approval: {
+        approvedBy: approvedBy,
+        approvedByRole: approvedByRole,
+        approvedAt: approvedAt
+      },
+      statusHistory: statusHistory
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET Visitor Status History (Audit Trail)
+router.get('/:id/status-history', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const isValidObjectId = require('mongoose').isValidObjectId(id);
+    
+    let visitor = await Visitor.findOne({
+      $or: [
+        { visitId: id },
+        { profileId: id },
+        { bookingId: id },
+        ...(isValidObjectId ? [{ _id: id }] : [])
+      ]
+    }).populate('statusHistory.changedBy', 'name email role');
+
+    if (!visitor) {
+      return res.status(404).json({ success: false, message: 'Visitor not found' });
+    }
+
+    return res.json({
+      success: true,
+      history: visitor.statusHistory || []
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
   }
 });
 
@@ -565,14 +1105,45 @@ const buildVisitorQuery = (id, companyId) => {
 };
 
 // Host Approve Visitor Endpoint
-router.patch('/:id/approve', async (req, res) => {
+router.patch('/:id/approve', checkApprovalPermission, async (req, res) => {
   try {
     const visitor = await Visitor.findOne(buildVisitorQuery(req.params.id, req.companyId));
     if (!visitor) return res.status(404).json({ message: 'Visitor request not found' });
+    
+    // Prevent duplicate approval
+    if (visitor.status === 'Approved' || visitor.approvalStatus === 'APPROVED') {
+      return res.status(400).json({ success: false, message: 'Visitor is already approved' });
+    }
+
+    const reqUserId = req.userId || (req.user && req.user._id) || null;
+    const reqUserRole = req.userRole || (req.user && req.user.role) || null;
+    const reqUserName = (req.user && req.user.name) || req.body.approvedBy || visitor.hostName || 'Host';
 
     visitor.status = 'Approved';
-    visitor.approvedBy = req.user ? req.user.name : (req.body.approvedBy || visitor.hostName || 'Host');
+    visitor.approvalStatus = 'APPROVED';
+    
+    // Strict schema fields
+    visitor.approvedBy = reqUserId;
+    visitor.approvedByRole = reqUserRole;
+    visitor.approvedAt = new Date();
+    
+    // Legacy fields
     visitor.approvalTime = new Date();
+
+    visitor.approvalDetails = {
+      approvedBy: reqUserId || 'System',
+      approvedByRole: reqUserRole || 'System',
+      approvedAt: new Date(),
+      method: 'Dashboard'
+    };
+
+    visitor.statusHistory.push({
+      status: 'APPROVED',
+      changedBy: reqUserId,
+      changedByRole: reqUserRole || 'System',
+      changedAt: new Date(),
+      reason: ''
+    });
     
     // Ensure bookingId exists
     if (!visitor.bookingId) {
@@ -595,21 +1166,13 @@ router.patch('/:id/approve', async (req, res) => {
 
     const updatedVisitor = await visitor.save();
 
-    // Create Notification for Reception/Security & Visitor
-    const notification = await Notification.create({
-      companyId: req.companyId,
-      branchId: updatedVisitor.branch,
-      type: 'success',
-      module: 'Visitors',
-      title: '✅ Approved Visitor',
-      message: `Visitor: ${updatedVisitor.visitorName} | Booking ID: ${updatedVisitor.bookingId} | Expected Arrival: ${updatedVisitor.expectedArrivalTime || '10:30 AM'}`,
-      createdBy: req.user ? req.user.name : 'Host'
+    // Trigger Notifications & Emails
+    await visitorNotificationService.notifyVisitorStatusChange({
+      visitor: updatedVisitor,
+      event: visitorNotificationService.EVENTS.VISITOR_APPROVED,
+      changedBy: req.user,
+      io: req.app.get('io')
     });
-
-    const io = req.app.get('io');
-    if (io) {
-      io.emit('new_notification', notification);
-    }
 
     await logAction(req, `Visitor Pre-Booking Approved`, 'Visitor', {
       userId: req.user ? req.user._id : undefined,
@@ -624,31 +1187,47 @@ router.patch('/:id/approve', async (req, res) => {
 });
 
 // Host Reject Visitor Endpoint
-router.patch('/:id/reject', async (req, res) => {
+router.patch('/:id/reject', checkApprovalPermission, async (req, res) => {
   try {
     const visitor = await Visitor.findOne(buildVisitorQuery(req.params.id, req.companyId));
     if (!visitor) return res.status(404).json({ message: 'Visitor request not found' });
 
+    // Prevent duplicate rejection
+    if (visitor.status === 'Rejected' || visitor.approvalStatus === 'REJECTED') {
+      return res.status(400).json({ success: false, message: 'Visitor is already rejected' });
+    }
+
+    const reqUserId = req.userId || (req.user && req.user._id) || null;
+    const reqUserRole = req.userRole || (req.user && req.user.role) || null;
+    const reqUserName = (req.user && req.user.name) || req.body.approvedBy || visitor.hostName || 'Host';
+
     visitor.status = 'Rejected';
+    visitor.approvalStatus = 'REJECTED';
     visitor.rejectionReason = req.body.rejectionReason || 'Meeting Cancelled';
-    visitor.approvedBy = req.user ? req.user.name : (req.body.approvedBy || visitor.hostName || 'Host');
+    
+    // Strict schema fields
+    visitor.approvedBy = reqUserId;
+    visitor.approvedByRole = reqUserRole;
+    visitor.approvedAt = new Date();
 
-    const updatedVisitor = await visitor.save();
-
-    const notification = await Notification.create({
-      companyId: req.companyId,
-      branchId: updatedVisitor.branch,
-      type: 'error',
-      module: 'Visitors',
-      title: '❌ Visitor Request Rejected',
-      message: `Visitor: ${updatedVisitor.visitorName} has been rejected by ${updatedVisitor.approvedBy}. Reason: ${updatedVisitor.rejectionReason}`,
-      createdBy: req.user ? req.user.name : 'Host'
+    visitor.statusHistory.push({
+      status: 'REJECTED',
+      changedBy: reqUserId,
+      changedByRole: reqUserRole || 'System',
+      changedAt: new Date(),
+      reason: visitor.rejectionReason
     });
 
-    const io = req.app.get('io');
-    if (io) {
-      io.emit('new_notification', notification);
-    }
+    const updatedVisitor = await visitor.save();
+    
+    // Trigger Notifications & Emails
+    await visitorNotificationService.notifyVisitorStatusChange({
+      visitor: updatedVisitor,
+      event: visitorNotificationService.EVENTS.VISITOR_REJECTED,
+      changedBy: req.user,
+      reason: updatedVisitor.rejectionReason,
+      io: req.app.get('io')
+    });
 
     await logAction(req, `Visitor Pre-Booking Rejected`, 'Visitor', {
       userId: req.user ? req.user._id : undefined,
@@ -657,6 +1236,127 @@ router.patch('/:id/reject', async (req, res) => {
     });
 
     res.json(updatedVisitor);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+// Host Reschedule Visitor Endpoint
+router.patch('/:id/reschedule', async (req, res) => {
+  try {
+    const visitor = await Visitor.findOne(buildVisitorQuery(req.params.id, req.companyId));
+    if (!visitor) return res.status(404).json({ message: 'Visitor request not found' });
+    
+    if (visitor.visitType !== 'PRE_BOOKING' && visitor.visitType !== 'Pre-Booking') {
+      return res.status(400).json({ success: false, message: 'Only Pre-Booking visitors can be rescheduled.' });
+    }
+
+    const { visitDate, expectedArrivalTime, appointmentEndTime, reason } = req.body;
+    let changes = [];
+    let primaryStatus = '';
+    
+    // Capture previous values BEFORE updating
+    const previousDate = visitor.visitDate;
+    const previousStartTime = visitor.expectedArrivalTime;
+    const previousEndTime = visitor.appointmentEndTime;
+
+    // Time validation if both provided
+    if (expectedArrivalTime && appointmentEndTime) {
+      const startParts = expectedArrivalTime.match(/(\d+):(\d+)\s+(AM|PM)/i);
+      const endParts = appointmentEndTime.match(/(\d+):(\d+)\s+(AM|PM)/i);
+      
+      if (startParts && endParts) {
+        let startH = parseInt(startParts[1]);
+        if (startParts[3].toUpperCase() === 'PM' && startH !== 12) startH += 12;
+        if (startParts[3].toUpperCase() === 'AM' && startH === 12) startH = 0;
+        
+        let endH = parseInt(endParts[1]);
+        if (endParts[3].toUpperCase() === 'PM' && endH !== 12) endH += 12;
+        if (endParts[3].toUpperCase() === 'AM' && endH === 12) endH = 0;
+        
+        const startM = parseInt(startParts[2]);
+        const endM = parseInt(endParts[2]);
+        
+        const startTime = startH * 60 + startM;
+        const endTime = endH * 60 + endM;
+        
+        if (endTime <= startTime) {
+          return res.status(400).json({ success: false, message: 'End time must be after start time' });
+        }
+      }
+    }
+    
+    if (visitDate && visitDate !== previousDate) {
+      changes.push(`Date changed from ${previousDate} to ${visitDate}`);
+      visitor.visitDate = visitDate;
+      primaryStatus = 'DATE_CHANGED';
+    }
+    
+    if (expectedArrivalTime && expectedArrivalTime !== previousStartTime) {
+      changes.push(`Time changed from ${previousStartTime} to ${expectedArrivalTime}`);
+      visitor.expectedArrivalTime = expectedArrivalTime;
+      if (!primaryStatus) primaryStatus = 'TIME_CHANGED';
+    }
+
+    if (appointmentEndTime && appointmentEndTime !== previousEndTime) {
+      changes.push(`End time changed from ${previousEndTime || 'N/A'} to ${appointmentEndTime}`);
+      visitor.appointmentEndTime = appointmentEndTime;
+      if (!primaryStatus) primaryStatus = 'TIME_CHANGED';
+    }
+    
+    if (changes.length > 0) {
+      const reqUserId = req.userId || (req.user && req.user._id) || null;
+      const reqUserRole = req.userRole || (req.user && req.user.role) || 'System';
+      const reqUserName = (req.user && req.user.name) || 'System';
+      
+      const historyEntry = {
+        status: primaryStatus,
+        changedBy: reqUserId,
+        changedByRole: reqUserRole,
+        changedAt: new Date(),
+        reason: reason || changes.join(', ')
+      };
+
+      if (visitDate && visitDate !== previousDate) {
+        historyEntry.previousAppointmentDate = previousDate;
+        historyEntry.newAppointmentDate = visitDate;
+      }
+      if (expectedArrivalTime && expectedArrivalTime !== previousStartTime) {
+        historyEntry.previousAppointmentStartTime = previousStartTime;
+        historyEntry.newAppointmentStartTime = expectedArrivalTime;
+      }
+      if (appointmentEndTime && appointmentEndTime !== previousEndTime) {
+        historyEntry.previousAppointmentEndTime = previousEndTime;
+        historyEntry.newAppointmentEndTime = appointmentEndTime;
+      }
+
+      visitor.statusHistory.push(historyEntry);
+      
+      visitor.approvalStatus = primaryStatus;
+      visitor.status = primaryStatus;
+
+      const updatedVisitor = await visitor.save();
+      
+      // Trigger Notifications
+      await visitorNotificationService.notifyVisitorStatusChange({
+        visitor: updatedVisitor,
+        event: visitorNotificationService.EVENTS.APPOINTMENT_RESCHEDULED,
+        changedBy: req.user,
+        reason: reason || changes.join(', '),
+        historyEntry,
+        io: req.app.get('io')
+      });
+
+      await logAction(req, `Visitor Rescheduled`, 'Visitor', {
+        userId: req.user ? req.user._id : undefined,
+        description: `Visit for ${updatedVisitor.visitorName} rescheduled. ${changes.join(', ')}`,
+        status: 'Success'
+      });
+
+      return res.json(updatedVisitor);
+    }
+    
+    res.json(visitor);
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
@@ -726,20 +1426,24 @@ router.patch('/:id', async (req, res) => {
       });
     }
 
-    if (req.body.status === 'Inside' && oldVisitor && oldVisitor.status !== 'Inside') {
-      const notification = await Notification.create({
-        companyId: req.companyId,
-        branchId: updatedVisitor.branch,
-        type: 'success',
-        module: 'Visitors',
-        title: '✅ Visitor Checked In',
-        message: `${updatedVisitor.visitorName} checked in at ${updatedVisitor.branch} Branch.`,
-        createdBy: req.user ? req.user.name : 'System'
+    if ((req.body.status === 'Checked In' || req.body.status === 'Inside') && oldVisitor && (oldVisitor.status !== 'Checked In' && oldVisitor.status !== 'Inside')) {
+      await visitorNotificationService.notifyVisitorStatusChange({
+        visitor: updatedVisitor,
+        event: visitorNotificationService.EVENTS.VISITOR_CHECKED_IN,
+        io: req.app.get('io')
       });
-      const io = req.app.get('io');
-      if (io) {
-        io.emit('new_notification', notification);
-      }
+    } else if ((req.body.status === 'Checked Out' || req.body.status === 'Exited') && oldVisitor && (oldVisitor.status !== 'Checked Out' && oldVisitor.status !== 'Exited')) {
+      await visitorNotificationService.notifyVisitorStatusChange({
+        visitor: updatedVisitor,
+        event: visitorNotificationService.EVENTS.VISITOR_CHECKED_OUT,
+        io: req.app.get('io')
+      });
+    } else if (req.body.status === 'Cancelled' && oldVisitor && oldVisitor.status !== 'Cancelled') {
+      await visitorNotificationService.notifyVisitorStatusChange({
+        visitor: updatedVisitor,
+        event: visitorNotificationService.EVENTS.VISITOR_CANCELLED,
+        io: req.app.get('io')
+      });
     }
 
     res.json(updatedVisitor);

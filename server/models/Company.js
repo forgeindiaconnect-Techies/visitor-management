@@ -27,6 +27,10 @@ const companySchema = new mongoose.Schema({
     logoUrl: { type: String, default: '' },
     primaryColor: { type: String, default: '#1E1B6E' }
   },
+  approvalRoles: { 
+    type: [String], 
+    default: ['Super Admin', 'MD', 'Senior HR', 'IT'] 
+  },
   subscriptionExpiresAt: {
     type: Date,
     required: true

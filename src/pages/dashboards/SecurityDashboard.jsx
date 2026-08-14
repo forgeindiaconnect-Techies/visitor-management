@@ -116,123 +116,37 @@ const SecurityDashboard = () => {
     }
   };
 
-  const handlePbApprove = async () => {
-    if (!pbVisitor) return;
-    const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
-    const isVisitorCollection = pbVisitor._isVisitorCollection || pbVisitor.visitId != null;
-
-    let approveUrl, approveMethod;
-    if (isVisitorCollection) {
-      approveUrl = `${API_URL}/api/visitors/${encodeURIComponent(pbVisitor._id || pbVisitor.id)}/approve`;
-      approveMethod = 'PATCH';
-    } else {
-      approveUrl = `${API_URL}/api/prebookings/${encodeURIComponent(pbVisitor._id || pbVisitor.id)}/approve`;
-      approveMethod = 'PUT';
-    }
-
-    try {
-      const response = await fetch(approveUrl, {
-        method: approveMethod,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': user?.token ? `Bearer ${user.token}` : ''
-        }
-      });
-      const resData = await response.json();
-      if (response.ok && (resData.success || resData._id)) {
-        const updatedStatus = isVisitorCollection ? 'Approved' : 'APPROVED';
-        setPbVisitor(prev => ({ ...prev, status: updatedStatus }));
-        addNotification('Visitor Approved', `${pbVisitor.fullName || pbVisitor.visitorName} approved successfully!`, 'success');
-      } else {
-        alert(`❌ Approval Failed: ${resData.message || 'Unknown error'}`);
-      }
-    } catch (e) {
-      console.error('Approval Error:', e);
-      alert('Failed to connect to backend server for Approval.');
-    }
-  };
-
-  const handlePbReject = async () => {
-    if (!pbVisitor) return;
-    const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
-    const isVisitorCollection = pbVisitor._isVisitorCollection || pbVisitor.visitId != null;
-
-    let rejectUrl, rejectMethod;
-    if (isVisitorCollection) {
-      rejectUrl = `${API_URL}/api/visitors/${encodeURIComponent(pbVisitor._id || pbVisitor.id)}/reject`;
-      rejectMethod = 'PATCH';
-    } else {
-      rejectUrl = `${API_URL}/api/prebookings/${encodeURIComponent(pbVisitor._id || pbVisitor.id)}/reject`;
-      rejectMethod = 'PUT';
-    }
-
-    try {
-      const response = await fetch(rejectUrl, {
-        method: rejectMethod,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': user?.token ? `Bearer ${user.token}` : ''
-        }
-      });
-      const resData = await response.json();
-      if (response.ok && (resData.success || resData._id)) {
-        const updatedStatus = isVisitorCollection ? 'Rejected' : 'REJECTED';
-        setPbVisitor(prev => ({ ...prev, status: updatedStatus }));
-        addNotification('Visitor Rejected', `${pbVisitor.fullName || pbVisitor.visitorName} has been rejected.`, 'info');
-      } else {
-        alert(`❌ Rejection Failed: ${resData.message || 'Unknown error'}`);
-      }
-    } catch (e) {
-      console.error('Rejection Error:', e);
-      alert('Failed to connect to backend server for Rejection.');
-    }
-  };
+  // Approval and Rejection actions removed from Security Dashboard 
+  // as per permission-based approval system
 
   const handlePbCheckIn = async () => {
     if (!pbVisitor) return;
 
-    const isApproved = pbVisitor.status === 'APPROVED' || pbVisitor.status === 'Approved' || pbVisitor.status === 'Pre-Booked';
-    if (!isApproved && pbVisitor.status !== 'CHECKED_IN') {
-      alert(`❌ Check-In Blocked: Visitor cannot check in. Current status: ${pbVisitor.status}`);
-      return;
-    }
-
     try {
-      const targetId = pbVisitor._id || pbVisitor.id;
+      const targetId = pbVisitor._id || pbVisitor.id || pbVisitor.visitId || pbVisitor.visitorId;
       const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
-      const isVisitorCollection = pbVisitor._isVisitorCollection || pbVisitor.visitId != null;
 
-      let checkInUrl, checkInMethod, checkInBody;
-      if (isVisitorCollection) {
-        checkInUrl = `${API_URL}/api/visitors/${encodeURIComponent(targetId)}`;
-        checkInMethod = 'PATCH';
-        checkInBody = JSON.stringify({ status: 'Inside' });
-      } else {
-        checkInUrl = `${API_URL}/api/prebookings/${encodeURIComponent(targetId)}/check-in`;
-        checkInMethod = 'PUT';
-        checkInBody = null;
-      }
-
-      const response = await fetch(checkInUrl, {
-        method: checkInMethod,
+      const response = await fetch(`${API_URL}/api/visitors/${encodeURIComponent(targetId)}/check-in`, {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': user?.token ? `Bearer ${user.token}` : ''
-        },
-        body: checkInBody
+        }
       });
+      
       const data = await response.json();
+      
       if (response.ok && data.success) {
         setPbVisitor(prev => ({
           ...prev,
           status: 'CHECKED_IN',
-          checkInTime: data.data?.checkInTime || new Date(),
-          checkInBy: data.data?.checkInBy || 'Security'
+          checkInTime: new Date(),
+          checkInBy: 'Security'
         }));
         alert('✅ Visitor checked in successfully.');
         addNotification('Check-In Success', `${pbVisitor.fullName} is now checked in.`, 'success');
       } else {
-        alert(data.message || 'Check-In failed.');
+        alert(`❌ Check-In failed: ${data.message || 'Unknown error'}`);
       }
     } catch (err) {
       alert('Failed to execute Check-In.');
@@ -242,48 +156,34 @@ const SecurityDashboard = () => {
   const handlePbCheckOut = async (e) => {
     e.preventDefault();
     setCheckoutError('');
-    if (!checkoutNotes.trim()) {
-      setCheckoutError('Check-out notes are mandatory before checking out.');
-      return;
-    }
 
     try {
-      const targetId = pbVisitor._id || pbVisitor.id;
+      const targetId = pbVisitor._id || pbVisitor.id || pbVisitor.visitId || pbVisitor.visitorId;
       const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
-      const isVisitorCollection = pbVisitor._isVisitorCollection || pbVisitor.visitId != null;
 
-      let checkOutUrl, checkOutMethod, checkOutBody;
-      if (isVisitorCollection) {
-        checkOutUrl = `${API_URL}/api/visitors/${encodeURIComponent(targetId)}`;
-        checkOutMethod = 'PATCH';
-        checkOutBody = JSON.stringify({ status: 'Completed', exitNotes: checkoutNotes.trim() });
-      } else {
-        checkOutUrl = `${API_URL}/api/prebookings/${encodeURIComponent(targetId)}/check-out`;
-        checkOutMethod = 'PUT';
-        checkOutBody = JSON.stringify({ exitNotes: checkoutNotes.trim(), notes: checkoutNotes.trim() });
-      }
-
-      const response = await fetch(checkOutUrl, {
-        method: checkOutMethod,
+      const response = await fetch(`${API_URL}/api/visitors/${encodeURIComponent(targetId)}/check-out`, {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': user?.token ? `Bearer ${user.token}` : ''
         },
-        body: checkOutBody
+        body: JSON.stringify({ exitNotes: checkoutNotes.trim() })
       });
+      
       const data = await response.json();
+      
       if (response.ok && data.success) {
         setPbVisitor(prev => ({
           ...prev,
           status: 'CHECKED_OUT',
-          checkOutTime: data.data?.checkOutTime || new Date(),
-          checkOutBy: data.data?.checkOutBy || 'Security',
+          checkOutTime: new Date(),
+          checkOutBy: 'Security',
           checkOutNotes: checkoutNotes.trim()
         }));
         setShowCheckoutModal(false);
         setCheckoutNotes('');
         alert('✅ Visitor checked out successfully.');
-        addNotification('Check-Out Success', `${pbVisitor.fullName} checked out with notes logged!`, 'success');
+        addNotification('Check-Out Success', `${pbVisitor.fullName} checked out.`, 'success');
       } else {
         setCheckoutError(data.message || 'Check-out failed.');
       }
@@ -469,21 +369,19 @@ const SecurityDashboard = () => {
 
       const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
 
-      let response = await fetch(`${API_URL}/api/prebookings/qr/${encodeURIComponent(cleanToken)}`);
-      if (!response.ok) {
-        response = await fetch(`${API_URL}/api/prebookings/visitor/${encodeURIComponent(cleanToken)}`);
-      }
-      if (!response.ok) {
-        response = await fetch(`${API_URL}/api/visitors/search/${encodeURIComponent(cleanToken)}`);
-      }
+      const response = await fetch(`${API_URL}/api/visitors/scan-pass`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ passToken: cleanToken })
+      });
 
-      if (response.ok) {
-        const json = await response.json();
-        const raw = json.data || json;
+      const json = await response.json();
+      
+      if (response.ok && json.valid) {
+        const raw = json.visitor;
         setPbVisitor({
           id: raw._id || raw.id,
           _id: raw._id || raw.id,
-          _isVisitorCollection: !!raw.visitId,
           visitorId: raw.visitorId || raw.visitId || raw._id,
           fullName: raw.fullName || raw.visitorName || 'Visitor',
           mobileNumber: raw.mobileNumber || '-',
@@ -491,12 +389,12 @@ const SecurityDashboard = () => {
           visitingCompany: raw.visitingCompany || raw.companyName || 'Forge India Connect Private Limited',
           hostEmployee: raw.hostEmployee || raw.hostName || 'Staff',
           visitPurpose: raw.visitPurpose || raw.purpose || 'Official Visit',
-          visitDate: raw.visitDate || new Date().toISOString().split('T')[0],
-          expectedTime: raw.expectedTime || raw.expectedArrivalTime || '10:00 AM',
+          visitDate: raw.visitDate || raw.appointmentDate || new Date().toISOString().split('T')[0],
+          expectedTime: raw.expectedTime || raw.appointmentTime || raw.expectedArrivalTime || '10:00 AM',
           branchLocation: raw.branchLocation || raw.branch || activeBranch || 'Head Office',
           vehicleNumber: raw.vehicleNumber || '-',
           facePhoto: raw.facePhoto || raw.photoUrl || '',
-          status: raw.status || 'PENDING',
+          status: raw.status || raw.approvalStatus || 'APPROVED', // Assume approved if valid
           checkInTime: raw.checkInTime || null,
           checkInBy: raw.checkInBy || null,
           checkOutTime: raw.checkOutTime || null,
@@ -506,11 +404,12 @@ const SecurityDashboard = () => {
         setActiveSubTab('prebooking');
         setShowQrModal(false);
         setQrVisitId('');
-        addNotification('QR Scan Success', `Visitor Pass loaded for ${raw.fullName || raw.visitorName}`, 'success');
+        addNotification('QR Scan Success', `Visitor Pass verified for ${raw.fullName || raw.visitorName}`, 'success');
       } else {
-        const errData = await response.json().catch(() => ({}));
-        setPbSearchError(errData.message || `Visitor not found for QR token "${cleanToken}".`);
-        addNotification('QR Scan Failed', errData.message || 'Visitor not found', 'error');
+        setPbSearchError(json.message || `Visitor not valid for QR token "${cleanToken}".`);
+        addNotification('QR Validation Failed', json.message || 'Pass is invalid', 'error');
+        setActiveSubTab('prebooking'); // Still open the tab so they see the error
+        setShowQrModal(false);
       }
     } catch (err) {
       console.error("QR Lookup Error:", err);
@@ -773,21 +672,9 @@ const SecurityDashboard = () => {
 
                   <div>
                     {(pbVisitor.status === 'PENDING' || pbVisitor.status === 'Pending' || pbVisitor.status === 'Pending Approval') && (
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={handlePbApprove}
-                          className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-md transition-transform active:scale-95 text-sm"
-                        >
-                          APPROVE
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handlePbReject}
-                          className="px-6 py-3 bg-red-100 hover:bg-red-200 text-red-700 font-bold rounded-xl shadow-sm transition-transform active:scale-95 text-sm border border-red-200"
-                        >
-                          REJECT
-                        </button>
+                      <div className="px-6 py-3 bg-amber-50 text-amber-800 border border-amber-300 rounded-xl font-bold text-sm flex items-center gap-2">
+                        <Clock size={18} />
+                        <span>Awaiting Host Approval</span>
                       </div>
                     )}
 
@@ -988,7 +875,7 @@ const SecurityDashboard = () => {
                 className="w-full py-3 bg-[var(--color-brand-indigo)] hover:bg-[var(--color-brand-indigo-light)] text-white rounded-xl flex items-center justify-center gap-2 transition-colors font-medium shadow-sm"
               >
                 <UserCheck size={20} />
-                Walk-in Registration
+                Direct Visit
               </button>
             </div>
           </div>

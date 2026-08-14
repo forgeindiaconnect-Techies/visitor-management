@@ -32,7 +32,7 @@ const ReturningVisitor = () => {
     'Sabari (Admin)',
     'Agila (IT)',
     'Joe Christo (Senior HR)',
-    'New Visitors'
+    'Direct Visits'
   ]);
 
 
@@ -163,7 +163,7 @@ const ReturningVisitor = () => {
           {searchStatus === 'not-found' && (
             <div className="mt-4 p-3 bg-red-50 text-red-700 rounded-lg flex items-center gap-2 border border-red-200 animate-in slide-in-from-top-2">
               <AlertCircle size={18} />
-              <span className="font-medium text-sm">No existing visitor found. Please check the spelling or proceed to New Visitor.</span>
+              <span className="font-medium text-sm">No existing visitor found. Please check the spelling or proceed to Direct Visit.</span>
             </div>
           )}
         </div>

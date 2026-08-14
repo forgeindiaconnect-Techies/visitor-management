@@ -10,6 +10,16 @@ const visitorSchema = new mongoose.Schema({
   visitorProfileId: { type: mongoose.Schema.Types.ObjectId, ref: 'VisitorProfile' },
   profileId: { type: String, required: true },
   visitId: { type: String, unique: true },
+  trackingToken: {
+    type: String,
+    unique: true,
+    sparse: true,
+    index: true,
+  },
+  trackingTokenExpiresAt: {
+    type: Date,
+    default: null,
+  },
   visitorName: { type: String, required: true },
   mobileNumber: { type: String, required: true },
   email: { type: String },
@@ -20,6 +30,8 @@ const visitorSchema = new mongoose.Schema({
   purpose: { type: String, required: true },
   visitDate: { type: String, required: true },
   expectedArrivalTime: { type: String },
+  appointmentEndTime: { type: String },
+  visitType: { type: String, enum: ["PRE_BOOKING", "DIRECT_VISIT"], default: "PRE_BOOKING" },
   hostNotes: { type: String },
   bookingId: { type: String },
   registrationType: { type: String, enum: ['Walk-in', 'Pre-Booking'], default: 'Walk-in' },
@@ -39,6 +51,20 @@ const visitorSchema = new mongoose.Schema({
     enum: ["Draft", "Pending Approval", "Pre-Booked", "Pending", "PENDING", "Approved", "APPROVED", "Rejected", "REJECTED", "Checked In", "CHECKED_IN", "Checked Out", "CHECKED_OUT", "Cancelled", "Expired", "Inside", "Exited"], 
     default: 'PENDING' 
   },
+  approvalStatus: {
+    type: String,
+    enum: [
+      "PENDING",
+      "APPROVED",
+      "REJECTED",
+      "DATE_CHANGED",
+      "TIME_CHANGED",
+      "CANCELLED",
+      "CHECKED_IN",
+      "CHECKED_OUT"
+    ],
+    default: "PENDING"
+  },
   branch: { type: String, required: true },
   currentZone: { type: String },
   entryTime: { type: String },
@@ -48,7 +74,41 @@ const visitorSchema = new mongoose.Schema({
   exitNotes: { type: String },
   qrCode: { type: String },
   qrPayload: { type: Object },
-  approvedBy: { type: String },
+  approvedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null
+  },
+  approvedByRole: {
+    type: String,
+    default: null
+  },
+  approvedAt: {
+    type: Date,
+    default: null
+  },
+  approvalDetails: {
+    approvedBy: String,
+    approvedByRole: String,
+    approvedAt: Date,
+    method: String
+  },
+  statusHistory: [{
+    status: String,
+    changedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User"
+    },
+    changedByRole: String,
+    changedAt: { type: Date, default: Date.now },
+    reason: String,
+    previousAppointmentDate: String,
+    newAppointmentDate: String,
+    previousAppointmentStartTime: String,
+    newAppointmentStartTime: String,
+    previousAppointmentEndTime: String,
+    newAppointmentEndTime: String
+  }],
   remarks: { type: String },
   photoUrl: { type: String },
   checkedIn: { type: Boolean, default: false },

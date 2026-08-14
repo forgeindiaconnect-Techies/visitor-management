@@ -7,6 +7,16 @@ const preBookingSchema = new mongoose.Schema(
       unique: true,
       required: true,
     },
+    trackingToken: {
+      type: String,
+      unique: true,
+      sparse: true,
+      index: true,
+    },
+    trackingTokenExpiresAt: {
+      type: Date,
+      default: null,
+    },
 
     fullName: {
       type: String,
@@ -90,23 +100,37 @@ const preBookingSchema = new mongoose.Schema(
       index: true
     },
 
-    status: {
-      type: String,
-      enum: [
-        "PENDING",
-        "APPROVED",
-        "REJECTED",
-        "CHECKED_IN",
-        "CHECKED_OUT",
-        "Pending",
-        "Approved",
-        "Rejected",
-        "Checked In",
-        "Checked Out",
-        "Pre-Booked"
-      ],
-      default: "PENDING",
-    },
+  status: {
+    type: String,
+    enum: [
+      "PENDING",
+      "APPROVED",
+      "REJECTED",
+      "CHECKED_IN",
+      "CHECKED_OUT",
+      "Pending",
+      "Approved",
+      "Rejected",
+      "Checked In",
+      "Checked Out",
+      "Pre-Booked"
+    ],
+    default: "PENDING",
+  },
+  approvalStatus: {
+    type: String,
+    enum: [
+      "PENDING",
+      "APPROVED",
+      "REJECTED",
+      "DATE_CHANGED",
+      "TIME_CHANGED",
+      "CANCELLED",
+      "CHECKED_IN",
+      "CHECKED_OUT"
+    ],
+    default: "PENDING"
+  },
 
     qrToken: {
       type: String,
@@ -149,11 +173,39 @@ const preBookingSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
-
+    approvedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null
+    },
+    approvedByRole: {
+      type: String,
+      default: null
+    },
     rejectedAt: {
       type: Date,
       default: null,
     },
+    rejectionReason: {
+      type: String,
+      default: null
+    },
+    approvalDetails: {
+      approvedBy: String,
+      approvedByRole: String,
+      approvedAt: Date,
+      method: String
+    },
+    statusHistory: [{
+      status: String,
+      changedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User"
+      },
+      changedByRole: String,
+      changedAt: { type: Date, default: Date.now },
+      reason: String
+    }]
   },
   {
     timestamps: true,

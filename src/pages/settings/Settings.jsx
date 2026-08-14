@@ -7,6 +7,42 @@ const Settings = () => {
   const [activeTab, setActiveTab] = useState('profile');
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [permissions, setPermissions] = useState([]);
+  const [isLoadingPermissions, setIsLoadingPermissions] = useState(false);
+  
+  React.useEffect(() => {
+    if (activeTab === 'approvals') {
+      const fetchPermissions = async () => {
+        try {
+          setIsLoadingPermissions(true);
+          const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+          const response = await fetch(`${API_URL}/api/approval-permissions`, {
+            headers: { 
+              'Authorization': `Bearer ${localStorage.getItem('token')}`,
+              'x-user-role': user?.role
+            }
+          });
+          if (response.ok) {
+            const data = await response.json();
+            if (data.permissions) setPermissions(data.permissions);
+          }
+        } catch (e) {
+          console.error('Failed to load permissions', e);
+        } finally {
+          setIsLoadingPermissions(false);
+        }
+      };
+      if (user?.role === 'Super Admin') fetchPermissions();
+    }
+  }, [activeTab, user]);
+
+  const handleTogglePermission = (role) => {
+    setPermissions((previous) =>
+      previous.map((p) =>
+        p.role === role ? { ...p, canApprove: !p.canApprove } : p
+      )
+    );
+  };
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -49,6 +85,34 @@ const Settings = () => {
       } catch (err) {
         console.error(err);
         alert('Network error while saving.');
+      }
+    } else if (activeTab === 'approvals') {
+      try {
+        const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+        
+        const savePromises = permissions.map(p => 
+          fetch(`${API_URL}/api/approval-permissions/${p.role}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('token')}`,
+              'x-user-role': user?.role
+            },
+            body: JSON.stringify({ canApprove: p.canApprove })
+          })
+        );
+        
+        const results = await Promise.all(savePromises);
+        
+        if (results.every(res => res.ok)) {
+          setShowSuccess(true);
+          setTimeout(() => setShowSuccess(false), 3000);
+        } else {
+          alert('✕ Failed to update approval permissions');
+        }
+      } catch (err) {
+        console.error(err);
+        alert('✕ Failed to update approval permissions');
       }
     } else {
       // Fake save for other tabs
@@ -104,6 +168,14 @@ const Settings = () => {
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeTab === 'brand' ? 'bg-indigo-50 text-[var(--color-brand-indigo)]' : 'text-gray-600 hover:bg-white hover:text-gray-900'}`}
             >
               <Shield size={18} /> Brand & Theme
+            </button>
+          )}
+          {user?.role === 'Super Admin' && (
+            <button 
+              onClick={() => setActiveTab('approvals')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeTab === 'approvals' ? 'bg-indigo-50 text-[var(--color-brand-indigo)]' : 'text-gray-600 hover:bg-white hover:text-gray-900'}`}
+            >
+              <Check size={18} /> Approval Permissions
             </button>
           )}
         </div>
@@ -237,6 +309,53 @@ const Settings = () => {
                     </div>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {activeTab === 'approvals' && (
+              <div className="space-y-6 flex-1 animate-in slide-in-from-right-4">
+                <h2 className="text-lg font-bold text-gray-900 border-b border-gray-100 pb-4">Approval Permissions</h2>
+                <p className="text-sm text-gray-500 mb-6">Configure who can approve visitor requests.</p>
+                
+                {isLoadingPermissions ? (
+                  <p className="text-sm font-medium text-gray-500">Loading approval permissions...</p>
+                ) : (
+                  <div className="space-y-4 max-w-xl">
+                    {permissions.map((p) => {
+                      const displayNames = {
+                        'SUPER_ADMIN': 'Super Admin',
+                        'MD': 'MD',
+                        'SENIOR_HR': 'Senior HR',
+                        'IT': 'IT'
+                      };
+                      const displayName = displayNames[p.role] || p.role;
+                      
+                      return (
+                        <div key={p.role} className="flex items-center justify-between p-4 rounded-lg border border-gray-100 bg-slate-50 hover:bg-slate-100 transition-colors">
+                          <span className="font-bold text-gray-800">{displayName}</span>
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input 
+                              type="checkbox" 
+                              className="sr-only peer" 
+                              checked={p.canApprove}
+                              onChange={() => handleTogglePermission(p.role)}
+                            />
+                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                          </label>
+                        </div>
+                      );
+                    })}
+                    
+                    {/* Security - Fixed state */}
+                    <div className="flex items-center justify-between p-4 rounded-lg border border-red-50 bg-red-50/50">
+                      <div>
+                        <span className="font-bold text-gray-800">Security</span>
+                        <p className="text-xs text-red-600 mt-1">Approval permission cannot be enabled.</p>
+                      </div>
+                      <span className="text-sm font-medium text-gray-500 px-3 py-1 bg-gray-100 rounded-md">Not Available</span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

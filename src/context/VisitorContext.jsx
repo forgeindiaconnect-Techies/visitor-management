@@ -63,32 +63,70 @@ export const VisitorProvider = ({ children }) => {
         headers['x-branch-id'] = currentUser.branch;
       }
       
-      console.log('Fetching visitors from API...', fetchUrl);
-      const response = await fetch(fetchUrl, { 
-        cache: 'no-store',
-        headers
-      });
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Visitors fetched successfully:', data);
+      const PREBOOKINGS_API_URL = `${import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com')}/api/prebookings`;
+      
+      const prebookingFetchUrl = queryBranch && queryBranch !== 'All Branches' 
+        ? `${PREBOOKINGS_API_URL}?branch=${encodeURIComponent(queryBranch)}` 
+        : PREBOOKINGS_API_URL;
 
-        if (allVisitorsRef.current.length > 0) {
-          const existingIds = new Set(allVisitorsRef.current.map(v => v._id || v.id));
-          const newVisitors = data.filter(v => !(existingIds.has(v._id || v.id)));
-          
-          newVisitors.forEach(nv => {
-            // Only notify if the new visitor is relevant to the active branch view
-            if (activeBranch === 'All Branches' || (nv.branch && nv.branch.includes(activeBranch))) {
-              addNotification('New Visitor Alert', `${nv.visitorName} has been registered at ${nv.branch || 'Facility'}.`, 'info');
-            }
-          });
-        }
-        
-        allVisitorsRef.current = data;
-        setVisitors(data);
-      } else {
-        console.error('Failed to fetch visitors');
+      console.log('Fetching visitors and pre-bookings from API...');
+      const [visitorsRes, preBookingsRes] = await Promise.all([
+        fetch(fetchUrl, { cache: 'no-store', headers }).catch(() => ({ ok: false })),
+        fetch(prebookingFetchUrl, { cache: 'no-store', headers }).catch(() => ({ ok: false }))
+      ]);
+
+      let visitorsData = [];
+      let preBookingsData = [];
+
+      if (visitorsRes.ok) {
+        const vJson = await visitorsRes.json();
+        visitorsData = Array.isArray(vJson) ? vJson : (vJson.data || vJson.visitors || []);
       }
+      if (preBookingsRes.ok) {
+        const pbJson = await preBookingsRes.json();
+        preBookingsData = Array.isArray(pbJson) ? pbJson : (pbJson.data || pbJson.prebookings || []);
+      }
+
+      // Normalize pre-bookings to match visitor schema for the Dashboard UI
+      const normalizedPreBookings = (preBookingsData || []).map(pb => {
+        // Dashboard uses v.status === 'Pending', but prebookings use 'Pending Approval' or 'PENDING'
+        const rawStatus = pb.status || '';
+        let normalizedStatus = rawStatus;
+        if (rawStatus.toUpperCase() === 'PENDING APPROVAL' || rawStatus.toUpperCase() === 'PENDING') {
+          normalizedStatus = 'Pending';
+        }
+
+        return {
+          ...pb,
+          id: pb._id,
+          isPreBooking: true,
+          visitorName: pb.fullName || pb.visitorName,
+          purpose: pb.visitPurpose || pb.purpose,
+          branch: pb.branchLocation || pb.branch,
+          hostName: pb.hostEmployee || pb.hostName,
+          status: normalizedStatus
+        };
+      });
+
+      const mergedData = [...visitorsData, ...normalizedPreBookings];
+      
+      // Sort by newest first
+      mergedData.sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date));
+
+      if (allVisitorsRef.current.length > 0) {
+        const existingIds = new Set(allVisitorsRef.current.map(v => v._id || v.id));
+        const newVisitors = mergedData.filter(v => !(existingIds.has(v._id || v.id)));
+        
+        newVisitors.forEach(nv => {
+          if (activeBranch === 'All Branches' || (nv.branch && nv.branch.includes(activeBranch))) {
+            const label = nv.isPreBooking ? 'Pre-Booking Alert' : 'Direct Visit Alert';
+            addNotification(label, `${nv.visitorName} has been registered at ${nv.branch || 'Facility'}.`, 'info');
+          }
+        });
+      }
+      
+      allVisitorsRef.current = mergedData;
+      setVisitors(mergedData);
     } catch (err) {
       console.error('API connection error:', err);
       // Fallback to local storage if API is down
@@ -198,6 +236,52 @@ export const VisitorProvider = ({ children }) => {
   };
 
   const updateVisitorStatus = async (id, newStatus, approvalData = {}) => {
+    const visitor = allVisitorsRef.current.find(v => String(v._id || v.id) === String(id));
+    
+    // Check if this is a Pre-Booking and route to the correct API endpoint
+    if (visitor?.isPreBooking) {
+      const PREBOOKINGS_API_URL = `${import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com')}/api/prebookings`;
+      
+      try {
+        let endpointUrl = '';
+        if (newStatus === 'Approved') endpointUrl = `${PREBOOKINGS_API_URL}/${id}/approve`;
+        else if (newStatus === 'Rejected') endpointUrl = `${PREBOOKINGS_API_URL}/${id}/reject`;
+        
+        if (endpointUrl) {
+          const response = await fetch(endpointUrl, {
+            method: 'PUT',
+            headers: { 
+              'Content-Type': 'application/json',
+              ...(currentUser?.token && { 'Authorization': `Bearer ${currentUser.token}` })
+            },
+            body: JSON.stringify({
+              approvedBy: approvalData.approvedBy,
+              remarks: approvalData.remarks
+            })
+          });
+          
+          if (response.ok) {
+            const updatedVisitor = await response.json();
+            // Re-normalize it before saving to state
+            const normalized = {
+              ...(updatedVisitor.data || updatedVisitor),
+              id: (updatedVisitor.data || updatedVisitor)._id,
+              isPreBooking: true,
+              visitorName: (updatedVisitor.data || updatedVisitor).fullName || (updatedVisitor.data || updatedVisitor).visitorName,
+              purpose: (updatedVisitor.data || updatedVisitor).visitPurpose || (updatedVisitor.data || updatedVisitor).purpose,
+              branch: (updatedVisitor.data || updatedVisitor).branchLocation || (updatedVisitor.data || updatedVisitor).branch,
+              hostName: (updatedVisitor.data || updatedVisitor).hostEmployee || (updatedVisitor.data || updatedVisitor).hostName,
+            };
+            setVisitors(prev => prev.map(v => String(v._id || v.id) === String(id) ? normalized : v));
+            addNotification(`Pre-Booking ${newStatus}`, `Access ${newStatus === 'Approved' ? 'granted' : 'denied'} for ${normalized.visitorName}`, newStatus === 'Approved' ? 'success' : 'error');
+          }
+        }
+      } catch (err) {
+        console.error("Error updating pre-booking:", err);
+      }
+      return;
+    }
+
     const updates = { 
       status: newStatus,
       remarks: approvalData.remarks,

@@ -3,6 +3,8 @@ const router = express.Router();
 const Visitor = require('../models/Visitor');
 const Notification = require('../models/Notification');
 const authMiddleware = require('../middleware/authMiddleware');
+const { checkApprovalPermission } = require('../middleware/approvalPermission');
+const visitorNotificationService = require('../services/visitorNotificationService');
 
 // 1. Create Pre-Booking (Public / Landing Page / Visitor Form)
 router.post('/', async (req, res) => {
@@ -65,10 +67,46 @@ router.post('/', async (req, res) => {
       photoUrl: photoUrl || '',
       registrationType: 'Pre-Booking',
       status: 'PENDING', // Initial State: PENDING
-      createdBy: 'Public Pre-Booking Workflow'
+      createdBy: 'Public Pre-Booking Workflow',
+      trackingToken: require('crypto').randomBytes(32).toString('hex'),
+      trackingTokenExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
     });
 
     const savedVisitor = await newVisitor.save();
+
+    // Send tracking link email to visitor
+    if (email) {
+      const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+      const trackingUrl = `${FRONTEND_URL}/visitor-status/${newVisitor.trackingToken}`;
+      const emailService = require('../utils/emailService');
+      const visitDateFormatted = visitDate ? new Date(visitDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'TBD';
+      const emailHtml = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
+          <div style="background-color: #0f172a; color: white; padding: 16px 24px; border-radius: 8px 8px 0 0; text-align: center;">
+            <h2 style="margin: 0; font-size: 20px;">Pre-Booking Submitted</h2>
+          </div>
+          <div style="padding: 24px; background-color: #ffffff;">
+            <p style="font-size: 16px; color: #1e293b;">Hello <strong>${visitorName}</strong>,</p>
+            <p style="font-size: 14px; color: #475569;">Your visitor appointment request has been successfully submitted.</p>
+            <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; padding: 16px; border-radius: 8px; margin: 20px 0;">
+              <p style="margin: 4px 0; font-size: 14px;"><strong>Status:</strong> <span style="color: #d97706; font-weight: bold;">Pending Approval</span></p>
+              <p style="margin: 4px 0; font-size: 14px;"><strong>Host:</strong> ${hostName}</p>
+              <p style="margin: 4px 0; font-size: 14px;"><strong>Appointment:</strong> ${visitDateFormatted}, ${expectedArrivalTime || '10:00 AM'}</p>
+            </div>
+            <p style="font-size: 14px; color: #475569;">You can track your appointment status here:</p>
+            <div style="text-align: center; margin: 24px 0;">
+              <a href="${trackingUrl}" target="_blank" style="background-color: #4f46e5; color: #ffffff; padding: 12px 28px; text-decoration: none; font-weight: bold; border-radius: 6px; display: inline-block; font-size: 14px;">TRACK MY VISIT</a>
+            </div>
+            <p style="font-size: 12px; color: #64748b;">You will receive another email when your appointment is approved.</p>
+            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+            <p style="font-size: 14px; color: #1e293b; margin: 0;">Thank You,<br/><strong>FIC Visitor Management</strong></p>
+          </div>
+        </div>
+      `;
+      emailService.sendEmail(email, 'Pre-Booking Submitted — Track Your Visit', emailHtml).catch(err => {
+        console.warn('Could not send tracking email:', err.message);
+      });
+    }
 
     // Create Notification for Admin
     try {
@@ -108,7 +146,10 @@ router.get('/', async (req, res) => {
       filter.branch = branch;
     }
 
-    const prebookings = await Visitor.find(filter).sort({ createdAt: -1 });
+    const prebookings = await Visitor.find(filter)
+      .populate('approvedBy', 'name email role')
+      .populate('statusHistory.changedBy', 'name email role')
+      .sort({ createdAt: -1 });
     res.json(prebookings);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -121,7 +162,9 @@ router.get('/:id', async (req, res) => {
     const { id } = req.params;
     const visitor = await Visitor.findOne({
       $or: [{ visitId: id }, { _id: require('mongoose').isValidObjectId(id) ? id : null }]
-    });
+    })
+    .populate('approvedBy', 'name email role')
+    .populate('statusHistory.changedBy', 'name email role');
 
     if (!visitor) {
       return res.status(404).json({ message: 'Pre-booking visitor record not found.' });
@@ -134,7 +177,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // 4. Approve Pre-Booking (PENDING -> APPROVED + Generate Unique QR)
-router.put('/:id/approve', async (req, res) => {
+router.put('/:id/approve', authMiddleware, checkApprovalPermission, async (req, res) => {
   try {
     const { id } = req.params;
     const visitor = await Visitor.findOne({
@@ -149,30 +192,42 @@ router.put('/:id/approve', async (req, res) => {
     const qrCode = `${frontendUrl}/pass/${visitor.visitId}`;
 
     visitor.status = 'APPROVED';
+    visitor.approvalStatus = 'APPROVED';
     visitor.qrCode = qrCode;
     visitor.approvalTime = new Date();
-    visitor.approvedBy = req.body.approvedBy || 'Super Admin';
+    visitor.approvedBy = req.user ? req.user.name : 'System';
+
+    visitor.approvalDetails = {
+      qrToken: require('crypto').randomBytes(16).toString('hex'),
+      trackingToken: require('crypto').randomBytes(32).toString('hex'),
+      trackingTokenExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      createdBy: req.user ? req.user._id : 'System',
+      approvedByRole: req.user ? req.user.role : 'System',
+      approvedAt: new Date(),
+      method: 'Dashboard'
+    };
+
+    visitor.statusHistory.push({
+      status: 'APPROVED',
+      changedBy: req.user ? req.user._id : null,
+      changedByRole: req.user ? req.user.role : 'System',
+      changedAt: new Date(),
+      reason: ''
+    });
 
     const updatedVisitor = await visitor.save();
 
-    // Create Approval Notification
-    try {
-      await Notification.create({
-        companyId: visitor.companyId,
-        title: 'Pre-Booking Approved',
-        message: `Visitor ${visitor.visitorName} (${visitor.visitId}) has been APPROVED by Super Admin. QR pass generated.`,
-        type: 'visitor',
-        branch: visitor.branch,
-        read: false
-      });
-    } catch (e) {
-      console.warn('Notification error:', e.message);
-    }
+    await visitorNotificationService.notifyVisitorStatusChange({
+      visitor: updatedVisitor,
+      event: visitorNotificationService.EVENTS.VISITOR_APPROVED,
+      io: req.app.get('io')
+    });
 
     res.json({
       success: true,
       message: 'Pre-booking approved successfully and QR code generated!',
-      visitor: updatedVisitor
+      visitor: updatedVisitor,
+      data: updatedVisitor // maintaining backwards compatibility for existing frontend
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -180,7 +235,7 @@ router.put('/:id/approve', async (req, res) => {
 });
 
 // 5. Reject Pre-Booking (PENDING -> REJECTED)
-router.put('/:id/reject', async (req, res) => {
+router.put('/:id/reject', authMiddleware, checkApprovalPermission, async (req, res) => {
   try {
     const { id } = req.params;
     const { rejectionReason } = req.body;
@@ -194,9 +249,24 @@ router.put('/:id/reject', async (req, res) => {
     }
 
     visitor.status = 'REJECTED';
-    visitor.rejectionReason = rejectionReason || 'Rejected by Super Admin';
+    visitor.approvalStatus = 'REJECTED';
+    visitor.rejectionReason = rejectionReason || `Rejected by ${req.user ? req.user.role : 'System'}`;
+
+    visitor.statusHistory.push({
+      status: 'REJECTED',
+      changedBy: req.user ? req.user._id : null,
+      changedByRole: req.user ? req.user.role : 'System',
+      changedAt: new Date(),
+      reason: visitor.rejectionReason
+    });
 
     const updatedVisitor = await visitor.save();
+
+    await visitorNotificationService.notifyVisitorStatusChange({
+      visitor: updatedVisitor,
+      event: visitorNotificationService.EVENTS.VISITOR_REJECTED,
+      io: req.app.get('io')
+    });
 
     res.json({
       success: true,

@@ -7,13 +7,15 @@ import { useAuth } from '../../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Plus, Search, Filter, MoreVertical, QrCode, X, FileText, Edit, Save, CalendarCheck, UserPlus, Eye, User } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import VisitorHistoryModal from '../../components/visitors/VisitorHistoryModal';
+import VisitorRescheduleModal from '../../components/visitors/VisitorRescheduleModal';
 
 const VisitorList = () => {
   const { visitors, allVisitors, updateVisitorStatus, updateVisitorTracking, updateVisitor, networkIp } = useVisitors();
   const { zones } = useZones();
   const { activeBranch, branches } = useBranch();
   const { addNotification } = useNotification();
-  const { user } = useAuth();
+  const { user, hasApprovalPermission } = useAuth();
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedVisitorQR, setSelectedVisitorQR] = useState(null);
@@ -21,6 +23,7 @@ const VisitorList = () => {
   const [selectedVisitorUpdateZone, setSelectedVisitorUpdateZone] = useState(null);
   const [selectedVisitorEdit, setSelectedVisitorEdit] = useState(null);
   const [selectedVisitorDetails, setSelectedVisitorDetails] = useState(null);
+  const [reschedulingVisitor, setReschedulingVisitor] = useState(null);
   const [selectedZone, setSelectedZone] = useState('');
   const [openDropdownId, setOpenDropdownId] = useState(null);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -37,7 +40,7 @@ const VisitorList = () => {
     'AVINASH(MD SIR)',
     'SABARI(ADMIN)',
     'AGILA(IT)',
-    'NEW VISITORS'
+    'DIRECT VISITS'
   ]);
 
 
@@ -109,7 +112,7 @@ const VisitorList = () => {
             className="bg-[var(--color-brand-indigo)] hover:bg-[var(--color-brand-indigo-light)] text-white px-4 py-2.5 rounded-lg flex items-center space-x-2 font-medium transition-colors shadow-md text-sm"
           >
             <UserPlus size={18} />
-            <span>+ Walk-in Visitor</span>
+            <span>+ Direct Visit</span>
           </button>
           <button 
             onClick={() => navigate('/invitations')}
@@ -282,10 +285,17 @@ const VisitorList = () => {
                               {user?.role !== 'Security' && (
                                 <>
                                   <button onClick={() => { setSelectedVisitorUpdateZone(visitor); setOpenDropdownId(null); }} className="block w-full text-left px-4 py-2 text-sm text-indigo-600 font-medium hover:bg-slate-50 border-t border-gray-100">Update Zone</button>
-                                  <button onClick={() => { updateVisitorStatus(visitor._id || visitor.id, 'Approved'); setOpenDropdownId(null); }} className="block w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-slate-50 border-t border-gray-100">Approve</button>
-                                  <button onClick={() => { updateVisitorStatus(visitor._id || visitor.id, 'Cancelled'); setOpenDropdownId(null); }} className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-slate-50">Cancel Booking</button>
+                                  {hasApprovalPermission && (
+                                    <button onClick={() => { updateVisitorStatus(visitor._id || visitor.id, 'Approved'); setOpenDropdownId(null); }} className="block w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-slate-50 border-t border-gray-100">Approve</button>
+                                  )}
+                                  <button onClick={() => { updateVisitorStatus(visitor._id || visitor.id, 'Cancelled'); setOpenDropdownId(null); }} className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-slate-50 border-t border-gray-100">Cancel Booking</button>
+                                  {visitor.visitType !== 'DIRECT_VISIT' && hasApprovalPermission && (
+                                    <button onClick={() => { setReschedulingVisitor(visitor); setOpenDropdownId(null); }} className="block w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-slate-50 border-t border-gray-100">
+                                      Reschedule Appointment
+                                    </button>
+                                  )}
                                   <button onClick={() => { setSelectedVisitorHistory(visitor); setOpenDropdownId(null); }} className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-slate-50 border-t border-gray-100">
-                                    View Zone History
+                                    View Approval History
                                   </button>
                                 </>
                               )}
@@ -636,6 +646,49 @@ const VisitorList = () => {
               </div>
             </div>
 
+            {/* Current Approval Information */}
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+              <span className="text-xs font-bold text-slate-800 uppercase tracking-wider block mb-3 border-b border-slate-200 pb-2">Approval Details</span>
+              <div className="space-y-2 text-sm text-gray-700">
+                <div className="flex justify-between border-b border-gray-100 pb-2">
+                  <span className="font-semibold text-gray-500">Approval Status</span>
+                  <span className={`font-bold ${selectedVisitorDetails.approvalStatus === 'APPROVED' ? 'text-green-600' : selectedVisitorDetails.approvalStatus === 'REJECTED' ? 'text-red-600' : 'text-orange-500'}`}>
+                    {selectedVisitorDetails.approvalStatus || selectedVisitorDetails.status}
+                  </span>
+                </div>
+                {selectedVisitorDetails.approvedBy && (
+                  <>
+                    <div className="flex justify-between border-b border-gray-100 pb-2">
+                      <span className="font-semibold text-gray-500">Approved By</span>
+                      <span className="font-medium">{selectedVisitorDetails.approvedBy?.name || 'System'} ({selectedVisitorDetails.approvedByRole || 'System'})</span>
+                    </div>
+                    {selectedVisitorDetails.approvedAt && (
+                      <div className="flex justify-between border-b border-gray-100 pb-2">
+                        <span className="font-semibold text-gray-500">Approved On</span>
+                        <span className="font-medium">
+                          {new Date(selectedVisitorDetails.approvedAt).toLocaleDateString()} at {new Date(selectedVisitorDetails.approvedAt).toLocaleTimeString()}
+                        </span>
+                      </div>
+                    )}
+                  </>
+                )}
+                {selectedVisitorDetails.rejectionReason && (
+                  <div className="flex flex-col gap-1 pt-1">
+                    <span className="font-semibold text-gray-500">Rejection Reason</span>
+                    <span className="font-medium text-red-600 bg-red-50 p-2 rounded-lg">{selectedVisitorDetails.rejectionReason}</span>
+                  </div>
+                )}
+                <div className="pt-2">
+                  <button 
+                    onClick={() => { setSelectedVisitorHistory(selectedVisitorDetails); setSelectedVisitorDetails(null); }}
+                    className="text-indigo-600 text-xs font-bold hover:underline"
+                  >
+                    View Full Audit Trail &rarr;
+                  </button>
+                </div>
+              </div>
+            </div>
+
             {/* QR Code Section */}
             <div className="p-4 bg-slate-900 rounded-2xl flex items-center justify-between">
               <div className="bg-white p-2 rounded-xl shadow-md">
@@ -665,6 +718,24 @@ const VisitorList = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {selectedVisitorHistory && (
+        <VisitorHistoryModal
+          visitor={selectedVisitorHistory}
+          onClose={() => setSelectedVisitorHistory(null)}
+        />
+      )}
+
+      {reschedulingVisitor && (
+        <VisitorRescheduleModal
+          visitor={reschedulingVisitor}
+          onClose={() => setReschedulingVisitor(null)}
+          onSuccess={() => {
+            // Re-fetch the page data dynamically by reloading the window or calling a refresh function if available
+            window.location.reload();
+          }}
+        />
       )}
     </div>
   );

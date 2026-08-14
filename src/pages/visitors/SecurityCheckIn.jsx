@@ -29,23 +29,30 @@ const SecurityCheckIn = () => {
       const authHeader = { 'Authorization': user?.token ? `Bearer ${user.token}` : '' };
 
       // Fetch from BOTH PreBooking model and Visitor model simultaneously
-      const [pbRes, vResPending, vResPENDING] = await Promise.all([
+      const [pbRes, vResPending, vResPENDING, vResApproved, pbResApproved] = await Promise.all([
         fetch(`${API_URL}/api/prebookings?status=PENDING`, { headers: authHeader }),
         fetch(`${API_URL}/api/visitors?status=Pending`, { headers: authHeader }),
-        fetch(`${API_URL}/api/visitors?status=PENDING`, { headers: authHeader })
+        fetch(`${API_URL}/api/visitors?status=PENDING`, { headers: authHeader }),
+        fetch(`${API_URL}/api/visitors?status=Approved`, { headers: authHeader }),
+        fetch(`${API_URL}/api/prebookings?status=APPROVED`, { headers: authHeader })
       ]);
 
       const pbData = await pbRes.json();
       const vDataPending = await vResPending.json();
       const vDataPENDING = await vResPENDING.json();
+      const vDataApproved = await vResApproved.json();
+      const pbDataApproved = await pbResApproved.json();
 
       let merged = [];
       // Add PreBooking records (from preBookingController → PreBooking model)
       if (pbRes.ok && pbData.data) merged = merged.concat(pbData.data);
-      // Add Walk-in Visitor records (from Visitor model, status 'Pending')
+      if (pbResApproved.ok && pbDataApproved.data) merged = merged.concat(pbDataApproved.data);
+      // Add Direct Visit Visitor records (from Visitor model, status 'Pending')
       if (vResPending.ok && Array.isArray(vDataPending)) merged = merged.concat(vDataPending);
       // Add Public Pre-Booking Visitor records (from Visitor model, status 'PENDING')
       if (vResPENDING.ok && Array.isArray(vDataPENDING)) merged = merged.concat(vDataPENDING);
+      // Add Approved Visitor records
+      if (vResApproved.ok && Array.isArray(vDataApproved)) merged = merged.concat(vDataApproved);
 
       // Remove duplicates by _id
       const seen = new Set();
@@ -221,86 +228,8 @@ const SecurityCheckIn = () => {
   const [exitNotes, setExitNotes] = useState('');
   const [checkoutError, setCheckoutError] = useState('');
 
-  const handleApprove = async () => {
-    if (!visitor) return;
-    const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
-
-    // Use _isVisitorCollection flag to determine which API to call
-    const isVisitorCollection = visitor._isVisitorCollection || visitor.visitId != null;
-
-    let approveUrl, approveMethod;
-    if (isVisitorCollection) {
-      // Visitor model record → use PATCH /api/visitors/:id/approve
-      approveUrl = `${API_URL}/api/visitors/${encodeURIComponent(visitor._id || visitor.id)}/approve`;
-      approveMethod = 'PATCH';
-    } else {
-      // PreBooking model record → use PUT /api/prebookings/:id/approve
-      approveUrl = `${API_URL}/api/prebookings/${encodeURIComponent(visitor._id || visitor.id)}/approve`;
-      approveMethod = 'PUT';
-    }
-
-    try {
-      const response = await fetch(approveUrl, {
-        method: approveMethod,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': user?.token ? `Bearer ${user.token}` : ''
-        }
-      });
-
-      const resData = await response.json();
-      if (response.ok && (resData.success || resData._id)) {
-        const updatedStatus = isVisitorCollection ? 'Approved' : 'APPROVED';
-        setVisitor(prev => ({ ...prev, status: updatedStatus }));
-        fetchPendingVisitors();
-        addNotification('Visitor Approved', `${visitor.fullName || visitor.visitorName} approved successfully!`, 'success');
-      } else {
-        alert(`❌ Approval Failed: ${resData.message || 'Unknown error'}`);
-      }
-    } catch (e) {
-      console.error('Approval Error:', e);
-      alert('Failed to connect to backend server for Approval.');
-    }
-  };
-
-  const handleReject = async () => {
-    if (!visitor) return;
-    const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
-
-    const isVisitorCollection = visitor._isVisitorCollection || visitor.visitId != null;
-
-    let rejectUrl, rejectMethod;
-    if (isVisitorCollection) {
-      rejectUrl = `${API_URL}/api/visitors/${encodeURIComponent(visitor._id || visitor.id)}/reject`;
-      rejectMethod = 'PATCH';
-    } else {
-      rejectUrl = `${API_URL}/api/prebookings/${encodeURIComponent(visitor._id || visitor.id)}/reject`;
-      rejectMethod = 'PUT';
-    }
-
-    try {
-      const response = await fetch(rejectUrl, {
-        method: rejectMethod,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': user?.token ? `Bearer ${user.token}` : ''
-        }
-      });
-
-      const resData = await response.json();
-      if (response.ok && (resData.success || resData._id)) {
-        const updatedStatus = isVisitorCollection ? 'Rejected' : 'REJECTED';
-        setVisitor(prev => ({ ...prev, status: updatedStatus }));
-        fetchPendingVisitors();
-        addNotification('Visitor Rejected', `${visitor.fullName || visitor.visitorName} has been rejected.`, 'info');
-      } else {
-        alert(`❌ Rejection Failed: ${resData.message || 'Unknown error'}`);
-      }
-    } catch (e) {
-      console.error('Rejection Error:', e);
-      alert('Failed to connect to backend server for Rejection.');
-    }
-  };
+  // Approval and Rejection actions removed from Security Dashboard 
+  // as per permission-based approval system
 
   const handleCheckIn = async () => {
     if (!visitor) return;
@@ -311,7 +240,7 @@ const SecurityCheckIn = () => {
 
     let checkInUrl, checkInMethod, checkInBody;
     if (isVisitorCollection) {
-      // Walk-in Visitor model record: use PATCH /api/visitors/:id with status 'Inside'
+      // Direct Visit Visitor model record: use PATCH /api/visitors/:id with status 'Inside'
       checkInUrl = `${API_URL}/api/visitors/${encodeURIComponent(targetId)}`;
       checkInMethod = 'PATCH';
       checkInBody = JSON.stringify({ status: 'Inside' });
@@ -478,7 +407,7 @@ const SecurityCheckIn = () => {
         <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6 animate-in slide-in-from-bottom-2 duration-500">
           <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
             <User className="text-amber-500" size={20} />
-            New Visitor Requests ({pendingVisitors.length})
+            Direct Visit Requests ({pendingVisitors.length})
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {pendingVisitors.map((pv) => {
@@ -573,7 +502,7 @@ const SecurityCheckIn = () => {
                 {visitor.visitorType === 'NEW_VISITOR' && (
                   <div className="bg-amber-50 p-3.5 rounded-xl border border-amber-200">
                     <span className="text-xs text-amber-700 block font-bold uppercase tracking-wider">Visitor Type</span>
-                    <span className="font-bold text-amber-900">NEW VISITOR</span>
+                    <span className="font-bold text-amber-900">DIRECT VISIT</span>
                   </div>
                 )}
 
@@ -636,21 +565,9 @@ const SecurityCheckIn = () => {
               <div className="flex items-center gap-3 w-full sm:w-auto">
                 {/* PENDING CHECK-IN DISABLED */}
                 {(visitor.status === 'PENDING' || visitor.status === 'Pending Approval' || visitor.status === 'Pending') && (
-                  <div className="flex gap-2 w-full sm:w-auto">
-                    <button
-                      type="button"
-                      onClick={handleApprove}
-                      className="flex-1 sm:flex-initial px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-md transition-transform active:scale-95 text-sm"
-                    >
-                      APPROVE
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleReject}
-                      className="flex-1 sm:flex-initial px-6 py-3.5 bg-red-100 hover:bg-red-200 text-red-700 font-bold rounded-xl shadow-sm transition-transform active:scale-95 text-sm border border-red-200"
-                    >
-                      REJECT
-                    </button>
+                  <div className="px-6 py-3 bg-amber-50 text-amber-800 border border-amber-300 rounded-xl font-bold text-sm flex items-center gap-2">
+                    <Clock size={18} />
+                    <span>Awaiting Host Approval</span>
                   </div>
                 )}
 

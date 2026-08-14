@@ -37,7 +37,7 @@ const hostOptions = [
   { label: "Sabari (Admin)", name: "Sabari", dbName: "SABARI" },
   { label: "Agila (IT)", name: "Agila", dbName: "AGILA" },
   { label: "Joe Christo (Senior HR)", name: "Joe Christo", dbName: "JOE CHRISTO" },
-  { label: "New Visitors", name: "New Visitors", dbName: "NEW VISITORS" }
+  { label: "Direct Visits", name: "Direct Visits", dbName: "DIRECT VISITS" }
 ];
 
 const PublicPreBooking = () => {
@@ -73,7 +73,7 @@ const PublicPreBooking = () => {
   const [hrUsers, setHrUsers] = useState([]);
 
   const getHrId = (dbName) => {
-    if (!dbName || dbName === 'NEW VISITORS') return '';
+    if (!dbName || dbName === 'DIRECT VISITS') return '';
     const found = hrUsers.find(u => u.name.toUpperCase().replace(/\s/g, '') === dbName.replace(/\s/g, ''));
     if (found) return found._id || found.id;
     // Fallback to Priyadharshini's ID for other normal visitors

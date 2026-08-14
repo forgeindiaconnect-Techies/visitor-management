@@ -29,6 +29,7 @@ import VisitorPass from './pages/public/VisitorPass';
 import PreRegister from './pages/public/PreRegister';
 import LandingPage from './pages/public/LandingPage';
 import PublicPreBooking from './pages/public/PublicPreBooking';
+import VisitorStatus from './pages/public/VisitorStatus';
 import PreBookingRegistration from './pages/visitors/PreBookingRegistration';
 import VisitorInvitation from './pages/VisitorInvitation';
 import ApprovalList from './pages/approvals/ApprovalList';
@@ -88,6 +89,7 @@ const AppRoutes = () => {
       <Route path="/landing" element={<LandingPage />} />
       <Route path="/login" element={<Login />} />
       <Route path="/prebook" element={<PublicPreBooking />} />
+      <Route path="/visitor-status/:token" element={<VisitorStatus />} />
       <Route path="/pass/:visitId" element={<VisitorPass />} />
       <Route path="/pre-register" element={<PreRegister />} />
       <Route path="/visitor-invitation/:token" element={<VisitorInvitation />} />

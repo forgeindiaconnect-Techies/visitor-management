@@ -30,7 +30,7 @@ const VisitorForm = () => {
     'Sabari (Admin)',
     'Agila (IT)',
     'Joe Christo (Senior HR)',
-    'New Visitors'
+    'Direct Visits'
   ]);
 
   const [isHostModalOpen, setIsHostModalOpen] = useState(false);
@@ -196,7 +196,7 @@ const VisitorForm = () => {
           <ArrowLeft size={20} />
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Walk-in Visitor Registration</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Direct Visit Registration</h1>
           <p className="text-gray-500 mt-1">For visitors who arrive at facility without prior registration.</p>
         </div>
       </div>
@@ -208,7 +208,7 @@ const VisitorForm = () => {
           onClick={() => navigate('/visitors/new')}
           className="flex-1 py-3 px-4 text-center font-bold text-sm rounded-lg bg-[var(--color-brand-indigo)] text-white shadow-md transition-all flex items-center justify-center gap-2"
         >
-          <span>🚶 Walk-in Visitor</span>
+          <span>🚶 Direct Visit</span>
           <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-normal">Arrives First</span>
         </button>
         <button

@@ -1,21 +1,25 @@
 import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { 
-  Search, Filter, CalendarCheck, UserPlus, Eye, Check, X, QrCode, Trash2, MapPin, Calendar, Clock, RefreshCw, User, Building, ShieldAlert, CheckCircle2, XCircle
+  Search, Filter, CalendarCheck, UserPlus, Eye, Check, X, QrCode, Trash2, MapPin, Calendar, Clock, RefreshCw, User, Building, ShieldAlert, CheckCircle2, XCircle, Download
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from '../context/AuthContext';
 import { io } from "socket.io-client";
+import VisitorHistoryModal from '../components/visitors/VisitorHistoryModal';
+import VisitorRescheduleModal from '../components/visitors/VisitorRescheduleModal';
 
 const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
 
 export default function SuperAdminPreBookings() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user } = useAuth();
+  const { user, hasApprovalPermission } = useAuth();
   const [preBookings, setPreBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedVisitor, setSelectedVisitor] = useState(null);
+  const [selectedVisitorHistory, setSelectedVisitorHistory] = useState(null);
+  const [reschedulingVisitor, setReschedulingVisitor] = useState(null);
   const [approvedQR, setApprovedQR] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFilter, setDateFilter] = useState("");
@@ -778,9 +782,35 @@ export default function SuperAdminPreBookings() {
                       {/* Actions */}
                       <td className="px-6 py-4 whitespace-nowrap text-right relative" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end">
+                          {(visitor.status?.toUpperCase() === 'PENDING' || visitor.status?.toUpperCase() === 'PENDING APPROVAL') && hasApprovalPermission && (
+                            <div className="flex gap-2 mr-4">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  approveVisitor(id);
+                                }}
+                                className="px-3 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white border border-emerald-200 hover:border-emerald-500 rounded-md text-xs font-bold flex items-center gap-1 transition-colors shadow-sm"
+                              >
+                                <Check size={14} /> Approve
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  rejectVisitor(id);
+                                }}
+                                className="px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-500 hover:text-white border border-red-200 hover:border-red-500 rounded-md text-xs font-bold flex items-center gap-1 transition-colors shadow-sm"
+                              >
+                                <X size={14} /> Reject
+                              </button>
+                            </div>
+                          )}
+
                           <button
-                            onClick={() => setActiveActionMenuId(activeActionMenuId === id ? null : id)}
-                            className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors text-sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveActionMenuId(activeActionMenuId === id ? null : id);
+                            }}
+                            className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors text-sm flex-shrink-0"
                             title="Actions Menu"
                           >
                             ⋮
@@ -798,28 +828,7 @@ export default function SuperAdminPreBookings() {
                                 <Eye size={14} className="text-slate-500" /> View Details
                               </button>
 
-                              {visitor.status === 'PENDING' && (
-                                <>
-                                  <button
-                                    onClick={() => {
-                                      approveVisitor(id);
-                                      setActiveActionMenuId(null);
-                                    }}
-                                    className="w-full px-4 py-2.5 hover:bg-emerald-50 text-emerald-700 text-xs font-bold flex items-center gap-2 transition-colors"
-                                  >
-                                    <Check size={14} className="text-emerald-600" /> Approve
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      rejectVisitor(id);
-                                      setActiveActionMenuId(null);
-                                    }}
-                                    className="w-full px-4 py-2.5 hover:bg-red-50 text-red-600 text-xs font-bold flex items-center gap-2 transition-colors"
-                                  >
-                                    <X size={14} className="text-red-500" /> Reject
-                                  </button>
-                                </>
-                              )}
+                              {/* The Approve/Reject buttons have been moved outside the menu */}
 
                               <button
                                 onClick={() => {
@@ -901,7 +910,7 @@ export default function SuperAdminPreBookings() {
               </div>
               <button
                 onClick={() => setSelectedVisitor(null)}
-                className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
+                className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:white transition-colors"
               >
                 <X size={20} />
               </button>
@@ -986,7 +995,50 @@ export default function SuperAdminPreBookings() {
                 </div>
               )}
 
-              {selectedVisitor.status === 'PENDING' && (
+              {/* Approval Summary */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                <span className="text-xs font-bold text-slate-800 uppercase tracking-wider block mb-3 border-b border-slate-200 pb-2">Approval Details</span>
+                <div className="space-y-2 text-sm text-gray-700">
+                  <div className="flex justify-between border-b border-gray-100 pb-2">
+                    <span className="font-semibold text-gray-500">Approval Status</span>
+                    <span className={`font-bold ${selectedVisitor.approvalStatus === 'APPROVED' ? 'text-green-600' : selectedVisitor.approvalStatus === 'REJECTED' ? 'text-red-600' : 'text-orange-500'}`}>
+                      {selectedVisitor.approvalStatus || selectedVisitor.status}
+                    </span>
+                  </div>
+                  {selectedVisitor.approvedBy && (
+                    <>
+                      <div className="flex justify-between border-b border-gray-100 pb-2">
+                        <span className="font-semibold text-gray-500">Approved By</span>
+                        <span className="font-medium">{selectedVisitor.approvedBy?.name || 'System'} ({selectedVisitor.approvedByRole || 'System'})</span>
+                      </div>
+                      {selectedVisitor.approvedAt && (
+                        <div className="flex justify-between border-b border-gray-100 pb-2">
+                          <span className="font-semibold text-gray-500">Approved On</span>
+                          <span className="font-medium">
+                            {new Date(selectedVisitor.approvedAt).toLocaleDateString()} at {new Date(selectedVisitor.approvedAt).toLocaleTimeString()}
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {selectedVisitor.rejectionReason && (
+                    <div className="flex flex-col gap-1 pt-1">
+                      <span className="font-semibold text-gray-500">Rejection Reason</span>
+                      <span className="font-medium text-red-600 bg-red-50 p-2 rounded-lg">{selectedVisitor.rejectionReason}</span>
+                    </div>
+                  )}
+                  <div className="pt-2">
+                    <button 
+                      onClick={() => { setSelectedVisitorHistory(selectedVisitor); setSelectedVisitor(null); }}
+                      className="text-indigo-600 text-xs font-bold hover:underline"
+                    >
+                      View Full Audit Trail &rarr;
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {selectedVisitor.status === 'PENDING' && hasApprovalPermission && (
                 <div className="flex gap-3 pt-2">
                   <button
                     onClick={() => approveVisitor(selectedVisitor._id || selectedVisitor.id)}
@@ -1005,9 +1057,38 @@ export default function SuperAdminPreBookings() {
                   </button>
                 </div>
               )}
+
+              {selectedVisitor.visitType !== 'DIRECT_VISIT' && hasApprovalPermission && (
+                <div className="pt-1">
+                  <button
+                    onClick={() => { setReschedulingVisitor(selectedVisitor); setSelectedVisitor(null); }}
+                    className="w-full px-4 py-2.5 border-2 border-indigo-100 text-indigo-700 hover:bg-indigo-50 font-bold rounded-xl flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <Clock size={18} /> Reschedule Appointment
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
+      )}
+
+      {selectedVisitorHistory && (
+        <VisitorHistoryModal
+          visitor={selectedVisitorHistory}
+          onClose={() => setSelectedVisitorHistory(null)}
+        />
+      )}
+
+      {reschedulingVisitor && (
+        <VisitorRescheduleModal
+          visitor={reschedulingVisitor}
+          onClose={() => setReschedulingVisitor(null)}
+          onSuccess={() => {
+            // Re-fetch the page data dynamically by reloading the window or calling a refresh function if available
+            window.location.reload();
+          }}
+        />
       )}
     </div>
   );

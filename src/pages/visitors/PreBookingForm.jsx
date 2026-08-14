@@ -29,7 +29,7 @@ const PreBookingForm = () => {
     'Sabari (Admin)',
     'Agila (IT)',
     'Joe Christo (Senior HR)',
-    'New Visitors'
+    'Direct Visits'
   ]);
 
   const [isHostModalOpen, setIsHostModalOpen] = useState(false);
@@ -201,7 +201,7 @@ const PreBookingForm = () => {
           onClick={() => navigate('/visitors/new')}
           className="flex-1 py-3 px-4 text-center font-bold text-sm rounded-lg text-slate-700 hover:bg-white transition-all flex items-center justify-center gap-2"
         >
-          <span>🚶 Walk-in Visitor</span>
+          <span>🚶 Direct Visit</span>
           <span className="text-[10px] bg-slate-200 px-2 py-0.5 rounded-full font-normal">Arrives First</span>
         </button>
         <button

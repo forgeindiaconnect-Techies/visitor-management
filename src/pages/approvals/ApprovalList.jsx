@@ -6,7 +6,7 @@ import HostVisitorDetailsModal from '../../components/approvals/HostVisitorDetai
 
 const ApprovalList = () => {
   const { allVisitors, approveVisitor, rejectVisitor } = useVisitors();
-  const { user } = useAuth();
+  const { user, hasApprovalPermission } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [tabFilter, setTabFilter] = useState('Pending'); // 'Pending' | 'Approved' | 'Rejected' | 'All'
 
@@ -169,7 +169,7 @@ const ApprovalList = () => {
                         <Eye size={18} />
                       </button>
 
-                      {(visitor.status === 'Pending Approval' || visitor.status === 'Pending') && (
+                      {(visitor.status === 'Pending Approval' || visitor.status === 'Pending') && hasApprovalPermission && (
                         <>
                           <button
                             type="button"

@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { X, CheckCircle2, XCircle, User, Calendar, Clock, MapPin, FileText, IdCard, Building, ShieldAlert } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 const HostVisitorDetailsModal = ({ isOpen, onClose, visitor, onApprove, onReject }) => {
+  const { hasApprovalPermission } = useAuth();
   const [rejecting, setRejecting] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('Meeting Cancelled');
   const [customReason, setCustomReason] = useState('');
@@ -31,7 +33,11 @@ const HostVisitorDetailsModal = ({ isOpen, onClose, visitor, onApprove, onReject
             </div>
             <div>
               <h3 className="text-lg font-bold text-white">{visitor.visitorName}</h3>
-              <p className="text-xs text-slate-300">Pending Host Approval</p>
+              <p className="text-xs text-slate-300">
+                {visitor.status === 'Approved' ? '✅ Approved Pre-Booking' : 
+                 visitor.status === 'Rejected' ? '❌ Rejected Pre-Booking' : 
+                 '⏳ Pending Host Approval'}
+              </p>
             </div>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-white p-1 rounded-full hover:bg-slate-800 transition-colors">
@@ -148,7 +154,7 @@ const HostVisitorDetailsModal = ({ isOpen, onClose, visitor, onApprove, onReject
             Close
           </button>
 
-          {!rejecting ? (
+          {(visitor.status === 'Pending Approval' || visitor.status === 'Pending') && hasApprovalPermission && !rejecting && (
             <div className="flex gap-3">
               <button 
                 type="button" 
@@ -165,7 +171,9 @@ const HostVisitorDetailsModal = ({ isOpen, onClose, visitor, onApprove, onReject
                 <CheckCircle2 size={16} /> Approve (Generate QR)
               </button>
             </div>
-          ) : (
+          )}
+          
+          {(visitor.status === 'Pending Approval' || visitor.status === 'Pending') && hasApprovalPermission && rejecting && (
             <div className="flex gap-2">
               <button 
                 type="button" 
@@ -181,6 +189,47 @@ const HostVisitorDetailsModal = ({ isOpen, onClose, visitor, onApprove, onReject
               >
                 Confirm Rejection
               </button>
+            </div>
+          )}
+
+          {/* Show Approved/Rejected By Info */}
+          {(visitor.status === 'Approved' || visitor.status === 'APPROVED' || visitor.approvalStatus === 'APPROVED') && (
+            <div className="text-right text-xs">
+              <span className="font-bold text-green-700 block text-sm">Status: Approved</span>
+              {visitor.approvalDetails ? (
+                <>
+                  <span className="text-slate-500 block">Approved By: <span className="font-semibold text-slate-700">{visitor.approvalDetails.approvedBy || visitor.approvedBy}</span></span>
+                  <span className="text-slate-500 block">Role: <span className="font-semibold text-slate-700">{visitor.approvalDetails.approvedByRole || visitor.approvedByRole}</span></span>
+                  <span className="text-slate-500 block">Date: {new Date(visitor.approvalDetails.approvedAt || visitor.approvedAt).toLocaleDateString()}</span>
+                  <span className="text-slate-500 block">Time: {new Date(visitor.approvalDetails.approvedAt || visitor.approvedAt).toLocaleTimeString()}</span>
+                </>
+              ) : (
+                <span className="text-slate-500 block">By: <span className="font-semibold text-slate-700">{visitor.approvedBy || visitor.hostName || 'Host'}</span></span>
+              )}
+            </div>
+          )}
+          
+          {(visitor.status === 'Rejected' || visitor.status === 'REJECTED' || visitor.approvalStatus === 'REJECTED') && (
+            <div className="text-right text-xs">
+              <span className="font-bold text-red-700 block text-sm">Status: Rejected</span>
+              {visitor.statusHistory && visitor.statusHistory.length > 0 ? (
+                (() => {
+                  const rejectEvent = visitor.statusHistory.find(h => h.status === 'REJECTED' || h.status === 'Rejected');
+                  if (rejectEvent) {
+                    return (
+                      <>
+                        <span className="text-slate-500 block">Rejected By: <span className="font-semibold text-slate-700">{rejectEvent.changedBy || visitor.approvedBy}</span></span>
+                        <span className="text-slate-500 block">Role: <span className="font-semibold text-slate-700">{rejectEvent.changedByRole || visitor.approvedByRole}</span></span>
+                        <span className="text-slate-500 block">Date: {new Date(rejectEvent.changedAt).toLocaleDateString()}</span>
+                        <span className="text-slate-500 block">Time: {new Date(rejectEvent.changedAt).toLocaleTimeString()}</span>
+                      </>
+                    );
+                  }
+                  return null;
+                })()
+              ) : (
+                <span className="text-slate-500 block">By: <span className="font-semibold text-slate-700">{visitor.approvedBy || visitor.hostName || 'Host'}</span></span>
+              )}
             </div>
           )}
         </div>

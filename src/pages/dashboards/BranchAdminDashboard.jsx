@@ -67,7 +67,7 @@ const BranchAdminDashboard = () => {
             onClick={() => navigate('/visitors/new')}
             className="px-4 py-2 bg-[var(--color-brand-indigo)] text-white hover:bg-[var(--color-brand-indigo-light)] font-medium rounded-lg transition-colors shadow-sm"
           >
-            + New Visitor
+            + Direct Visit
           </button>
         </div>
       </div>

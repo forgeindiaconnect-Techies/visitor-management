@@ -70,22 +70,26 @@ notificationSchema.post('save', async function(doc) {
       
       let query = { fcmToken: { $exists: true, $ne: '' } };
       
-      if (doc.type === 'Attendance') {
-        query.role = 'Super Admin';
-      }
-      
-      if (doc.companyId && doc.companyId !== 'SYSTEM') {
-        query.companyId = doc.companyId;
-        if (doc.branchId && doc.branchId !== 'All Branches') {
-          query.$or = [
-            { branch: doc.branchId },
-            { branch: 'All Branches' },
-            { branchId: doc.branchId },
-            { branchId: 'All Branches' }
-          ];
+      if (doc.recipient) {
+        query._id = doc.recipient;
+      } else {
+        if (doc.type === 'Attendance') {
+          query.role = 'Super Admin';
         }
-      } else if (doc.companyId === 'SYSTEM') {
-        query.role = 'SaaS Super Admin';
+        
+        if (doc.companyId && doc.companyId !== 'SYSTEM') {
+          query.companyId = doc.companyId;
+          if (doc.branchId && doc.branchId !== 'All Branches') {
+            query.$or = [
+              { branch: doc.branchId },
+              { branch: 'All Branches' },
+              { branchId: doc.branchId },
+              { branchId: 'All Branches' }
+            ];
+          }
+        } else if (doc.companyId === 'SYSTEM') {
+          query.role = 'SaaS Super Admin';
+        }
       }
 
       const usersToNotify = await User.find(query);
