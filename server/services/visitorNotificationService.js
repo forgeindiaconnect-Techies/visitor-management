@@ -56,8 +56,8 @@ const notifyVisitorEvent = async ({
     };
 
     const trackingUrl = visitor.visitorId || visitor.visitId
-      ? `${process.env.FRONTEND_URL || 'http://localhost:5173'}/pass/${visitor.visitorId || visitor.visitId}`
-      : `${process.env.FRONTEND_URL || 'http://localhost:5173'}/pass/${visitor._id}`;
+      ? `${process.env.FRONTEND_URL || 'https://zone-monitor.vercel.app'}/pass/${visitor.visitorId || visitor.visitId}`
+      : `${process.env.FRONTEND_URL || 'https://zone-monitor.vercel.app'}/pass/${visitor._id}`;
     const actionLink = `<p><br/><a href="${trackingUrl}" style="padding: 10px 20px; background-color: #4f46e5; color: white; text-decoration: none; border-radius: 5px; display: inline-block;">VIEW VISITOR PASS</a></p>`;
 
     // --- Format Dates for Email ---

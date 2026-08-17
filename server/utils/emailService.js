@@ -21,16 +21,33 @@ const transporter = nodemailer.createTransport({
 
 const sendEmail = async (to, subject, htmlBody) => {
   try {
-    const info = await transporter.sendMail({
-      from: `"FIC Visitor Management" <${SMTP_USER}>`,
-      to,
-      subject,
-      html: htmlBody
-    });
-    console.log(`📧 Email sent successfully to ${to}. MessageId: ${info.messageId}`);
+    const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
+
+    // Prioritize BREVO_API_KEY if available, otherwise it will fail gracefully
+    if (!process.env.BREVO_API_KEY) {
+       console.warn("⚠️ BREVO_API_KEY is not set. Email will not be sent.");
+       return false;
+    }
+
+    apiInstance.setApiKey(
+      SibApiV3Sdk.TransactionalEmailsApiApiKeys.apiKey,
+      process.env.BREVO_API_KEY
+    );
+
+    const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+    sendSmtpEmail.subject = subject;
+    sendSmtpEmail.sender = {
+      name: process.env.BREVO_SENDER_NAME || 'FIC VMS',
+      email: process.env.BREVO_SENDER_EMAIL || 'forgeindiaconnectfic@gmail.com',
+    };
+    sendSmtpEmail.to = [{ email: to }];
+    sendSmtpEmail.htmlContent = htmlBody;
+
+    await apiInstance.sendTransacEmail(sendSmtpEmail);
+    console.log(`📧 Brevo email sent successfully to ${to}. Subject: ${subject}`);
     return true;
   } catch (err) {
-    console.warn(`⚠️ Nodemailer error (${err.message}). Logging email to console:`);
+    console.warn(`⚠️ Brevo email error (${err.message}). Logging email to console:`);
     console.log('\n' + '='.repeat(60));
     console.log('📧 EMAIL DISPATCH LOG');
     console.log('='.repeat(60));
@@ -173,8 +190,8 @@ const sendApprovalEmail = async (preBooking) => {
       },
     ];
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-    const passUrl = `${frontendUrl}/pass/${preBooking.visitorId}`;
+    const frontendUrl = process.env.FRONTEND_URL || 'https://zone-monitor.vercel.app';
+    const passUrl = `${frontendUrl}/pass/${preBooking.visitorId || preBooking.visitId}`;
 
     sendSmtpEmail.htmlContent = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
