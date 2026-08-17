@@ -165,8 +165,9 @@ router.put('/:id/approve', authMiddleware, checkApprovalPermission, async (req, 
       return res.status(404).json({ message: 'Visitor record not found.' });
     }
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-    const qrCode = `${frontendUrl}/pass/${visitor.visitId}`;
+    const rawFrontendUrl = process.env.FRONTEND_URL || 'https://zone-monitor.vercel.app';
+    const frontendUrl = String(rawFrontendUrl).replace(/[\r\n\t]/g, '').trim().replace(/\/+$/, '');
+    const qrCode = `${frontendUrl}/pass/${visitor.visitId || visitor.visitorId || visitor._id}`;
 
     visitor.status = 'APPROVED';
     visitor.approvalStatus = 'APPROVED';

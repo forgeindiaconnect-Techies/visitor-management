@@ -55,9 +55,10 @@ const notifyVisitorEvent = async ({
       return users.map(u => u._id.toString());
     };
 
-    const trackingUrl = visitor.visitorId || visitor.visitId
-      ? `${process.env.FRONTEND_URL || 'https://zone-monitor.vercel.app'}/pass/${visitor.visitorId || visitor.visitId}`
-      : `${process.env.FRONTEND_URL || 'https://zone-monitor.vercel.app'}/pass/${visitor._id}`;
+    const rawFrontendUrl = process.env.FRONTEND_URL || 'https://zone-monitor.vercel.app';
+    const frontendUrl = String(rawFrontendUrl).replace(/[\r\n\t]/g, '').trim().replace(/\/+$/, '');
+    const passId = visitor.visitorId || visitor.visitId || visitor._id;
+    const trackingUrl = `${frontendUrl}/pass/${passId}`;
     const actionLink = `<p><br/><a href="${trackingUrl}" style="padding: 10px 20px; background-color: #4f46e5; color: white; text-decoration: none; border-radius: 5px; display: inline-block;">VIEW VISITOR PASS</a></p>`;
 
     // --- Format Dates for Email ---

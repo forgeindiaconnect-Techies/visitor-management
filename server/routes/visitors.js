@@ -422,7 +422,8 @@ router.post('/', async (req, res) => {
     const bookingId = req.body.bookingId || `BK${bNum.toString().padStart(6, '0')}`;
 
     // 3. Generate QR Code Data & URL
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const rawFrontendUrl = process.env.FRONTEND_URL || 'https://zone-monitor.vercel.app';
+    const frontendUrl = String(rawFrontendUrl).replace(/[\r\n\t]/g, '').trim().replace(/\/+$/, '');
     const qrCode = `${frontendUrl}/pass/${visitId}`;
     const qrPayload = {
       bookingId: bookingId,
@@ -1150,7 +1151,8 @@ router.patch('/:id/approve', checkApprovalPermission, async (req, res) => {
       visitor.bookingId = `BK${bNum.toString().padStart(6, '0')}`;
     }
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const rawFrontendUrl = process.env.FRONTEND_URL || 'https://zone-monitor.vercel.app';
+    const frontendUrl = String(rawFrontendUrl).replace(/[\r\n\t]/g, '').trim().replace(/\/+$/, '');
     visitor.qrCode = `${frontendUrl}/pass/${visitor.visitId || visitor._id}`;
     visitor.qrPayload = {
       bookingId: visitor.bookingId,

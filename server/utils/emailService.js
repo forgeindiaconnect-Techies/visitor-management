@@ -168,8 +168,9 @@ const sendApprovalEmail = async (preBooking) => {
 
     const brevo = new BrevoClient({ apiKey: process.env.BREVO_API_KEY });
 
-    const frontendUrl = process.env.FRONTEND_URL || 'https://zone-monitor.vercel.app';
-    const passUrl = `${frontendUrl}/pass/${preBooking.visitorId || preBooking.visitId}`;
+    const rawFrontendUrl = process.env.FRONTEND_URL || 'https://zone-monitor.vercel.app';
+    const frontendUrl = String(rawFrontendUrl).replace(/[\r\n\t]/g, '').trim().replace(/\/+$/, '');
+    const passUrl = `${frontendUrl}/pass/${preBooking.visitorId || preBooking.visitId || preBooking._id}`;
 
     const htmlContent = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
