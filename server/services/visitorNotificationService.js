@@ -96,8 +96,8 @@ const notifyVisitorEvent = async ({
         notificationMessage = `New visitor ${visitor.visitorName || visitor.fullName} waiting for approval`;
         sendEmailToVisitor = true;
 
-        const superAdmins = await User.find({ role: 'Super Admin', companyId: visitor.companyId });
-        notifyRecipients = superAdmins.map(u => u._id.toString());
+        notifyRecipients = await getDashboardUserIds();
+        if (hostUserId && !notifyRecipients.includes(hostUserId)) notifyRecipients.push(hostUserId);
 
         break;
 

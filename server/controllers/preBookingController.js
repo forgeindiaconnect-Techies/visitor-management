@@ -187,11 +187,13 @@ const approvePreBooking = async (req, res) => {
     }
 
     const company = await require('../models/Company').findOne({ code: req.companyId || 'FIC001' });
-    const allowedApprovers = ['Sandeep', 'Avinash', 'Agila', 'Jeo', 'Joe Christo'];
+    const allowedApprovers = ['sandeep', 'avinash', 'agila', 'jeo', 'joe christo'];
     
     // Check if the user is one of the designated approvers (or a SaaS Super Admin / bootstrap user for fallback)
     const isSaaSAdmin = req.userRole === 'SaaS Super Admin' || (req.userId && req.userId.startsWith('bootstrap-'));
-    if (!isSaaSAdmin && (!req.userName || !allowedApprovers.includes(req.userName))) {
+    
+    const userNameLower = req.userName ? req.userName.toLowerCase() : '';
+    if (!isSaaSAdmin && (!userNameLower || !allowedApprovers.includes(userNameLower))) {
       return res.status(403).json({
         success: false,
         message: "You do not have permission to approve pre-bookings. Only Sandeep, Avinash, Agila, and Jeo are authorized."
@@ -317,10 +319,11 @@ const rejectPreBooking = async (req, res) => {
       });
     }
 
-    const allowedApprovers = ['Sandeep', 'Avinash', 'Agila', 'Jeo', 'Joe Christo'];
+    const allowedApprovers = ['sandeep', 'avinash', 'agila', 'jeo', 'joe christo'];
     const isSaaSAdmin = req.userRole === 'SaaS Super Admin' || (req.userId && req.userId.startsWith('bootstrap-'));
     
-    if (!isSaaSAdmin && (!req.userName || !allowedApprovers.includes(req.userName))) {
+    const userNameLower = req.userName ? req.userName.toLowerCase() : '';
+    if (!isSaaSAdmin && (!userNameLower || !allowedApprovers.includes(userNameLower))) {
       return res.status(403).json({
         success: false,
         message: "You do not have permission to reject pre-bookings. Only Sandeep, Avinash, Agila, and Jeo are authorized."
