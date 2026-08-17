@@ -38,14 +38,31 @@ const syncToGmailSentFolder = (to, subject, htmlBody) => {
 };
 
 const sendEmail = async (to, subject, htmlBody) => {
+  const senderEmail = process.env.BREVO_SENDER_EMAIL || SMTP_USER || 'forgeindiaconnectfic@gmail.com';
+  const senderName = process.env.BREVO_SENDER_NAME || 'ForgeIndiaConnect';
+
+  // 1. Primary Attempt: Send via Gmail SMTP for clean From address (no @brevosend.com) & automatic Gmail Sent folder logging
+  try {
+    const info = await transporter.sendMail({
+      from: `"${senderName}" <${senderEmail}>`,
+      to: to,
+      replyTo: `"${senderName}" <${senderEmail}>`,
+      subject: subject,
+      html: htmlBody
+    });
+    console.log(`📧 Gmail SMTP email sent successfully to ${to}. MessageId: ${info.messageId}`);
+    return true;
+  } catch (gmailErr) {
+    console.warn(`⚠️ Gmail SMTP failed (${gmailErr.message}). Falling back to Brevo API...`);
+  }
+
+  // 2. Fallback Attempt: Send via Brevo API
   try {
     if (!process.env.BREVO_API_KEY) {
        console.warn("⚠️ BREVO_API_KEY is not set. Email will not be sent.");
        return false;
     }
 
-    const senderEmail = process.env.BREVO_SENDER_EMAIL || 'forgeindiaconnectfic@gmail.com';
-    const senderName = process.env.BREVO_SENDER_NAME || 'ForgeIndiaConnect';
     const brevo = new BrevoClient({ apiKey: process.env.BREVO_API_KEY });
 
     await brevo.transactionalEmails.sendTransacEmail({
@@ -56,12 +73,10 @@ const sendEmail = async (to, subject, htmlBody) => {
         email: senderEmail,
       },
       to: [{ email: to }],
+      replyTo: { email: senderEmail, name: senderName },
       bcc: [{ email: senderEmail, name: senderName }]
     });
-    console.log(`📧 Brevo email sent successfully to ${to}. Subject: ${subject}`);
-    
-    // Background sync to Gmail Sent folder
-    syncToGmailSentFolder(to, subject, htmlBody);
+    console.log(`📧 Brevo API email sent successfully to ${to}. Subject: ${subject}`);
 
     return true;
   } catch (err) {
@@ -186,13 +201,6 @@ const sendPreBookingRequestReceived = async ({ visitorName, email }) => {
 
 const sendApprovalEmail = async (preBooking) => {
   try {
-    if (!process.env.BREVO_API_KEY) {
-      console.warn("⚠️ BREVO_API_KEY is not set.");
-      return;
-    }
-
-    const brevo = new BrevoClient({ apiKey: process.env.BREVO_API_KEY });
-
     const rawFrontendUrl = process.env.FRONTEND_URL || 'https://zone-monitor.vercel.app';
     const frontendUrl = String(rawFrontendUrl).replace(/[\r\n\t]/g, '').trim().replace(/\/+$/, '');
     const passUrl = `${frontendUrl}/pass/${preBooking.visitorId || preBooking.visitId || preBooking._id}`;
@@ -264,31 +272,10 @@ const sendApprovalEmail = async (preBooking) => {
       </div>
     `;
 
-    const senderEmail = process.env.BREVO_SENDER_EMAIL || 'forgeindiaconnectfic@gmail.com';
-    const senderName = process.env.BREVO_SENDER_NAME || 'ForgeIndiaConnect';
     const subject = "Your FIC VMS Visit Has Been Approved";
-
-    await brevo.transactionalEmails.sendTransacEmail({
-      subject: subject,
-      htmlContent: htmlContent,
-      sender: {
-        name: senderName,
-        email: senderEmail,
-      },
-      to: [{ 
-        email: preBooking.email,
-        name: preBooking.fullName || preBooking.visitorName
-      }],
-      bcc: [{ email: senderEmail, name: senderName }]
-    });
-    console.log(`Approval email sent successfully to ${preBooking.email}`);
-
-    // Background sync to Gmail Sent folder
-    syncToGmailSentFolder(preBooking.email, subject, htmlContent);
-
-    return true;
+    return await sendEmail(preBooking.email, subject, htmlContent);
   } catch (error) {
-    console.error("Brevo approval email error:", error);
+    console.error("Approval email error:", error);
     return false;
   }
 };
