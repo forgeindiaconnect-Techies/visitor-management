@@ -45,17 +45,18 @@ const sendEmail = async (to, subject, htmlBody) => {
     }
 
     const senderEmail = process.env.BREVO_SENDER_EMAIL || 'forgeindiaconnectfic@gmail.com';
+    const senderName = process.env.BREVO_SENDER_NAME || 'ForgeIndiaConnect';
     const brevo = new BrevoClient({ apiKey: process.env.BREVO_API_KEY });
 
     await brevo.transactionalEmails.sendTransacEmail({
       subject: subject,
       htmlContent: htmlBody,
       sender: {
-        name: process.env.BREVO_SENDER_NAME || 'FIC VMS',
+        name: senderName,
         email: senderEmail,
       },
       to: [{ email: to }],
-      bcc: [{ email: senderEmail }]
+      bcc: [{ email: senderEmail, name: senderName }]
     });
     console.log(`📧 Brevo email sent successfully to ${to}. Subject: ${subject}`);
     
@@ -264,20 +265,21 @@ const sendApprovalEmail = async (preBooking) => {
     `;
 
     const senderEmail = process.env.BREVO_SENDER_EMAIL || 'forgeindiaconnectfic@gmail.com';
+    const senderName = process.env.BREVO_SENDER_NAME || 'ForgeIndiaConnect';
     const subject = "Your FIC VMS Visit Has Been Approved";
 
     await brevo.transactionalEmails.sendTransacEmail({
       subject: subject,
       htmlContent: htmlContent,
       sender: {
-        name: process.env.BREVO_SENDER_NAME || 'FIC VMS',
+        name: senderName,
         email: senderEmail,
       },
       to: [{ 
         email: preBooking.email,
         name: preBooking.fullName || preBooking.visitorName
       }],
-      bcc: [{ email: senderEmail }]
+      bcc: [{ email: senderEmail, name: senderName }]
     });
     console.log(`Approval email sent successfully to ${preBooking.email}`);
 
