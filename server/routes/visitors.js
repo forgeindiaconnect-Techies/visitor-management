@@ -180,37 +180,14 @@ router.post('/public-prebook', async (req, res) => {
       console.warn('Could not create notification:', notifErr.message);
     }
 
-    // Send tracking link email to visitor
+    // Send registration received email to visitor
     if (email) {
-      const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
-      const trackingUrl = `${FRONTEND_URL}/visitor-status/${savedVisitor.trackingToken}`;
-      const visitDateFormatted = visitDate ? new Date(visitDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'TBD';
-      const emailHtml = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
-          <div style="background-color: #0f172a; color: white; padding: 16px 24px; border-radius: 8px 8px 0 0; text-align: center;">
-            <h2 style="margin: 0; font-size: 20px;">Pre-Booking Submitted</h2>
-          </div>
-          <div style="padding: 24px; background-color: #ffffff;">
-            <p style="font-size: 16px; color: #1e293b;">Hello <strong>${visitorName}</strong>,</p>
-            <p style="font-size: 14px; color: #475569;">Your visitor appointment request has been successfully submitted.</p>
-            <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; padding: 16px; border-radius: 8px; margin: 20px 0;">
-              <p style="margin: 4px 0; font-size: 14px;"><strong>Status:</strong> <span style="color: #d97706; font-weight: bold;">Pending Approval</span></p>
-              <p style="margin: 4px 0; font-size: 14px;"><strong>Host:</strong> ${hostName}</p>
-              <p style="margin: 4px 0; font-size: 14px;"><strong>Appointment:</strong> ${visitDateFormatted}, ${expectedArrivalTime || '10:00 AM'}</p>
-            </div>
-            <p style="font-size: 14px; color: #475569;">You can track your appointment status here:</p>
-            <div style="text-align: center; margin: 24px 0;">
-              <a href="${trackingUrl}" target="_blank" style="background-color: #4f46e5; color: #ffffff; padding: 12px 28px; text-decoration: none; font-weight: bold; border-radius: 6px; display: inline-block; font-size: 14px;">TRACK MY VISIT</a>
-            </div>
-            <p style="font-size: 12px; color: #64748b;">You will receive another email when your appointment is approved.</p>
-            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
-            <p style="font-size: 14px; color: #1e293b; margin: 0;">Thank You,<br/><strong>FIC Visitor Management</strong></p>
-          </div>
-        </div>
-      `;
       const emailService = require('../utils/emailService');
-      emailService.sendEmail(email, 'Pre-Booking Submitted — Track Your Visit', emailHtml).catch(err => {
-        console.warn('Could not send tracking email:', err.message);
+      emailService.sendPreBookingRequestReceived({ 
+        visitorName, 
+        email 
+      }).catch(err => {
+        console.warn('Could not send registration email:', err.message);
       });
     }
 
@@ -314,6 +291,9 @@ router.get('/', async (req, res) => {
     if (req.query.status) {
       query.status = req.query.status;
     }
+
+    // Explicitly lock to DIRECT_VISIT records only to maintain absolute separation
+    query.bookingType = "DIRECT_VISIT";
 
     // Enforce strict branch isolation based on role
     if (req.userRole === 'Security' || req.userRole === 'Admin' || req.userRole === 'MD') {
@@ -815,9 +795,10 @@ router.post('/:id/check-in', async (req, res) => {
 
     const updatedVisitor = await visitor.save();
 
-    await visitorNotificationService.notifyVisitorStatusChange({
+    await visitorNotificationService.notifyVisitorEvent({
       visitor: updatedVisitor,
-      event: visitorNotificationService.EVENTS.VISITOR_CHECKED_IN,
+      event: visitorNotificationService.VISITOR_EVENTS.CHECKED_IN,
+      actor: req.user,
       io: req.app.get('io')
     });
 
@@ -863,9 +844,10 @@ router.post('/:id/check-out', async (req, res) => {
 
     const updatedVisitor = await visitor.save();
 
-    await visitorNotificationService.notifyVisitorStatusChange({
+    await visitorNotificationService.notifyVisitorEvent({
       visitor: updatedVisitor,
-      event: visitorNotificationService.EVENTS.VISITOR_CHECKED_OUT,
+      event: visitorNotificationService.VISITOR_EVENTS.CHECKED_OUT,
+      actor: req.user,
       io: req.app.get('io')
     });
 
@@ -881,8 +863,15 @@ router.get('/public-status/:token', async (req, res) => {
     const { token } = req.params;
     const PreBooking = require('../models/PreBooking');
 
+    const isValidObjectId = require('mongoose').isValidObjectId(token);
+
     // Search Visitor collection first
-    let visitor = await Visitor.findOne({ trackingToken: token })
+    let visitor = await Visitor.findOne({
+      $or: [
+        { trackingToken: token },
+        ...(isValidObjectId ? [{ _id: token }] : [])
+      ]
+    })
       .populate('approvedBy', 'name role')
       .populate('statusHistory.changedBy', 'name role');
 
@@ -890,7 +879,12 @@ router.get('/public-status/:token', async (req, res) => {
 
     // Fallback to PreBooking collection
     if (!visitor) {
-      const pb = await PreBooking.findOne({ trackingToken: token })
+      const pb = await PreBooking.findOne({
+        $or: [
+          { trackingToken: token },
+          ...(isValidObjectId ? [{ _id: token }] : [])
+        ]
+      })
         .populate('approvedBy', 'name role')
         .populate('statusHistory.changedBy', 'name role');
       if (pb) {
@@ -1167,10 +1161,17 @@ router.patch('/:id/approve', checkApprovalPermission, async (req, res) => {
     const updatedVisitor = await visitor.save();
 
     // Trigger Notifications & Emails
-    await visitorNotificationService.notifyVisitorStatusChange({
+    await visitorNotificationService.notifyVisitorEvent({
       visitor: updatedVisitor,
-      event: visitorNotificationService.EVENTS.VISITOR_APPROVED,
-      changedBy: req.user,
+      event: visitorNotificationService.VISITOR_EVENTS.APPROVED,
+      actor: req.user,
+      io: req.app.get('io')
+    });
+
+    await visitorNotificationService.notifyVisitorEvent({
+      visitor: updatedVisitor,
+      event: visitorNotificationService.VISITOR_EVENTS.QR_AVAILABLE,
+      actor: req.user,
       io: req.app.get('io')
     });
 
@@ -1221,10 +1222,10 @@ router.patch('/:id/reject', checkApprovalPermission, async (req, res) => {
     const updatedVisitor = await visitor.save();
     
     // Trigger Notifications & Emails
-    await visitorNotificationService.notifyVisitorStatusChange({
+    await visitorNotificationService.notifyVisitorEvent({
       visitor: updatedVisitor,
-      event: visitorNotificationService.EVENTS.VISITOR_REJECTED,
-      changedBy: req.user,
+      event: visitorNotificationService.VISITOR_EVENTS.REJECTED,
+      actor: req.user,
       reason: updatedVisitor.rejectionReason,
       io: req.app.get('io')
     });
@@ -1338,12 +1339,11 @@ router.patch('/:id/reschedule', async (req, res) => {
       const updatedVisitor = await visitor.save();
       
       // Trigger Notifications
-      await visitorNotificationService.notifyVisitorStatusChange({
+      await visitorNotificationService.notifyVisitorEvent({
         visitor: updatedVisitor,
-        event: visitorNotificationService.EVENTS.APPOINTMENT_RESCHEDULED,
-        changedBy: req.user,
+        event: visitorNotificationService.VISITOR_EVENTS.RESCHEDULED,
+        actor: req.user,
         reason: reason || changes.join(', '),
-        historyEntry,
         io: req.app.get('io')
       });
 
@@ -1427,21 +1427,15 @@ router.patch('/:id', async (req, res) => {
     }
 
     if ((req.body.status === 'Checked In' || req.body.status === 'Inside') && oldVisitor && (oldVisitor.status !== 'Checked In' && oldVisitor.status !== 'Inside')) {
-      await visitorNotificationService.notifyVisitorStatusChange({
+      await visitorNotificationService.notifyVisitorEvent({
         visitor: updatedVisitor,
-        event: visitorNotificationService.EVENTS.VISITOR_CHECKED_IN,
+        event: visitorNotificationService.VISITOR_EVENTS.CHECKED_IN,
         io: req.app.get('io')
       });
     } else if ((req.body.status === 'Checked Out' || req.body.status === 'Exited') && oldVisitor && (oldVisitor.status !== 'Checked Out' && oldVisitor.status !== 'Exited')) {
-      await visitorNotificationService.notifyVisitorStatusChange({
+      await visitorNotificationService.notifyVisitorEvent({
         visitor: updatedVisitor,
-        event: visitorNotificationService.EVENTS.VISITOR_CHECKED_OUT,
-        io: req.app.get('io')
-      });
-    } else if (req.body.status === 'Cancelled' && oldVisitor && oldVisitor.status !== 'Cancelled') {
-      await visitorNotificationService.notifyVisitorStatusChange({
-        visitor: updatedVisitor,
-        event: visitorNotificationService.EVENTS.VISITOR_CANCELLED,
+        event: visitorNotificationService.VISITOR_EVENTS.CHECKED_OUT,
         io: req.app.get('io')
       });
     }

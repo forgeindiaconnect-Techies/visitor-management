@@ -17,6 +17,11 @@ const notificationSchema = new mongoose.Schema(
       ref: 'User',
       index: true,
     },
+    recipients: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      index: true,
+    }],
     preBookingId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'PreBooking',

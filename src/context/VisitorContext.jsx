@@ -47,7 +47,7 @@ export const VisitorProvider = ({ children }) => {
     }
     try {
       let queryBranch = currentUser?.branch;
-      if (currentUser?.role === 'Super Admin') {
+      if (['Super Admin', 'MD', 'Senior HR', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'HR'].includes(currentUser?.role)) {
         queryBranch = activeBranch === 'All Branches' ? null : activeBranch;
       }
       

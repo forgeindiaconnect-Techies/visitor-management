@@ -20,6 +20,11 @@ const visitorSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
+  bookingType: {
+    type: String,
+    default: "DIRECT_VISIT",
+    enum: ["DIRECT_VISIT"]
+  },
   visitorName: { type: String, required: true },
   mobileNumber: { type: String, required: true },
   email: { type: String },

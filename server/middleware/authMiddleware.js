@@ -22,6 +22,7 @@ module.exports = async (req, res, next) => {
         companyId = userObj.companyId;
         userRole = userObj.role;
         branchId = userObj.branch;
+        req.userName = userObj.name;
       }
     }
 

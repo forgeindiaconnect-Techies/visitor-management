@@ -62,7 +62,9 @@ const NotificationsPage = () => {
     
     socket.on('new_notification', (notification) => {
       let queryBranch = user?.branch;
-      if (user?.role === 'Super Admin') queryBranch = activeBranch === 'All Branches' ? null : activeBranch;
+      if (['Super Admin', 'MD', 'Senior HR', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'HR'].includes(user?.role)) {
+        queryBranch = activeBranch === 'All Branches' ? null : activeBranch;
+      }
       if (queryBranch && queryBranch !== 'All Branches' && notification.branchId && notification.branchId !== queryBranch) return;
       
       if (user?.role === 'SaaS Super Admin') {

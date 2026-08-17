@@ -44,10 +44,13 @@ const SuperAdminDashboard = () => {
   }, [currentUser]);
 
   const today = new Date().toISOString().split('T')[0];
-  const totalVisitors = visitors.length;
-  const visitorsToday = visitors.filter(v => v.visitDate === today).length;
+  const walkInVisitors = visitors.filter(v => v.registrationType !== 'Pre-Booking' && !v.isPreBooking);
+  const preBookedVisitors = visitors.filter(v => v.registrationType === 'Pre-Booking' || v.isPreBooking);
+  
+  const totalWalkIns = walkInVisitors.length;
+  const totalPreBookings = preBookedVisitors.length;
   const insideVisitors = visitors.filter(v => v.status === 'Inside');
-  const pendingApprovals = visitors.filter(v => v.status === 'Pending').length;
+  const pendingApprovals = visitors.filter(v => v.status?.toUpperCase() === 'PENDING').length;
   const blockedVisitors = visitors.filter(v => v.status === 'Rejected').length;
   const totalBranches = branches.length;
 
@@ -209,7 +212,7 @@ const SuperAdminDashboard = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-orange-100">
-                {visitors.filter(v => v.status === 'Pending').map(v => (
+                {visitors.filter(v => v.status?.toUpperCase() === 'PENDING').map(v => (
                   <tr key={v.id}>
                     <td className="px-4 py-3 font-medium text-gray-900">{v.visitorName}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{v.hostName}</td>
@@ -242,8 +245,9 @@ const SuperAdminDashboard = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-        <DashboardCard onClick={() => navigate('/visitors')} title="Total Visitors" value={totalVisitors} icon={Users} colorClass="bg-blue-100 text-blue-600" />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+        <DashboardCard onClick={() => navigate('/visitors')} title="Walk-in Visitors" value={totalWalkIns} icon={Users} colorClass="bg-blue-100 text-blue-600" />
+        <DashboardCard onClick={() => navigate('/pre-bookings')} title="Pre-Bookings" value={totalPreBookings} icon={Users} colorClass="bg-indigo-100 text-indigo-600" />
         <DashboardCard onClick={() => navigate('/tracking')} title="Visitors Inside" value={insideVisitors.length} icon={UserCheck} colorClass="bg-green-100 text-green-600" />
         <DashboardCard onClick={() => navigate('/approvals')} title="Pending Approvals" value={pendingApprovals} icon={Clock} colorClass="bg-orange-100 text-orange-600" />
         <DashboardCard onClick={() => navigate('/blacklist')} title="Blocked Visitors" value={blockedVisitors} icon={Ban} colorClass="bg-red-100 text-red-600" />
@@ -292,7 +296,7 @@ const SuperAdminDashboard = () => {
                       <td className="px-6 py-4">
                         <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
                           visitor.status === 'Approved' ? 'bg-blue-100 text-blue-700' :
-                          visitor.status === 'Pending' ? 'bg-orange-100 text-orange-700' :
+                          visitor.status?.toUpperCase() === 'PENDING' ? 'bg-orange-100 text-orange-700' :
                           visitor.status === 'Rejected' ? 'bg-red-100 text-red-700' :
                           visitor.status === 'Inside' ? 'bg-yellow-100 text-yellow-700' :
                           visitor.status === 'Exited' ? 'bg-green-100 text-green-700' :

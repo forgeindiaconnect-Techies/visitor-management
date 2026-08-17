@@ -220,7 +220,7 @@ const PreBookingForm = () => {
         <div>
           <p className="font-bold text-sm">Pre-Booking Workflow Enabled</p>
           <p className="text-xs text-indigo-700 mt-0.5">
-            Generating a Pre-Booking will set status to <span className="font-bold underline">Pre-Booked</span> and create an active QR pass. Security can instantly search by mobile number or scan QR code on arrival.
+            Your request will be submitted for approval. Once approved, your visitor pass and QR code will be activated.
           </p>
         </div>
       </div>

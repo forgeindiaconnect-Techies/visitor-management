@@ -26,13 +26,15 @@ const MDDashboard = () => {
 
   // Metrics calculations
   const today = new Date().toISOString().split('T')[0];
-  const visitorsToday = visitors.filter(v => v.visitDate === today).length;
-  const pendingApprovals = visitors.filter(v => v.status === 'Pending').length;
+  const walkInVisitors = visitors.filter(v => v.registrationType !== 'Pre-Booking' && !v.isPreBooking);
+  const preBookedVisitors = visitors.filter(v => v.registrationType === 'Pre-Booking' || v.isPreBooking);
   
-  // Security Alerts and Zone Violations for MD overview
-  const securityAlerts = 0;
-  const zoneViolations = 0;
-  const branchCount = branches.length;
+  const totalWalkIns = walkInVisitors.length;
+  const totalPreBookings = preBookedVisitors.length;
+  const pendingApprovals = visitors.filter(v => v.status?.toUpperCase() === 'PENDING').length;
+  const insideVisitors = visitors.filter(v => v.status === 'Inside');
+  const blockedVisitors = visitors.filter(v => v.status === 'Rejected').length;
+  const totalBranches = branches.length;
 
   // Visitor Trends Data
   const trendsDataMap = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
@@ -98,7 +100,7 @@ const MDDashboard = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-orange-100">
-                {visitors.filter(v => v.status === 'Pending').map(v => (
+                {visitors.filter(v => v.status?.toUpperCase() === 'PENDING').map(v => (
                   <tr key={v.id}>
                     <td className="px-4 py-3 font-medium text-gray-900">{v.visitorName}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{v.hostName}</td>
@@ -131,12 +133,13 @@ const MDDashboard = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-        <DashboardCard title="Visitors Today" value={visitorsToday} icon={Users} colorClass="bg-blue-100 text-blue-600" />
-        <DashboardCard title="Pending Approvals" value={pendingApprovals} icon={Clock} colorClass="bg-orange-100 text-orange-600" />
-        <DashboardCard title="Security Alerts" value={securityAlerts} icon={ShieldAlert} colorClass="bg-red-100 text-red-600" />
-        <DashboardCard title="Zone Violations" value={zoneViolations} icon={AlertTriangle} colorClass="bg-yellow-100 text-yellow-600" />
-        <DashboardCard title="Branch Statistics" value={branchCount} icon={Building} colorClass="bg-purple-100 text-purple-600" />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+        <DashboardCard onClick={() => navigate('/visitors')} title="Walk-in Visitors" value={totalWalkIns} icon={Users} colorClass="bg-blue-100 text-blue-600" />
+        <DashboardCard onClick={() => navigate('/pre-bookings')} title="Pre-Bookings" value={totalPreBookings} icon={Users} colorClass="bg-indigo-100 text-indigo-600" />
+        <DashboardCard onClick={() => navigate('/tracking')} title="Visitors Inside" value={insideVisitors.length} icon={Users} colorClass="bg-green-100 text-green-600" />
+        <DashboardCard onClick={() => navigate('/approvals')} title="Pending Approvals" value={pendingApprovals} icon={Clock} colorClass="bg-orange-100 text-orange-600" />
+        <DashboardCard onClick={() => navigate('/blacklist')} title="Blocked Visitors" value={blockedVisitors} icon={ShieldAlert} colorClass="bg-red-100 text-red-600" />
+        <DashboardCard onClick={() => navigate('/settings')} title="Total Branches" value={totalBranches} icon={Building} colorClass="bg-purple-100 text-purple-600" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
@@ -212,7 +215,7 @@ const MDDashboard = () => {
                   <td className="px-6 py-4">
                     <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
                       visitor.status === 'Approved' ? 'bg-blue-100 text-blue-700' :
-                      visitor.status === 'Pending' ? 'bg-orange-100 text-orange-700' :
+                      visitor.status?.toUpperCase() === 'PENDING' ? 'bg-orange-100 text-orange-700' :
                       visitor.status === 'Rejected' ? 'bg-red-100 text-red-700' :
                       visitor.status === 'Inside' ? 'bg-indigo-100 text-[var(--color-brand-indigo)]' :
                       'bg-gray-100 text-gray-700'

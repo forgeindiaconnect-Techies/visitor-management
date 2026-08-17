@@ -1,167 +1,233 @@
 const Notification = require('../models/Notification');
 const User = require('../models/User');
+const ApprovalPermission = require('../models/ApprovalPermission');
 const emailService = require('../utils/emailService');
 
-const EVENTS = {
-  VISITOR_REGISTERED: 'VISITOR_REGISTERED',
-  VISITOR_APPROVED: 'VISITOR_APPROVED',
-  VISITOR_REJECTED: 'VISITOR_REJECTED',
-  APPOINTMENT_RESCHEDULED: 'APPOINTMENT_RESCHEDULED', // Covers date/time changes
-  VISITOR_CANCELLED: 'VISITOR_CANCELLED',
-  VISITOR_CHECKED_IN: 'VISITOR_CHECKED_IN',
-  VISITOR_CHECKED_OUT: 'VISITOR_CHECKED_OUT'
+const VISITOR_EVENTS = {
+  REGISTERED: 'VISITOR_REGISTERED',
+  APPROVED: 'VISITOR_APPROVED',
+  REJECTED: 'VISITOR_REJECTED',
+  RESCHEDULED: 'APPOINTMENT_RESCHEDULED',
+  CHECKED_IN: 'VISITOR_CHECKED_IN',
+  CHECKED_OUT: 'VISITOR_CHECKED_OUT',
+  QR_AVAILABLE: 'QR_PASS_AVAILABLE'
 };
 
-const notifyVisitorStatusChange = async ({
+const mapPermissionRoleToUserRole = (permRole) => {
+  switch(permRole) {
+    case 'SUPER_ADMIN': return 'Super Admin';
+    case 'MD': return 'MD';
+    case 'SENIOR_HR': return 'HR';
+    case 'IT': return 'IT';
+    default: return permRole;
+  }
+};
+
+const notifyVisitorEvent = async ({
   visitor,
   event,
-  changedBy,
-  reason,
-  historyEntry = null,
-  io = null // pass socket instance if available in req, else we might not emit here
+  actor = null,
+  reason = null,
+  io = null
 }) => {
   try {
-    let emailSubject = 'Visitor Status Update';
+    let emailSubject = '';
     let emailHtml = '';
-    let notificationTitle = 'Visitor Update';
+    let notificationTitle = '';
     let notificationMessage = '';
-    let sendToVisitorEmail = false;
+    let sendEmailToVisitor = false;
+    let notifyRecipients = []; // Array of User IDs to receive the in-app notification
 
-    // Base info for email
-    const generateEmailHeader = (subject) => `
-      <div style="font-family: Arial, sans-serif; padding: 20px;">
-        <h2>${subject}</h2>
-        <p>Visitor: <b>${visitor.visitorName || visitor.fullName || 'N/A'}</b></p>
-        <p>Host: <b>${visitor.hostName || visitor.hostEmployee || 'N/A'}</b></p>
-    `;
-    const generateEmailFooter = () => `</div>`;
-    const trackingUrl = visitor.trackingToken
-      ? `${process.env.FRONTEND_URL || 'http://localhost:5173'}/visitor-status/${visitor.trackingToken}`
-      : `${process.env.FRONTEND_URL || 'http://localhost:5173'}/visitor-status/${visitor._id}`;
-    const actionLink = `<p><br/><a href="${trackingUrl}" style="padding: 10px 20px; background-color: #4f46e5; color: white; text-decoration: none; border-radius: 5px;">Track My Visit</a></p>`;
+    // Helper to get all dashboard user IDs for broadcasting
+    const getDashboardUserIds = async () => {
+      const permissions = await ApprovalPermission.find({ canApprove: true });
+      let eligibleRoles = permissions.map(p => mapPermissionRoleToUserRole(p.role));
+      
+      const defaultRoles = ['Super Admin', 'MD', 'HR', 'Admin', 'Branch Admin', 'Senior HR', 'Receptionist', 'Security'];
+      for (const role of defaultRoles) {
+        const rawRole = role.toUpperCase().replace(/\s+/g, '_');
+        const explicitPerm = await ApprovalPermission.findOne({ role: rawRole });
+        if ((!explicitPerm || explicitPerm.canApprove !== false) && !eligibleRoles.includes(role)) {
+          eligibleRoles.push(role);
+        }
+      }
+      const users = await User.find({ role: { $in: eligibleRoles }, companyId: visitor.companyId });
+      return users.map(u => u._id.toString());
+    };
+
+    const trackingUrl = visitor.visitorId || visitor.visitId
+      ? `${process.env.FRONTEND_URL || 'http://localhost:5173'}/pass/${visitor.visitorId || visitor.visitId}`
+      : `${process.env.FRONTEND_URL || 'http://localhost:5173'}/pass/${visitor._id}`;
+    const actionLink = `<p><br/><a href="${trackingUrl}" style="padding: 10px 20px; background-color: #4f46e5; color: white; text-decoration: none; border-radius: 5px; display: inline-block;">VIEW VISITOR PASS</a></p>`;
+
+    // --- Format Dates for Email ---
+    const visitDateFormatted = visitor.visitDate ? new Date(visitor.visitDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'TBD';
+    const timeFormatted = `${visitor.expectedArrivalTime || visitor.expectedTime || 'TBD'} ${(visitor.appointmentEndTime) ? '- ' + visitor.appointmentEndTime : ''}`;
+
+    // --- Find Host User ---
+    let hostUserId = visitor.hostId || null;
+    if (!hostUserId && visitor.hostName) {
+      const hostUser = await User.findOne({ name: visitor.hostName, companyId: visitor.companyId });
+      if (hostUser) hostUserId = hostUser._id.toString();
+    }
 
     switch (event) {
-      case EVENTS.VISITOR_REGISTERED:
-        emailSubject = 'Pre-Booking Request Submitted';
-        emailHtml = generateEmailHeader(emailSubject) +
-          `<p>Your visitor appointment request has been successfully submitted.</p>
-           <p>Status: <b>Pending Approval</b></p>` + actionLink + generateEmailFooter();
-        notificationTitle = 'Pre-Booking Submitted';
-        notificationMessage = `🔔 Pre-Booking Submitted\nYour visitor request from ${visitor.visitorName || visitor.fullName} is waiting for approval.`;
-        sendToVisitorEmail = true;
+      case VISITOR_EVENTS.REGISTERED:
+        emailSubject = 'Pre-Booking Submitted — Track Your Visit';
+        emailHtml = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
+            <div style="background-color: #0f172a; color: white; padding: 16px 24px; border-radius: 8px 8px 0 0; text-align: center;">
+              <h2 style="margin: 0; font-size: 20px;">Pre-Booking Submitted</h2>
+            </div>
+            <div style="padding: 24px; background-color: #ffffff;">
+              <p style="font-size: 16px; color: #1e293b;">Hello <strong>${visitor.visitorName || visitor.fullName}</strong>,</p>
+              <p style="font-size: 14px; color: #475569;">Your appointment request has been submitted.</p>
+              <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; padding: 16px; border-radius: 8px; margin: 20px 0;">
+                <p style="margin: 4px 0; font-size: 14px;"><strong>Status:</strong> <span style="color: #d97706; font-weight: bold;">Pending Approval</span></p>
+                <p style="margin: 4px 0; font-size: 14px;"><strong>Appointment:</strong><br/>${visitDateFormatted}<br/>${timeFormatted}</p>
+              </div>
+              <div style="text-align: center; margin: 24px 0;">
+                <a href="${trackingUrl}" target="_blank" style="background-color: #4f46e5; color: #ffffff; padding: 12px 28px; text-decoration: none; font-weight: bold; border-radius: 6px; display: inline-block; font-size: 14px;">VIEW VISITOR PASS</a>
+              </div>
+            </div>
+          </div>
+        `;
+        notificationTitle = 'New Pre-Booking';
+        notificationMessage = `New visitor ${visitor.visitorName || visitor.fullName} waiting for approval`;
+        sendEmailToVisitor = true;
+
+        const superAdmins = await User.find({ role: 'Super Admin', companyId: visitor.companyId });
+        notifyRecipients = superAdmins.map(u => u._id.toString());
+
         break;
 
-      case EVENTS.VISITOR_APPROVED:
-        emailSubject = 'Visitor Appointment Approved ✔';
-        const approvedByName = changedBy?.name || 'Authorized Personnel';
-        const approvedByRole = changedBy?.role || 'Admin';
-        const visitDateFormatted = visitor.visitDate ? new Date(visitor.visitDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : (visitor.visitDate || 'TBD');
+      case VISITOR_EVENTS.APPROVED:
+        emailSubject = 'Visitor Appointment Approved';
+        const approvedByName = actor?.name || 'Authorized Personnel';
+        const approvedByRole = actor?.role || 'Admin';
         emailHtml = `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
             <div style="background-color: #16a34a; color: white; padding: 16px 24px; border-radius: 8px 8px 0 0; text-align: center;">
               <h2 style="margin: 0; font-size: 20px;">&#10004; Appointment Approved</h2>
             </div>
             <div style="padding: 24px; background-color: #ffffff;">
-              <p style="font-size: 16px; color: #1e293b;">Hello <strong>${visitor.visitorName || visitor.fullName || 'Visitor'}</strong>,</p>
-              <p style="font-size: 14px; color: #475569;">Your visitor appointment has been approved.</p>
+              <p style="font-size: 16px; color: #1e293b;">Hello <strong>${visitor.visitorName || visitor.fullName}</strong>,</p>
               <div style="background-color: #f0fdf4; border: 1px solid #86efac; padding: 16px; border-radius: 8px; margin: 20px 0;">
                 <p style="margin: 4px 0; font-size: 14px;"><strong>Approved By:</strong> ${approvedByName}</p>
                 <p style="margin: 4px 0; font-size: 14px;"><strong>Role:</strong> ${approvedByRole}</p>
-                <p style="margin: 4px 0; font-size: 14px;"><strong>Appointment Date:</strong> ${visitDateFormatted}</p>
-                <p style="margin: 4px 0; font-size: 14px;"><strong>Appointment Time:</strong> ${visitor.expectedArrivalTime || visitor.expectedTime || 'TBD'} ${(visitor.appointmentEndTime) ? '- ' + visitor.appointmentEndTime : ''}</p>
+                <p style="margin: 4px 0; font-size: 14px;"><strong>Appointment:</strong><br/>${visitDateFormatted}<br/>${timeFormatted}</p>
               </div>
+              <p style="font-size: 14px; color: #475569;">Your visitor pass is ready.</p>
               <div style="text-align: center; margin: 24px 0;">
-                <a href="${trackingUrl}" target="_blank" style="background-color: #4f46e5; color: #ffffff; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 6px; display: inline-block; margin: 4px;">VIEW APPOINTMENT</a>
-                <a href="${trackingUrl}" target="_blank" style="background-color: #0f172a; color: #ffffff; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 6px; display: inline-block; margin: 4px;">VIEW QR PASS</a>
+                <a href="${trackingUrl}" target="_blank" style="background-color: #0f172a; color: #ffffff; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 6px; display: inline-block;">VIEW VISITOR PASS</a>
               </div>
-              <p style="font-size: 13px; color: #64748b;">Please show your QR Pass at the security gate upon arrival.</p>
-              <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
-              <p style="font-size: 14px; color: #1e293b; margin: 0;">Thank You,<br/><strong>FIC Visitor Management</strong></p>
             </div>
           </div>
         `;
         notificationTitle = 'Visitor Approved';
-        notificationMessage = `Your visitor appointment with ${visitor.visitorName || visitor.fullName} has been approved.`;
-        sendToVisitorEmail = true;
+        notificationMessage = `${visitor.visitorName || visitor.fullName} was approved by ${approvedByName}`;
+        sendEmailToVisitor = true;
+
+        notifyRecipients = await getDashboardUserIds();
+        if (hostUserId && !notifyRecipients.includes(hostUserId)) notifyRecipients.push(hostUserId);
         break;
 
-      case EVENTS.VISITOR_REJECTED:
-        emailSubject = 'Visitor Request Rejected';
-        emailHtml = generateEmailHeader(emailSubject) +
-          `<p>Your appointment request has been rejected.</p>` +
-          (reason ? `<p>Reason: <b>${reason}</b></p>` : '') + generateEmailFooter();
+      case VISITOR_EVENTS.REJECTED:
+        emailSubject = 'Appointment Rejected';
+        emailHtml = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
+            <div style="background-color: #dc2626; color: white; padding: 16px 24px; border-radius: 8px 8px 0 0; text-align: center;">
+              <h2 style="margin: 0; font-size: 20px;">Appointment Rejected</h2>
+            </div>
+            <div style="padding: 24px; background-color: #ffffff;">
+              <p style="font-size: 16px; color: #1e293b;">Hello <strong>${visitor.visitorName || visitor.fullName}</strong>,</p>
+              <p style="font-size: 14px; color: #475569;">Your appointment request was rejected.</p>
+              <div style="background-color: #fef2f2; border: 1px solid #fca5a5; padding: 16px; border-radius: 8px; margin: 20px 0;">
+                <p style="margin: 4px 0; font-size: 14px;"><strong>Reason:</strong> ${reason || 'Host unavailable on the selected date.'}</p>
+              </div>
+              <p style="font-size: 14px; color: #475569;">Please contact the organization for further assistance.</p>
+            </div>
+          </div>
+        `;
         notificationTitle = 'Visitor Rejected';
-        notificationMessage = `Your visitor appointment with ${visitor.visitorName || visitor.fullName} has been rejected.`;
-        sendToVisitorEmail = true;
+        notificationMessage = `${visitor.visitorName || visitor.fullName}'s appointment was rejected.`;
+        sendEmailToVisitor = true;
+
+        notifyRecipients = await getDashboardUserIds();
+        if (hostUserId && !notifyRecipients.includes(hostUserId)) notifyRecipients.push(hostUserId);
         break;
 
-      case EVENTS.APPOINTMENT_RESCHEDULED:
-        emailSubject = 'Your Visitor Appointment Has Been Rescheduled';
-        emailHtml = generateEmailHeader(emailSubject) + `<p>Your appointment has been rescheduled.</p>`;
+      case VISITOR_EVENTS.RESCHEDULED:
+        emailSubject = 'Appointment Rescheduled';
+        // Check previous history
+        const oldEntry = visitor.statusHistory && visitor.statusHistory.slice().reverse().find(h => h.status === 'APPOINTMENT_RESCHEDULED' || h.status === 'RESCHEDULED');
+        const oldDateFormatted = oldEntry && oldEntry.previousDate ? new Date(oldEntry.previousDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Previous Date';
+        const oldTimeFormatted = oldEntry && oldEntry.previousTime ? oldEntry.previousTime : 'Previous Time';
         
-        if (historyEntry) {
-          if (historyEntry.previousAppointmentDate && historyEntry.previousAppointmentDate !== visitor.visitDate) {
-            emailHtml += `<p>Previous Date:<br/><b>${historyEntry.previousAppointmentDate}</b></p>`;
-          }
-          if (historyEntry.previousAppointmentStartTime && historyEntry.previousAppointmentStartTime !== visitor.expectedArrivalTime) {
-            emailHtml += `<p>Previous Time:<br/><b>${historyEntry.previousAppointmentStartTime}</b></p>`;
-          }
-          emailHtml += `<p>New Date:<br/><b>${visitor.visitDate}</b></p>`;
-          emailHtml += `<p>New Time:<br/><b>${visitor.expectedArrivalTime} ${visitor.appointmentEndTime ? '- ' + visitor.appointmentEndTime : ''}</b></p>`;
-          emailHtml += `<p>Changed By:<br/><b>${changedBy?.name || 'System'} (${changedBy?.role || ''})</b></p>`;
-        } else {
-          emailHtml += `<p>New Date: <b>${visitor.visitDate}</b></p>`;
-          emailHtml += `<p>New Time: <b>${visitor.expectedArrivalTime}</b></p>`;
-        }
-        
-        if (reason) emailHtml += `<p>Reason: <b>${reason}</b></p>`;
-        
-        emailHtml += actionLink + generateEmailFooter();
+        emailHtml = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
+            <div style="background-color: #2563eb; color: white; padding: 16px 24px; border-radius: 8px 8px 0 0; text-align: center;">
+              <h2 style="margin: 0; font-size: 20px;">Appointment Rescheduled</h2>
+            </div>
+            <div style="padding: 24px; background-color: #ffffff;">
+              <p style="font-size: 16px; color: #1e293b;">Hello <strong>${visitor.visitorName || visitor.fullName}</strong>,</p>
+              <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; padding: 16px; border-radius: 8px; margin: 20px 0;">
+                <p style="margin: 4px 0; font-size: 14px;"><strong>Previous:</strong><br/>${oldDateFormatted}<br/>${oldTimeFormatted}</p>
+                <hr style="border: 1px solid #bfdbfe; margin: 12px 0;" />
+                <p style="margin: 4px 0; font-size: 14px;"><strong>New:</strong><br/>${visitDateFormatted}<br/>${timeFormatted}</p>
+                <hr style="border: 1px solid #bfdbfe; margin: 12px 0;" />
+                <p style="margin: 4px 0; font-size: 14px;"><strong>Reason:</strong><br/>${reason || 'Host requested a different appointment time.'}</p>
+              </div>
+              <div style="text-align: center; margin: 24px 0;">
+                <a href="${trackingUrl}" target="_blank" style="background-color: #4f46e5; color: #ffffff; padding: 12px 28px; text-decoration: none; font-weight: bold; border-radius: 6px; display: inline-block;">VIEW UPDATED APPOINTMENT</a>
+              </div>
+            </div>
+          </div>
+        `;
         notificationTitle = 'Appointment Rescheduled';
-        notificationMessage = `Your appointment with ${visitor.visitorName || visitor.fullName} has been rescheduled to ${visitor.visitDate}.`;
-        sendToVisitorEmail = true;
+        notificationMessage = `${visitor.visitorName || visitor.fullName} — ${visitDateFormatted}, ${timeFormatted}`;
+        sendEmailToVisitor = true;
+
+        notifyRecipients = await getDashboardUserIds();
+        if (hostUserId && !notifyRecipients.includes(hostUserId)) notifyRecipients.push(hostUserId);
         break;
 
-      case EVENTS.VISITOR_CANCELLED:
-        emailSubject = 'Appointment Cancelled';
-        emailHtml = generateEmailHeader(emailSubject) + `<p>Your appointment has been cancelled.</p>` + generateEmailFooter();
-        notificationTitle = 'Appointment Cancelled';
-        notificationMessage = `Your appointment with ${visitor.visitorName || visitor.fullName} has been cancelled.`;
-        sendToVisitorEmail = true;
-        break;
+      case VISITOR_EVENTS.QR_AVAILABLE:
+        notificationTitle = 'Visitor Pass Available';
+        notificationMessage = `Status: APPROVED. ${visitor.visitorName || visitor.fullName} can now be verified at reception.`;
         
-      case EVENTS.VISITOR_CHECKED_IN:
-        notificationTitle = 'Visitor Checked In';
-        notificationMessage = `${visitor.visitorName || visitor.fullName} has checked in.`;
-        sendToVisitorEmail = false; // No email on check-in typically
+        notifyRecipients = await getDashboardUserIds();
+        sendEmailToVisitor = false;
         break;
 
-      case EVENTS.VISITOR_CHECKED_OUT:
+      case VISITOR_EVENTS.CHECKED_IN:
+        notificationTitle = 'Visitor Checked In';
+        notificationMessage = `${visitor.visitorName || visitor.fullName} has arrived and checked in.`;
+        sendEmailToVisitor = false;
+        
+        notifyRecipients = await getDashboardUserIds();
+        if (hostUserId && !notifyRecipients.includes(hostUserId)) notifyRecipients.push(hostUserId);
+        break;
+
+      case VISITOR_EVENTS.CHECKED_OUT:
         notificationTitle = 'Visitor Checked Out';
         notificationMessage = `${visitor.visitorName || visitor.fullName} has checked out.`;
-        sendToVisitorEmail = false;
+        sendEmailToVisitor = false;
+        
+        notifyRecipients = await getDashboardUserIds();
+        if (hostUserId && !notifyRecipients.includes(hostUserId)) notifyRecipients.push(hostUserId);
         break;
 
       default:
         return;
     }
 
-    // --- 1. Find Host User ---
-    let hostUserId = null;
-    if (visitor.hostId) {
-      hostUserId = visitor.hostId;
-    } else if (visitor.hostName) {
-      const hostUser = await User.findOne({ name: visitor.hostName, companyId: visitor.companyId });
-      if (hostUser) hostUserId = hostUser._id;
-    }
-
-    // --- 2. Create In-App Notification (Database) ---
-    // Only dispatch to relevant users, typically the host. Avoid spamming all users.
-    if (hostUserId) {
+    // --- Create DB Notification ---
+    if (notifyRecipients.length > 0) {
       const notificationDoc = await Notification.create({
         companyId: visitor.companyId,
-        branchId: visitor.branch,
-        recipient: hostUserId,
+        branchId: visitor.branch || visitor.branchLocation,
+        recipients: notifyRecipients,
         type: 'Visitor',
         module: 'PreBooking',
         title: notificationTitle,
@@ -169,37 +235,40 @@ const notifyVisitorStatusChange = async ({
         isRead: false
       });
 
-      // Emit real-time update if we have IO attached
+      // --- Emit Socket.IO Event for App Notification ---
       if (io) {
-        io.to(hostUserId.toString()).emit('new-notification', notificationDoc);
+        // Broadcast to everyone; client filters via `recipients` array
+        io.emit('new_notification', notificationDoc);
       }
     }
     
-    // Also emit a general visitor status update for the tracking page
+    // --- Emit Socket.IO Event for Tracking Page / Real-Time UI ---
     if (io) {
       const vid = visitor._id || visitor.id || visitor.visitorId;
       if (vid) {
-        io.emit('visitor:status-updated', { visitorId: vid.toString(), event });
-      }
-    }
-
-    // --- 3. Attempt Email Delivery ---
-    if (sendToVisitorEmail && visitor.email) {
-      if (emailService.sendEmail) {
-        // We don't await this so it doesn't block the request if the SMTP server is slow
-        emailService.sendEmail(visitor.email, emailSubject, emailHtml).catch(err => {
-          console.error('Failed to send visitor email asynchronously:', err);
+        io.emit('visitor:status-updated', { 
+          visitorId: vid.toString(), 
+          status: visitor.approvalStatus || visitor.status 
         });
       }
     }
 
+    // --- Attempt Email Delivery ---
+    if (sendEmailToVisitor && (visitor.email || visitor.visitorEmail)) {
+      const recipientEmail = visitor.email || visitor.visitorEmail;
+      // Do NOT await, execute asynchronously to prevent blocking approval
+      emailService.sendEmail(recipientEmail, emailSubject, emailHtml).catch(err => {
+        console.error('Email failed | Visitor ID:', visitor._id, '| Event:', event, '| Error:', err.message, '| Timestamp:', new Date().toISOString());
+      });
+    }
+
   } catch (error) {
-    // We swallow the error so it doesn't break the transaction for the controller.
-    console.error('VisitorNotificationService Error:', error);
+    // Log unexpected errors, do NOT rollback DB changes
+    console.error('Failed in notifyVisitorEvent | Event:', event, '| Error:', error.message);
   }
 };
 
 module.exports = {
-  EVENTS,
-  notifyVisitorStatusChange
+  VISITOR_EVENTS,
+  notifyVisitorEvent
 };

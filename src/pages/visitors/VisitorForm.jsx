@@ -177,7 +177,14 @@ const VisitorForm = () => {
       hostTeam = match[1].trim();
     }
     
-    const finalData = { ...formData, hostTeam, status: submitStatus };
+    const finalData = { 
+      ...formData, 
+      hostTeam, 
+      status: submitStatus,
+      visitType: 'DIRECT_VISIT',
+      registrationType: 'Walk-in',
+      isPreBooking: false 
+    };
     addVisitor(finalData);
     navigate(submitStatus === 'Rejected' ? '/dashboard' : '/visitors');
   };

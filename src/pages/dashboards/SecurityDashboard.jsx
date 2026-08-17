@@ -465,8 +465,9 @@ const SecurityDashboard = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-        <DashboardCard onClick={() => navigate('/visitors')} title="Total Visitors" value={visitors.length} icon={Users} colorClass="bg-blue-100 text-blue-600" />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+        <DashboardCard onClick={() => navigate('/visitors')} title="Walk-in Visitors" value={visitors.filter(v => v.registrationType !== 'Pre-Booking' && !v.isPreBooking).length} icon={Users} colorClass="bg-blue-100 text-blue-600" />
+        <DashboardCard onClick={() => navigate('/pre-bookings')} title="Pre-Bookings" value={visitors.filter(v => v.registrationType === 'Pre-Booking' || v.isPreBooking).length} icon={Users} colorClass="bg-indigo-100 text-indigo-600" />
         <DashboardCard onClick={() => navigate('/tracking')} title="Visitors Inside" value={visitorsInside.length} icon={UserCheck} colorClass="bg-green-100 text-green-600" />
         <DashboardCard onClick={() => navigate('/visitors?filter=checked-in')} title="QR Scans" value={qrScans} icon={QrCode} colorClass="bg-purple-100 text-purple-600" />
         <DashboardCard onClick={() => navigate('/tracking')} title="Security Alerts" value={securityAlerts} icon={ShieldAlert} colorClass="bg-red-100 text-red-600" />

@@ -18,6 +18,12 @@ const preBookingSchema = new mongoose.Schema(
       default: null,
     },
 
+    bookingType: {
+      type: String,
+      default: "PRE_BOOKING",
+      enum: ["PRE_BOOKING"]
+    },
+
     fullName: {
       type: String,
       required: true,

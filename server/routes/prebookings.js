@@ -74,37 +74,14 @@ router.post('/', async (req, res) => {
 
     const savedVisitor = await newVisitor.save();
 
-    // Send tracking link email to visitor
+    // Send registration received email to visitor
     if (email) {
-      const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
-      const trackingUrl = `${FRONTEND_URL}/visitor-status/${newVisitor.trackingToken}`;
       const emailService = require('../utils/emailService');
-      const visitDateFormatted = visitDate ? new Date(visitDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'TBD';
-      const emailHtml = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
-          <div style="background-color: #0f172a; color: white; padding: 16px 24px; border-radius: 8px 8px 0 0; text-align: center;">
-            <h2 style="margin: 0; font-size: 20px;">Pre-Booking Submitted</h2>
-          </div>
-          <div style="padding: 24px; background-color: #ffffff;">
-            <p style="font-size: 16px; color: #1e293b;">Hello <strong>${visitorName}</strong>,</p>
-            <p style="font-size: 14px; color: #475569;">Your visitor appointment request has been successfully submitted.</p>
-            <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; padding: 16px; border-radius: 8px; margin: 20px 0;">
-              <p style="margin: 4px 0; font-size: 14px;"><strong>Status:</strong> <span style="color: #d97706; font-weight: bold;">Pending Approval</span></p>
-              <p style="margin: 4px 0; font-size: 14px;"><strong>Host:</strong> ${hostName}</p>
-              <p style="margin: 4px 0; font-size: 14px;"><strong>Appointment:</strong> ${visitDateFormatted}, ${expectedArrivalTime || '10:00 AM'}</p>
-            </div>
-            <p style="font-size: 14px; color: #475569;">You can track your appointment status here:</p>
-            <div style="text-align: center; margin: 24px 0;">
-              <a href="${trackingUrl}" target="_blank" style="background-color: #4f46e5; color: #ffffff; padding: 12px 28px; text-decoration: none; font-weight: bold; border-radius: 6px; display: inline-block; font-size: 14px;">TRACK MY VISIT</a>
-            </div>
-            <p style="font-size: 12px; color: #64748b;">You will receive another email when your appointment is approved.</p>
-            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
-            <p style="font-size: 14px; color: #1e293b; margin: 0;">Thank You,<br/><strong>FIC Visitor Management</strong></p>
-          </div>
-        </div>
-      `;
-      emailService.sendEmail(email, 'Pre-Booking Submitted — Track Your Visit', emailHtml).catch(err => {
-        console.warn('Could not send tracking email:', err.message);
+      emailService.sendPreBookingRequestReceived({ 
+        visitorName, 
+        email 
+      }).catch(err => {
+        console.warn('Could not send registration email:', err.message);
       });
     }
 
@@ -223,6 +200,25 @@ router.put('/:id/approve', authMiddleware, checkApprovalPermission, async (req, 
       io: req.app.get('io')
     });
 
+    if (updatedVisitor.email) {
+      const emailService = require('../utils/emailService');
+      const visitDateFormatted = updatedVisitor.visitDate ? new Date(updatedVisitor.visitDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'TBD';
+      
+      emailService.sendApprovalEmail({
+        visitorName: updatedVisitor.visitorName,
+        email: updatedVisitor.email,
+        visitId: updatedVisitor.visitId,
+        hostName: updatedVisitor.hostName,
+        branch: updatedVisitor.branch,
+        purpose: updatedVisitor.purpose,
+        visitDate: visitDateFormatted,
+        visitTime: updatedVisitor.expectedArrivalTime,
+        passUrl: updatedVisitor.qrCode
+      }).catch(err => {
+        console.warn('Could not send approval email:', err.message);
+      });
+    }
+
     res.json({
       success: true,
       message: 'Pre-booking approved successfully and QR code generated!',
@@ -267,6 +263,16 @@ router.put('/:id/reject', authMiddleware, checkApprovalPermission, async (req, r
       event: visitorNotificationService.EVENTS.VISITOR_REJECTED,
       io: req.app.get('io')
     });
+
+    if (updatedVisitor.email) {
+      const emailService = require('../utils/emailService');
+      emailService.sendRejectionEmail({
+        visitorName: updatedVisitor.visitorName,
+        email: updatedVisitor.email
+      }).catch(err => {
+        console.warn('Could not send rejection email:', err.message);
+      });
+    }
 
     res.json({
       success: true,

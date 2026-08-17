@@ -4,7 +4,7 @@ import { User, Phone, Mail, Building, MapPin, Calendar, Clock, LogIn, LogOut, Sh
 import { QRCodeSVG } from 'qrcode.react';
 
 const VisitorPass = () => {
-  const { visitId } = useParams();
+  const { visitId, qrToken } = useParams();
   const [visitor, setVisitor] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -13,18 +13,23 @@ const VisitorPass = () => {
 
   useEffect(() => {
     fetchVisitor();
-  }, [visitId]);
+  }, [visitId, qrToken]);
 
   const fetchVisitor = async () => {
     try {
       const baseUrl = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
       
-      let response = await fetch(`${baseUrl}/api/pass-lookup/${visitId}`);
-      if (!response.ok) {
-        response = await fetch(`${baseUrl}/api/visitors/pass/${visitId}`);
-      }
-      if (!response.ok) {
-        response = await fetch(`${baseUrl}/api/prebookings/visitor/${visitId}`);
+      let response;
+      if (qrToken) {
+        response = await fetch(`${baseUrl}/api/prebookings/qr/${qrToken}`);
+      } else {
+        response = await fetch(`${baseUrl}/api/pass-lookup/${visitId}`);
+        if (!response.ok) {
+          response = await fetch(`${baseUrl}/api/visitors/pass/${visitId}`);
+        }
+        if (!response.ok) {
+          response = await fetch(`${baseUrl}/api/prebookings/visitor/${visitId}`);
+        }
       }
 
       if (!response.ok) {
@@ -294,11 +299,15 @@ const VisitorPass = () => {
 
             {/* Embedded Gate QR Code */}
             <div className="mt-5 p-4 bg-slate-900 rounded-2xl flex flex-col items-center justify-center text-center space-y-2 border border-slate-800">
-              <div className="p-3 bg-white rounded-xl shadow-md">
-                <QRCodeSVG 
-                  value={window.location.hostname === 'localhost' ? `http://${import.meta.env.VITE_NETWORK_IP || '192.168.1.10'}:5173/pass/${visitor.visitId}` : `${window.location.origin}/pass/${visitor.visitId}`}
-                  size={120} 
-                />
+              <div className="flex justify-center mb-6">
+                <div className="bg-white p-4 rounded-xl shadow-inner border border-gray-100">
+                  <QRCodeSVG 
+                    value={visitor.qrToken || visitor.visitorId || visitor.visitId || ''}
+                    size={180} 
+                    level={"H"}
+                    includeMargin={true}
+                  />
+                </div>
               </div>
               <span className="text-[10px] font-mono text-indigo-300 font-bold uppercase tracking-wider">
                 SCAN AT GATE / RECEPTION KIOSK

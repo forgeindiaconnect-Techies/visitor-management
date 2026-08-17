@@ -91,6 +91,7 @@ const AppRoutes = () => {
       <Route path="/prebook" element={<PublicPreBooking />} />
       <Route path="/visitor-status/:token" element={<VisitorStatus />} />
       <Route path="/pass/:visitId" element={<VisitorPass />} />
+      <Route path="/visitor-pass/:qrToken" element={<VisitorPass />} />
       <Route path="/pre-register" element={<PreRegister />} />
       <Route path="/visitor-invitation/:token" element={<VisitorInvitation />} />
 

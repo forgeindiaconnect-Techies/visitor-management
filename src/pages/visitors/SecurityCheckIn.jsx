@@ -121,17 +121,21 @@ const SecurityCheckIn = () => {
         'Authorization': user?.token ? `Bearer ${user.token}` : ''
       };
 
-      // Search in BOTH PreBooking model and Visitor model simultaneously
-      const [pbRes, vRes] = await Promise.all([
+      // Search in QR endpoint, PreBooking model, and Visitor model simultaneously
+      const [qrRes, pbRes, vRes] = await Promise.all([
+        fetch(`${API_URL}/api/prebookings/qr/${encodeURIComponent(cleanQuery)}`, { headers: authHeader }),
         fetch(`${API_URL}/api/prebookings/visitor/${encodeURIComponent(cleanQuery)}`, { headers: authHeader }),
         fetch(`${API_URL}/api/visitors/search/${encodeURIComponent(cleanQuery)}`, { headers: authHeader })
       ]);
 
-      // Prefer PreBooking result, then Visitor result
+      // Prefer QR result, then PreBooking result, then Visitor result
       let raw = null;
       let isFromVisitorCollection = false;
 
-      if (pbRes.ok) {
+      if (qrRes.ok) {
+        const json = await qrRes.json();
+        raw = json.data || json;
+      } else if (pbRes.ok) {
         const json = await pbRes.json();
         raw = json.data || json;
       } else if (vRes.ok) {

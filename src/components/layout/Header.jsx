@@ -62,7 +62,7 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
     
     socket.on('new_notification', (notification) => {
       let queryBranch = user?.branch;
-      if (user?.role === 'Super Admin' || user?.role === 'SaaS Super Admin') {
+      if (['Super Admin', 'MD', 'Senior HR', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'HR'].includes(user?.role)) {
         queryBranch = activeBranch === 'All Branches' ? null : activeBranch;
       }
       
@@ -176,7 +176,7 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
         
         <div className="flex items-center space-x-1 sm:space-x-2 bg-slate-50 px-2 sm:px-3 py-1.5 rounded-lg border border-gray-200">
           <MapPin size={16} className="text-[var(--color-brand-indigo)] shrink-0" />
-          {['Super Admin'].includes(user?.role) ? (
+          {['Super Admin', 'MD', 'Senior HR', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'HR'].includes(user?.role) ? (
             <select 
               value={activeBranch} 
               onChange={(e) => setActiveBranch(e.target.value)}

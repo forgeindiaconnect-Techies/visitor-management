@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const SibApiV3Sdk = require("@getbrevo/brevo");
 
 const SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
 const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587', 10);
@@ -137,10 +138,138 @@ const EmailTemplates = {
   })
 };
 
+const sendPreBookingRequestReceived = async ({ visitorName, email }) => {
+  const subject = "Pre-Booking Request Received";
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
+      <p style="font-size: 16px;">Hello <strong>${visitorName}</strong>,</p>
+      <p style="font-size: 14px; color: #475569;">Your pre-booking request has been received and is currently waiting for approval.</p>
+    </div>
+  `;
+  return await sendEmail(email, subject, htmlContent);
+};
+
+const sendApprovalEmail = async (preBooking) => {
+  try {
+    const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
+
+    apiInstance.setApiKey(
+      SibApiV3Sdk.TransactionalEmailsApiApiKeys.apiKey,
+      process.env.BREVO_API_KEY
+    );
+
+    const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+
+    sendSmtpEmail.subject = "Your FIC VMS Visit Has Been Approved";
+    sendSmtpEmail.sender = {
+      name: process.env.BREVO_SENDER_NAME || 'FIC VMS',
+      email: process.env.BREVO_SENDER_EMAIL || 'forgeindiaconnectfic@gmail.com',
+    };
+
+    sendSmtpEmail.to = [
+      {
+        email: preBooking.email,
+        name: preBooking.fullName || preBooking.visitorName,
+      },
+    ];
+
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const passUrl = `${frontendUrl}/pass/${preBooking.visitorId}`;
+
+    sendSmtpEmail.htmlContent = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
+        <h2>Visitor Booking Approved</h2>
+        <p>Hello <strong>${preBooking.fullName || preBooking.visitorName}</strong>,</p>
+        <p>Your visitor booking has been approved.</p>
+        
+        <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; padding: 16px; border-radius: 8px; margin: 20px 0;">
+          <p>
+            <strong>Visitor ID:</strong>
+            ${preBooking.visitorId || preBooking.visitId}
+          </p>
+          <p>
+            <strong>Visit Date:</strong>
+            ${new Date(preBooking.visitDate).toLocaleDateString()}
+          </p>
+          <p>
+            <strong>Expected Time:</strong>
+            ${preBooking.expectedTime || preBooking.expectedArrivalTime}
+          </p>
+          <p>
+            <strong>Host:</strong>
+            ${preBooking.hostEmployee || preBooking.hostName || "N/A"}
+          </p>
+          <p>
+            <strong>Purpose:</strong>
+            ${preBooking.visitPurpose || preBooking.purpose || "N/A"}
+          </p>
+          <p>
+            <strong>Status:</strong>
+            <span style="color:#16a34a;font-weight:bold;">
+              APPROVED
+            </span>
+          </p>
+        </div>
+
+        <p>
+          Your visitor pass is now ready.
+          Click the button below to view your pass.
+        </p>
+
+        <div style="text-align:center;margin:30px 0;">
+          <a
+            href="${passUrl}"
+            style="
+              display:inline-block;
+              background:#312e81;
+              color:white;
+              padding:14px 28px;
+              text-decoration:none;
+              border-radius:8px;
+              font-weight:bold;
+            "
+          >
+            VIEW VISITOR PASS
+          </a>
+        </div>
+
+        <p style="
+          color:#64748b;
+          font-size:13px;
+        ">
+          Please show your visitor pass to Security when
+          you arrive at the office.
+        </p>
+      </div>
+    `;
+
+    await apiInstance.sendTransacEmail(sendSmtpEmail);
+    console.log(`Approval email sent successfully to ${preBooking.email}`);
+    return true;
+  } catch (error) {
+    console.error("Brevo approval email error:", error);
+    return false;
+  }
+};
+
+const sendRejectionEmail = async ({ visitorName, email }) => {
+  const subject = "Your pre-booking request has been rejected";
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
+      <p style="font-size: 16px;">Hello <strong>${visitorName}</strong>,</p>
+      <p style="font-size: 14px; color: #475569;">Your pre-booking request has been rejected.</p>
+    </div>
+  `;
+  return await sendEmail(email, subject, htmlContent);
+};
+
 module.exports = {
   sendEmail,
   sendPreBookingInvitation,
   sendRegistrationConfirmation,
   sendVisitorInvitationEmail,
+  sendPreBookingRequestReceived,
+  sendApprovalEmail,
+  sendRejectionEmail,
   EmailTemplates
 };

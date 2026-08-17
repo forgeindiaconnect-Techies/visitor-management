@@ -127,7 +127,7 @@ const BranchAdminDashboard = () => {
                         visitor.status === 'Approved' ? 'bg-blue-100 text-blue-800' :
                         visitor.status === 'Inside' ? 'bg-indigo-100 text-[var(--color-brand-indigo)]' :
                         visitor.status === 'Rejected' ? 'bg-red-100 text-red-800' :
-                        visitor.status === 'Pending' ? 'bg-orange-100 text-orange-800' :
+                        visitor.status?.toUpperCase() === 'PENDING' ? 'bg-orange-100 text-orange-800' :
                         'bg-gray-100 text-gray-800'
                       }`}>
                         {visitor.status}
@@ -165,7 +165,7 @@ const BranchAdminDashboard = () => {
                 <Clock size={18} className="text-orange-500" />
                 <span className="font-medium">Pending Approvals</span>
               </div>
-              <span className="bg-orange-100 text-orange-700 py-0.5 px-2 rounded font-bold text-xs">{visitors.filter(v => v.status === 'Pending').length}</span>
+              <span className="bg-orange-100 text-orange-700 py-0.5 px-2 rounded font-bold text-xs">{visitors.filter(v => v.status?.toUpperCase() === 'PENDING').length}</span>
             </div>
 
             <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-gray-100 cursor-pointer hover:border-[var(--color-brand-indigo)] transition-colors" onClick={() => navigate('/tracking')}>

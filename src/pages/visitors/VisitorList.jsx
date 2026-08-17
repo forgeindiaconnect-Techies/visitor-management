@@ -87,7 +87,11 @@ const VisitorList = () => {
                            statusFilter === 'Checked Out' ? (v.status === 'Checked Out' || v.status === 'Exited') : 
                            v.status === statusFilter);
     const matchesDate = !dateFilter || v.visitDate === dateFilter;
-    return matchesSearch && matchesStatus && matchesDate;
+    // For legacy data, visitType might default to 'PRE_BOOKING' even for Walk-ins.
+    // So we rely primarily on registrationType or explicit isPreBooking flag.
+    const isPreBooked = v.isPreBooking === true || v.registrationType === 'Pre-Booking';
+    
+    return matchesSearch && matchesStatus && matchesDate && !isPreBooked;
   });
 
   const isReturningVisitor = (visitor) => {

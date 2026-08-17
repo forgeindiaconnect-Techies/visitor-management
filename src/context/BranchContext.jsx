@@ -33,8 +33,8 @@ export const BranchProvider = ({ children }) => {
           const allB = ['All Branches', ...dynamicBranches];
           setBranches(allB);
           
-          // Only Super Admin & SaaS Super Admin can view All Branches. Everyone else is locked to their assigned branch.
-          if (!['Super Admin', 'SaaS Super Admin'].includes(user.role)) {
+          // Roles that can view All Branches. Everyone else is locked to their assigned branch.
+          if (!['Super Admin', 'MD', 'Senior HR', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'HR'].includes(user.role)) {
             setActiveBranch(user.branch || dynamicBranches[0] || 'All Branches');
           } else {
             setActiveBranch('All Branches');

@@ -12,15 +12,17 @@ exports.getNotifications = async (req, res) => {
         { type: { $in: ['Tenant', 'Subscription', 'System', 'Branch', 'Admin', 'Announcement'] } },
         { createdBy: 'SaaS Super Admin' },
         { companyId: 'SYSTEM' },
-        { recipient: req.userId }
+        { recipient: req.userId },
+        { recipients: req.userId }
       ];
     } else if (role === 'Super Admin') {
       // Tenant Super Admin sees everything for their own company
       query.companyId = req.companyId;
       query.$or = [
-        { recipient: { $exists: false } },
+        { recipient: { $exists: false }, recipients: { $exists: false } },
         { recipient: null },
-        { recipient: req.userId }
+        { recipient: req.userId },
+        { recipients: req.userId }
       ];
     } else if (role === 'Admin' || role === 'MD' || role === 'Company Admin') {
       // Admin sees their own branch
@@ -28,8 +30,10 @@ exports.getNotifications = async (req, res) => {
       query.branchId = req.branchId;
       query.$or = [
         { recipient: req.userId },
+        { recipients: req.userId },
         {
           recipient: { $exists: false },
+          recipients: { $exists: false },
           type: { $nin: ['Attendance', 'PREBOOKING_CREATED', 'Visitor', 'visitor'] }
         }
       ];
@@ -39,8 +43,10 @@ exports.getNotifications = async (req, res) => {
       query.branchId = req.branchId;
       query.$or = [
         { recipient: req.userId },
+        { recipients: req.userId },
         {
           recipient: { $exists: false },
+          recipients: { $exists: false },
           type: { $nin: ['Attendance', 'PREBOOKING_CREATED', 'Visitor', 'visitor'] }
         }
       ];
@@ -49,8 +55,10 @@ exports.getNotifications = async (req, res) => {
       query.companyId = req.companyId;
       query.$or = [
         { recipient: req.userId },
+        { recipients: req.userId },
         {
           recipient: { $exists: false },
+          recipients: { $exists: false },
           type: { $nin: ['Attendance', 'PREBOOKING_CREATED', 'Visitor', 'visitor'] }
         }
       ];
