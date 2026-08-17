@@ -660,13 +660,6 @@ const checkInPreBooking = async (req, res) => {
       });
     }
 
-    if (req.userRole !== "Security") {
-      return res.status(403).json({
-        success: false,
-        message: "Only Security can check in this visitor"
-      });
-    }
-
     if (preBooking.status === "CHECKED_IN" || preBooking.status === "Checked In") {
       return res.status(400).json({
         success: false,
@@ -692,7 +685,7 @@ const checkInPreBooking = async (req, res) => {
 
     preBooking.status = "CHECKED_IN";
     preBooking.checkInTime = new Date();
-    preBooking.checkInBy = req.user?.fullName || req.user?.name || "Security";
+    preBooking.checkInBy = req.user?.fullName || req.user?.name || "Self Check-In";
 
     await preBooking.save();
 
@@ -833,7 +826,7 @@ const checkOutPreBooking = async (req, res) => {
 
     preBooking.status = "CHECKED_OUT";
     preBooking.checkOutTime = new Date();
-    preBooking.checkOutBy = req.user?.fullName || req.user?.name || "Security";
+    preBooking.checkOutBy = req.user?.fullName || req.user?.name || "Self Check-Out";
     preBooking.checkOutNotes = notes;
     preBooking.exitNotes = notes;
 
