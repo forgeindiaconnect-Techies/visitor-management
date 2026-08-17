@@ -192,7 +192,7 @@ const approvePreBooking = async (req, res) => {
     // Check if the user is one of the designated approvers (or a SaaS Super Admin / bootstrap user for fallback)
     const isSaaSAdmin = req.userRole === 'SaaS Super Admin' || (req.userId && req.userId.startsWith('bootstrap-'));
     
-    const userNameLower = req.userName ? req.userName.toLowerCase() : '';
+    const userNameLower = req.userName ? req.userName.toLowerCase().trim() : '';
     if (!isSaaSAdmin && (!userNameLower || !allowedApprovers.includes(userNameLower))) {
       return res.status(403).json({
         success: false,
@@ -322,7 +322,7 @@ const rejectPreBooking = async (req, res) => {
     const allowedApprovers = ['sandeep', 'avinash', 'agila', 'jeo', 'joe christo'];
     const isSaaSAdmin = req.userRole === 'SaaS Super Admin' || (req.userId && req.userId.startsWith('bootstrap-'));
     
-    const userNameLower = req.userName ? req.userName.toLowerCase() : '';
+    const userNameLower = req.userName ? req.userName.toLowerCase().trim() : '';
     if (!isSaaSAdmin && (!userNameLower || !allowedApprovers.includes(userNameLower))) {
       return res.status(403).json({
         success: false,
