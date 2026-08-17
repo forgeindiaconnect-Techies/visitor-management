@@ -1,5 +1,5 @@
 const nodemailer = require('nodemailer');
-const SibApiV3Sdk = require("@getbrevo/brevo");
+const { BrevoClient } = require("@getbrevo/brevo");
 
 const SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
 const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587', 10);
@@ -21,29 +21,22 @@ const transporter = nodemailer.createTransport({
 
 const sendEmail = async (to, subject, htmlBody) => {
   try {
-    const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
-
-    // Prioritize BREVO_API_KEY if available, otherwise it will fail gracefully
     if (!process.env.BREVO_API_KEY) {
        console.warn("⚠️ BREVO_API_KEY is not set. Email will not be sent.");
        return false;
     }
 
-    apiInstance.setApiKey(
-      SibApiV3Sdk.TransactionalEmailsApiApiKeys.apiKey,
-      process.env.BREVO_API_KEY
-    );
+    const brevo = new BrevoClient({ apiKey: process.env.BREVO_API_KEY });
 
-    const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
-    sendSmtpEmail.subject = subject;
-    sendSmtpEmail.sender = {
-      name: process.env.BREVO_SENDER_NAME || 'FIC VMS',
-      email: process.env.BREVO_SENDER_EMAIL || 'forgeindiaconnectfic@gmail.com',
-    };
-    sendSmtpEmail.to = [{ email: to }];
-    sendSmtpEmail.htmlContent = htmlBody;
-
-    await apiInstance.sendTransacEmail(sendSmtpEmail);
+    await brevo.transactionalEmails.sendTransacEmail({
+      subject: subject,
+      htmlContent: htmlBody,
+      sender: {
+        name: process.env.BREVO_SENDER_NAME || 'FIC VMS',
+        email: process.env.BREVO_SENDER_EMAIL || 'forgeindiaconnectfic@gmail.com',
+      },
+      to: [{ email: to }]
+    });
     console.log(`📧 Brevo email sent successfully to ${to}. Subject: ${subject}`);
     return true;
   } catch (err) {
@@ -168,32 +161,17 @@ const sendPreBookingRequestReceived = async ({ visitorName, email }) => {
 
 const sendApprovalEmail = async (preBooking) => {
   try {
-    const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
+    if (!process.env.BREVO_API_KEY) {
+      console.warn("⚠️ BREVO_API_KEY is not set.");
+      return;
+    }
 
-    apiInstance.setApiKey(
-      SibApiV3Sdk.TransactionalEmailsApiApiKeys.apiKey,
-      process.env.BREVO_API_KEY
-    );
-
-    const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
-
-    sendSmtpEmail.subject = "Your FIC VMS Visit Has Been Approved";
-    sendSmtpEmail.sender = {
-      name: process.env.BREVO_SENDER_NAME || 'FIC VMS',
-      email: process.env.BREVO_SENDER_EMAIL || 'forgeindiaconnectfic@gmail.com',
-    };
-
-    sendSmtpEmail.to = [
-      {
-        email: preBooking.email,
-        name: preBooking.fullName || preBooking.visitorName,
-      },
-    ];
+    const brevo = new BrevoClient({ apiKey: process.env.BREVO_API_KEY });
 
     const frontendUrl = process.env.FRONTEND_URL || 'https://zone-monitor.vercel.app';
     const passUrl = `${frontendUrl}/pass/${preBooking.visitorId || preBooking.visitId}`;
 
-    sendSmtpEmail.htmlContent = `
+    const htmlContent = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
         <h2>Visitor Booking Approved</h2>
         <p>Hello <strong>${preBooking.fullName || preBooking.visitorName}</strong>,</p>
@@ -260,7 +238,18 @@ const sendApprovalEmail = async (preBooking) => {
       </div>
     `;
 
-    await apiInstance.sendTransacEmail(sendSmtpEmail);
+    await brevo.transactionalEmails.sendTransacEmail({
+      subject: "Your FIC VMS Visit Has Been Approved",
+      htmlContent: htmlContent,
+      sender: {
+        name: process.env.BREVO_SENDER_NAME || 'FIC VMS',
+        email: process.env.BREVO_SENDER_EMAIL || 'forgeindiaconnectfic@gmail.com',
+      },
+      to: [{ 
+        email: preBooking.email,
+        name: preBooking.fullName || preBooking.visitorName
+      }]
+    });
     console.log(`Approval email sent successfully to ${preBooking.email}`);
     return true;
   } catch (error) {
