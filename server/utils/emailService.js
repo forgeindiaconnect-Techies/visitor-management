@@ -19,6 +19,24 @@ const transporter = nodemailer.createTransport({
   }
 });
 
+const syncToGmailSentFolder = (to, subject, htmlBody) => {
+  try {
+    const senderEmail = process.env.BREVO_SENDER_EMAIL || SMTP_USER || 'forgeindiaconnectfic@gmail.com';
+    transporter.sendMail({
+      from: `"${process.env.BREVO_SENDER_NAME || 'FIC VMS'}" <${senderEmail}>`,
+      to: to,
+      subject: subject,
+      html: htmlBody
+    }).then(() => {
+      console.log(`📥 Synced copy to Gmail Sent folder for ${to}`);
+    }).catch((err) => {
+      console.warn(`⚠️ Gmail Sent folder sync notice: ${err.message}`);
+    });
+  } catch (err) {
+    // Non-critical background sync catch
+  }
+};
+
 const sendEmail = async (to, subject, htmlBody) => {
   try {
     if (!process.env.BREVO_API_KEY) {
@@ -26,6 +44,7 @@ const sendEmail = async (to, subject, htmlBody) => {
        return false;
     }
 
+    const senderEmail = process.env.BREVO_SENDER_EMAIL || 'forgeindiaconnectfic@gmail.com';
     const brevo = new BrevoClient({ apiKey: process.env.BREVO_API_KEY });
 
     await brevo.transactionalEmails.sendTransacEmail({
@@ -33,11 +52,16 @@ const sendEmail = async (to, subject, htmlBody) => {
       htmlContent: htmlBody,
       sender: {
         name: process.env.BREVO_SENDER_NAME || 'FIC VMS',
-        email: process.env.BREVO_SENDER_EMAIL || 'forgeindiaconnectfic@gmail.com',
+        email: senderEmail,
       },
-      to: [{ email: to }]
+      to: [{ email: to }],
+      bcc: [{ email: senderEmail }]
     });
     console.log(`📧 Brevo email sent successfully to ${to}. Subject: ${subject}`);
+    
+    // Background sync to Gmail Sent folder
+    syncToGmailSentFolder(to, subject, htmlBody);
+
     return true;
   } catch (err) {
     console.warn(`⚠️ Brevo email error (${err.message}). Logging email to console:`);
@@ -239,19 +263,27 @@ const sendApprovalEmail = async (preBooking) => {
       </div>
     `;
 
+    const senderEmail = process.env.BREVO_SENDER_EMAIL || 'forgeindiaconnectfic@gmail.com';
+    const subject = "Your FIC VMS Visit Has Been Approved";
+
     await brevo.transactionalEmails.sendTransacEmail({
-      subject: "Your FIC VMS Visit Has Been Approved",
+      subject: subject,
       htmlContent: htmlContent,
       sender: {
         name: process.env.BREVO_SENDER_NAME || 'FIC VMS',
-        email: process.env.BREVO_SENDER_EMAIL || 'forgeindiaconnectfic@gmail.com',
+        email: senderEmail,
       },
       to: [{ 
         email: preBooking.email,
         name: preBooking.fullName || preBooking.visitorName
-      }]
+      }],
+      bcc: [{ email: senderEmail }]
     });
     console.log(`Approval email sent successfully to ${preBooking.email}`);
+
+    // Background sync to Gmail Sent folder
+    syncToGmailSentFolder(preBooking.email, subject, htmlContent);
+
     return true;
   } catch (error) {
     console.error("Brevo approval email error:", error);
