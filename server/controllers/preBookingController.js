@@ -1,7 +1,7 @@
 const crypto = require("crypto");
 const PreBooking = require("../models/PreBooking");
 const QRCode = require('qrcode');
-const { generatePassBase64 } = require('../utils/generatePass');
+
 const visitorNotificationService = require('../services/visitorNotificationService');
 const logAction = require('../utils/auditLogger');
 
