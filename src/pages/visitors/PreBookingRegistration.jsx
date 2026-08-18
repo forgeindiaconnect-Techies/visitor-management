@@ -29,6 +29,24 @@ const PreBookingRegistration = () => {
   const _rawUrl = import.meta.env.VITE_API_URL || 'https://fic-visitor-1.onrender.com';
   const API_BASE = _rawUrl.replace(/\/api\/?$/, '') + '/api';
 
+  const getHeaders = (isJson = true) => {
+    const token = user?.token || localStorage.getItem('token');
+    const headers = {};
+    if (isJson) {
+      headers['Content-Type'] = 'application/json';
+    }
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    if (user) {
+      headers['x-user-id'] = user.id || user._id;
+      headers['x-company-id'] = user.companyId;
+      headers['x-user-role'] = user.role;
+      headers['x-branch-id'] = user.branch;
+    }
+    return headers;
+  };
+
   // Form State
   const [formData, setFormData] = useState({
     visitorName: '',
@@ -63,9 +81,7 @@ const PreBookingRegistration = () => {
     setListLoading(true);
     try {
       const response = await fetch(`${API_BASE}/invitations/list?status=${statusFilter}&search=${searchTerm}`, {
-        headers: {
-          ...(user?.token && { 'Authorization': `Bearer ${user.token}` })
-        }
+        headers: getHeaders(false)
       });
       if (response.ok) {
         const data = await response.json();
@@ -101,7 +117,7 @@ const PreBookingRegistration = () => {
     }
   };
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (sendEmailNow = true) => {
     if (!formData.email) {
       addNotification('Validation Error', 'Visitor Email Address is required.', 'error');
       return;
@@ -120,34 +136,30 @@ const PreBookingRegistration = () => {
 
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/visitor-invitations`, {
+      const response = await fetch(`${API_BASE}/invitations/create`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(user?.token && { 'Authorization': `Bearer ${user.token}` })
-        },
+        headers: getHeaders(true),
         body: JSON.stringify({
           visitorName: formData.visitorName,
           email: formData.email,
-          mobile: formData.mobileNumber,
-          companyName: 'Forge India Connect Private Limited',
-          purposeOfVisit: formData.purpose,
+          mobileNumber: formData.mobileNumber,
+          companyName: formData.companyName,
+          purpose: formData.purpose,
           visitDate: formData.visitDate,
           visitTime: formData.visitTime,
           branch: formData.branch,
           dob: formData.dob,
           hostEmployee: formData.hostEmployee,
           notes: formData.notes,
+          sendEmailNow
         })
       });
 
       const data = await response.json();
-      if (response.ok && data.success) {
-        alert("Invitation created successfully!");
-        console.log("Invitation URL:", data.invitationUrl);
-        console.log("QR Code:", data.qrCode);
-        
-        setGeneratedLink(data.invitationUrl);
+      if (response.ok && (data.success || data.invitation)) {
+        alert(sendEmailNow ? "Invitation email sent successfully!" : "Invitation link generated successfully!");
+        const generatedLinkVal = data.registrationLink || (data.invitation && data.invitation.token ? `${process.env.FRONTEND_URL || 'https://zone-monitor.vercel.app'}/pre-register?token=${data.invitation.token}` : '');
+        setGeneratedLink(generatedLinkVal);
         fetchInvitations();
       } else {
         addNotification('Error', data.message || 'Failed to generate invitation.', 'error');
@@ -175,9 +187,7 @@ const PreBookingRegistration = () => {
     try {
       const response = await fetch(`${API_BASE}/invitations/${id}/resend`, {
         method: 'POST',
-        headers: {
-          ...(user?.token && { 'Authorization': `Bearer ${user.token}` })
-        }
+        headers: getHeaders(false)
       });
       if (response.ok) {
         addNotification('Success', 'Invitation email resent successfully.', 'success');
@@ -194,10 +204,7 @@ const PreBookingRegistration = () => {
       setListLoading(true);
       const response = await fetch(`${API_BASE}/invitations/clear-all`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(user?.token && { 'Authorization': `Bearer ${user.token}` })
-        }
+        headers: getHeaders(false)
       });
       if (response.ok) {
         setInvitations([]);
@@ -218,9 +225,7 @@ const PreBookingRegistration = () => {
     try {
       const response = await fetch(`${API_BASE}/invitations/${id}/regenerate`, {
         method: 'POST',
-        headers: {
-          ...(user?.token && { 'Authorization': `Bearer ${user.token}` })
-        }
+        headers: getHeaders(false)
       });
       if (response.ok) {
         const data = await response.json();
@@ -237,9 +242,7 @@ const PreBookingRegistration = () => {
     try {
       const response = await fetch(`${API_BASE}/invitations/${id}/cancel`, {
         method: 'POST',
-        headers: {
-          ...(user?.token && { 'Authorization': `Bearer ${user.token}` })
-        }
+        headers: getHeaders(false)
       });
       if (response.ok) {
         addNotification('Cancelled', 'Invitation link has been cancelled.', 'info');

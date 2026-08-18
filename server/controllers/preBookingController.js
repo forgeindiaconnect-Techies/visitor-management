@@ -291,7 +291,8 @@ const approvePreBooking = async (req, res) => {
     const isSaaSAdmin = req.userRole === 'SaaS Super Admin' || (req.userId && req.userId.startsWith('bootstrap-'));
     
     const userNameLower = req.userName ? req.userName.toLowerCase().trim() : '';
-    if (!isSaaSAdmin && (!userNameLower || !allowedApprovers.includes(userNameLower))) {
+    const isAllowed = allowedApprovers.some(allowed => userNameLower.includes(allowed));
+    if (!isSaaSAdmin && (!userNameLower || !isAllowed)) {
       return res.status(403).json({
         success: false,
         message: "You do not have permission to approve pre-bookings. Only Sandeep, Avinash, Agila, and Jeo are authorized."
@@ -423,7 +424,8 @@ const rejectPreBooking = async (req, res) => {
     const isSaaSAdmin = req.userRole === 'SaaS Super Admin' || (req.userId && req.userId.startsWith('bootstrap-'));
     
     const userNameLower = req.userName ? req.userName.toLowerCase().trim() : '';
-    if (!isSaaSAdmin && (!userNameLower || !allowedApprovers.includes(userNameLower))) {
+    const isAllowed = allowedApprovers.some(allowed => userNameLower.includes(allowed));
+    if (!isSaaSAdmin && (!userNameLower || !isAllowed)) {
       return res.status(403).json({
         success: false,
         message: "You do not have permission to reject pre-bookings. Only Sandeep, Avinash, Agila, and Jeo are authorized."

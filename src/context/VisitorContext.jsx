@@ -10,6 +10,24 @@ export const VisitorProvider = ({ children }) => {
   const { activeBranch } = useBranch();
   const { addNotification } = useNotification();
   const { user: currentUser } = useAuth();
+
+  const getHeaders = (isJson = true) => {
+    const token = currentUser?.token || localStorage.getItem('token');
+    const headers = {};
+    if (isJson) {
+      headers['Content-Type'] = 'application/json';
+    }
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    if (currentUser) {
+      headers['x-user-id'] = currentUser.id || currentUser._id;
+      headers['x-company-id'] = currentUser.companyId;
+      headers['x-user-role'] = currentUser.role;
+      headers['x-branch-id'] = currentUser.branch;
+    }
+    return headers;
+  };
   
   const [allVisitors, setVisitors] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -55,13 +73,7 @@ export const VisitorProvider = ({ children }) => {
         ? `${API_URL}?branch=${encodeURIComponent(queryBranch)}` 
         : API_URL;
       
-      const headers = currentUser?.token ? { 'Authorization': `Bearer ${currentUser.token}` } : {};
-      if (currentUser) {
-        headers['x-user-id'] = currentUser.id || currentUser._id;
-        headers['x-company-id'] = currentUser.companyId;
-        headers['x-user-role'] = currentUser.role;
-        headers['x-branch-id'] = currentUser.branch;
-      }
+      const headers = getHeaders(false);
       
       const PREBOOKINGS_API_URL = `${import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com')}/api/prebookings`;
       
@@ -285,10 +297,7 @@ export const VisitorProvider = ({ children }) => {
         if (endpointUrl) {
           const response = await fetch(endpointUrl, {
             method: 'PUT',
-            headers: { 
-              'Content-Type': 'application/json',
-              ...(currentUser?.token && { 'Authorization': `Bearer ${currentUser.token}` })
-            },
+            headers: getHeaders(),
             body: JSON.stringify({
               approvedBy: approvalData.approvedBy,
               remarks: approvalData.remarks
@@ -326,10 +335,7 @@ export const VisitorProvider = ({ children }) => {
     try {
       const response = await fetch(`${API_URL}/${id}`, {
         method: 'PATCH',
-        headers: { 
-          'Content-Type': 'application/json',
-          ...(currentUser?.token && { 'Authorization': `Bearer ${currentUser.token}` })
-        },
+        headers: getHeaders(),
         body: JSON.stringify(updates)
       });
       
@@ -353,10 +359,7 @@ export const VisitorProvider = ({ children }) => {
     try {
       const response = await fetch(`${API_URL}/${id}/approve`, {
         method: 'PATCH',
-        headers: { 
-          'Content-Type': 'application/json',
-          ...(currentUser?.token && { 'Authorization': `Bearer ${currentUser.token}` })
-        }
+        headers: getHeaders()
       });
       if (response.ok) {
         const updated = await response.json();
@@ -374,10 +377,7 @@ export const VisitorProvider = ({ children }) => {
     try {
       const response = await fetch(`${API_URL}/${id}/reject`, {
         method: 'PATCH',
-        headers: { 
-          'Content-Type': 'application/json',
-          ...(currentUser?.token && { 'Authorization': `Bearer ${currentUser.token}` })
-        },
+        headers: getHeaders(),
         body: JSON.stringify({ rejectionReason })
       });
       if (response.ok) {
@@ -396,17 +396,14 @@ export const VisitorProvider = ({ children }) => {
     try {
       const response = await fetch(`${API_URL}/${id}`, {
         method: 'PATCH',
-        headers: { 
-          'Content-Type': 'application/json',
-          ...(currentUser?.token && { 'Authorization': `Bearer ${currentUser.token}` })
-        },
+        headers: getHeaders(),
         body: JSON.stringify(updates)
       });
       
       if (response.ok) {
         const updatedVisitor = await response.json();
         setVisitors(prev => prev.map(v => String(v._id || v.id) === String(id) ? updatedVisitor : v));
-        addNotification('Visitor Updated', 'Visitor details updated successfully', 'success');
+        addNotification('Visitor Updated', 'visitor details updated successfully', 'success');
         return true;
       } else {
          throw new Error('API Update failed');
@@ -422,10 +419,7 @@ export const VisitorProvider = ({ children }) => {
     try {
       const response = await fetch(`${API_URL}/${id}/zone`, {
         method: 'PATCH',
-        headers: { 
-          'Content-Type': 'application/json',
-          ...(currentUser?.token && { 'Authorization': `Bearer ${currentUser.token}` })
-        },
+        headers: getHeaders(),
         body: JSON.stringify(trackingData)
       });
       
