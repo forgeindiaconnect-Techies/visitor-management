@@ -13,28 +13,15 @@ export const AuthProvider = ({ children }) => {
   const [approvalRoles, setApprovalRoles] = useState([]);
   const [hasApprovalPermission, setHasApprovalPermission] = useState(false);
 
-  // Fetch current user's approval permissions
+  // Set current user's approval permissions locally
   useEffect(() => {
-    if (user && user.role) {
-      const fetchMyPermission = async () => {
-        try {
-          const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
-          const res = await fetch(`${API_URL}/api/approval-permissions/my-permission`, {
-            headers: { 
-              'Authorization': `Bearer ${user.token || localStorage.getItem('token')}`,
-              'x-user-role': user.role
-            }
-          });
-          if (res.ok) {
-            const data = await res.json();
-            setHasApprovalPermission(data.canApprove === true);
-          }
-        } catch (e) {
-          console.error("Failed to fetch my approval permission", e);
-          setHasApprovalPermission(false);
-        }
-      };
-      fetchMyPermission();
+    if (user) {
+      const allowed = ['sandeep', 'avinash', 'jeo', 'agila'];
+      const userNameLower = user.name ? user.name.toLowerCase().trim() : '';
+      const isAllowed = allowed.includes(userNameLower) || user.role === 'SaaS Super Admin';
+      setHasApprovalPermission(isAllowed);
+    } else {
+      setHasApprovalPermission(false);
     }
   }, [user]);
 

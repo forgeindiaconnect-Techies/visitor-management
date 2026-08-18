@@ -30,7 +30,7 @@ const AdminDashboard = () => {
   const { visitors, updateVisitorStatus } = useVisitors();
   const { branches } = useBranch();
   const { zones } = useZones();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, hasApprovalPermission } = useAuth();
 
   const safeVisitors = Array.isArray(visitors) ? visitors : [];
   const safeBranches = Array.isArray(branches) ? branches : [];
@@ -93,7 +93,7 @@ const AdminDashboard = () => {
         <p className="text-gray-500 mt-1">Overview of branch visitor metrics and pending approvals.</p>
       </div>
 
-      {pendingApprovals > 0 && (
+      {pendingApprovals > 0 && hasApprovalPermission && (
         <div className="bg-orange-50 border border-orange-200 rounded-xl p-6 shadow-sm mb-6">
           <div className="flex items-center gap-3 mb-4">
             <Clock className="text-orange-600" size={24} />

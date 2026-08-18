@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { User, Phone, Mail, Building, MapPin, Calendar, Clock, LogIn, LogOut, ShieldCheck, AlertCircle, Clock3, FileText } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { formatAppointmentDate } from '../../utils/dateUtils';
 
 const VisitorPass = () => {
   const { visitId, qrToken } = useParams();
@@ -275,7 +276,7 @@ const VisitorPass = () => {
 
               <div className="flex justify-between items-center border-b border-slate-200/60 pb-2">
                 <span className="text-slate-500 font-semibold uppercase text-[10px]">Date of Visit</span>
-                <span className="font-semibold text-slate-800">{visitor.visitDate || 'Today'}</span>
+                <span className="font-semibold text-slate-800">{formatAppointmentDate(visitor.visitDate) || 'Today'}</span>
               </div>
 
               <div className="flex justify-between items-center border-b border-slate-200/60 pb-2">

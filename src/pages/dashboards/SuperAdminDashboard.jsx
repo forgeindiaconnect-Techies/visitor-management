@@ -28,7 +28,7 @@ const SuperAdminDashboard = () => {
   const { visitors, updateVisitorStatus } = useVisitors();
   const { branches, activeBranch } = useBranch();
   const { zones } = useZones();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, hasApprovalPermission } = useAuth();
   const navigate = useNavigate();
   const [usageStats, setUsageStats] = React.useState(null);
 
@@ -198,7 +198,7 @@ const SuperAdminDashboard = () => {
         </div>
       )}
 
-      {pendingApprovals > 0 && (
+      {pendingApprovals > 0 && hasApprovalPermission && (
         <div className="bg-orange-50 border border-orange-200 rounded-xl p-6 shadow-sm mb-6">
           <div className="flex items-center gap-3 mb-4">
             <Clock className="text-orange-600" size={24} />
