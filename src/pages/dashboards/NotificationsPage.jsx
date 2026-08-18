@@ -42,7 +42,7 @@ const NotificationsPage = () => {
       const res = await fetch(url.toString(), { headers: getHeaders() });
       if (res.ok) {
         const data = await res.json();
-        setNotifications(data);
+        setNotifications(data.notifications || []);
       }
     } catch (err) {
       console.error('Failed to fetch notifications', err);
@@ -84,14 +84,14 @@ const NotificationsPage = () => {
       
       if (notification.recipients && Array.isArray(notification.recipients) && notification.recipients.length > 0) {
         const matchesUser = notification.recipients.some(r => String(r) === currentUserId || String(r) === currentUserRole);
-        if (!matchesUser && notification.recipient && String(notification.recipient) !== currentUserId) {
+        if (!matchesUser) {
           return;
         }
       } else if (notification.recipient && String(notification.recipient) !== currentUserId && String(notification.recipient) !== currentUserRole) {
         return;
       }
 
-      setNotifications(prev => [notification, ...prev]);
+      setNotifications(prev => [notification, ...(Array.isArray(prev) ? prev : [])]);
     });
 
     return () => socket.disconnect();
@@ -100,21 +100,21 @@ const NotificationsPage = () => {
   const markAsRead = async (id) => {
     try {
       const res = await fetch(`${API_URL}/${id}/read`, { method: 'PATCH', headers: getHeaders() });
-      if (res.ok) setNotifications(prev => prev.map(n => n._id === id ? { ...n, isRead: true } : n));
+      if (res.ok) setNotifications(prev => (Array.isArray(prev) ? prev : []).map(n => n._id === id ? { ...n, isRead: true } : n));
     } catch (err) { console.error('Failed to mark read', err); }
   };
 
   const markAllAsRead = async () => {
     try {
       const res = await fetch(`${API_URL}/read-all`, { method: 'PATCH', headers: getHeaders() });
-      if (res.ok) setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+      if (res.ok) setNotifications(prev => (Array.isArray(prev) ? prev : []).map(n => ({ ...n, isRead: true })));
     } catch (err) { console.error('Failed to mark all read', err); }
   };
 
   const deleteNotification = async (id) => {
     try {
       const res = await fetch(`${API_URL}/${id}`, { method: 'DELETE', headers: getHeaders() });
-      if (res.ok) setNotifications(prev => prev.filter(n => n._id !== id));
+      if (res.ok) setNotifications(prev => (Array.isArray(prev) ? prev : []).filter(n => n._id !== id));
     } catch (err) { console.error('Failed to delete notification', err); }
   };
 

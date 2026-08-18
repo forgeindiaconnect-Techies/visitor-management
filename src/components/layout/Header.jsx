@@ -92,7 +92,7 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
       
       if (notification.recipients && Array.isArray(notification.recipients) && notification.recipients.length > 0) {
         const matchesUser = notification.recipients.some(r => String(r) === currentUserId || String(r) === currentUserRole);
-        if (!matchesUser && notification.recipient && String(notification.recipient) !== currentUserId) {
+        if (!matchesUser) {
           return;
         }
       } else if (notification.recipient && String(notification.recipient) !== currentUserId && String(notification.recipient) !== currentUserRole) {
