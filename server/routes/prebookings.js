@@ -33,6 +33,45 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ message: 'Real-time face camera photo is mandatory for pre-booking.' });
     }
 
+    // Duplicate Prevention Check: Normalize email & mobile and check for active pre-bookings
+    const normalizedEmail = (email || "").trim().toLowerCase();
+    const rawMobileDigits = (mobileNumber || "").replace(/\D/g, "");
+    const mobileDigits = rawMobileDigits.length >= 10 ? rawMobileDigits.slice(-10) : rawMobileDigits;
+
+    const activeStatuses = [
+      "PENDING", "APPROVED", "CHECKED_IN", "CHECKED IN", "INSIDE", 
+      "Pre-Booked", "Pending", "Approved"
+    ];
+
+    const duplicateOrConditions = [];
+    if (normalizedEmail) {
+      duplicateOrConditions.push({ email: { $regex: new RegExp(`^${normalizedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } });
+    }
+    if (mobileDigits && mobileDigits.length >= 6) {
+      duplicateOrConditions.push({ mobileNumber: { $regex: new RegExp(`${mobileDigits}$`) } });
+    }
+
+    if (duplicateOrConditions.length > 0) {
+      const PreBookingModel = require("../models/PreBooking");
+      const existingPreBooking = await PreBookingModel.findOne({
+        status: { $in: activeStatuses },
+        $or: duplicateOrConditions
+      });
+
+      const existingVisitorDoc = existingPreBooking ? null : await Visitor.findOne({
+        status: { $in: activeStatuses },
+        $or: duplicateOrConditions
+      });
+
+      if (existingPreBooking || existingVisitorDoc) {
+        return res.status(409).json({
+          success: false,
+          code: "ALREADY_REGISTERED",
+          message: "You already have an active pre-booking. Please wait until your existing visit is completed."
+        });
+      }
+    }
+
     const companyId = req.headers['x-company-id'] || 'FIC001';
     const targetBranch = branch || 'Chennai';
     const profileId = 'VP-' + Date.now().toString().slice(-6);
@@ -248,6 +287,9 @@ router.put('/:id/reject', authMiddleware, checkApprovalPermission, async (req, r
     visitor.status = 'REJECTED';
     visitor.approvalStatus = 'REJECTED';
     visitor.rejectionReason = rejectionReason || `Rejected by ${req.user ? req.user.role : 'System'}`;
+    visitor.activeBookingKey = null;
+    visitor.activeEmailLock = null;
+    visitor.activeMobileLock = null;
 
     visitor.statusHistory.push({
       status: 'REJECTED',

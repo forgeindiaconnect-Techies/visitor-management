@@ -67,6 +67,7 @@ const PublicPreBooking = () => {
   const [uploadingIdProof, setUploadingIdProof] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [alreadyRegisteredModal, setAlreadyRegisteredModal] = useState(false);
   const [preBookResult, setPreBookResult] = useState(null);
   const [step, setStep] = useState(1); // 1: Form, 2: Success QR Pass
 
@@ -229,6 +230,13 @@ const PublicPreBooking = () => {
       });
 
       const data = await response.json();
+
+      if (response.status === 409 || data.code === "ALREADY_REGISTERED") {
+        const errorText = "Already Registered — You already have an active pre-booking. Please wait until your existing visit is completed before registering again.";
+        setErrorMsg(errorText);
+        setAlreadyRegisteredModal(true);
+        return;
+      }
 
       if (response.ok && (data.success || data.visitor || data.data)) {
         const savedRecord = data.data || data.visitor;
@@ -668,6 +676,33 @@ const PublicPreBooking = () => {
       <div className="text-center text-xs text-slate-400 mt-8 font-medium">
         &copy; {new Date().getFullYear()} Forge India Connect Pvt Ltd. All rights reserved.
       </div>
+
+      {/* Already Registered Custom Modal */}
+      {alreadyRegisteredModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-3xl border border-amber-200 shadow-2xl p-6 sm:p-8 max-w-md w-full text-center space-y-5 animate-scaleUp">
+            <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto shadow-inner border border-amber-200">
+              <ShieldAlert size={36} />
+            </div>
+            <div>
+              <h3 className="text-2xl font-black text-slate-900 tracking-tight">Already Registered</h3>
+              <p className="text-sm text-slate-600 mt-2 leading-relaxed font-medium">
+                You already have an active pre-booking. Please wait until your existing visit is completed before registering again.
+              </p>
+            </div>
+            <div className="p-3 bg-amber-50 rounded-xl border border-amber-100 text-amber-800 text-xs font-semibold">
+              🔒 Multiple active pre-bookings per visitor are restricted.
+            </div>
+            <button
+              type="button"
+              onClick={() => setAlreadyRegisteredModal(false)}
+              className="w-full py-3 bg-[var(--color-brand-indigo)] hover:bg-[var(--color-brand-indigo-light)] text-white font-bold rounded-xl transition-all shadow-md text-sm cursor-pointer"
+            >
+              OK / Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

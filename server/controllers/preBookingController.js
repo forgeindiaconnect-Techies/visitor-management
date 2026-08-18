@@ -49,6 +49,48 @@ const createPreBooking = async (req, res) => {
       });
     }
 
+    // Duplicate Prevention Check: Normalize email & mobile and check for active pre-bookings
+    const normalizedEmail = (email || "").trim().toLowerCase();
+    const normalizedMobile = (mobileNumber || "").replace(/\D/g, "");
+    const mobileDigits = normalizedMobile.length >= 10 ? normalizedMobile.slice(-10) : normalizedMobile;
+    const activeBookingKey = `${normalizedEmail}|${normalizedMobile}`;
+
+    const activeStatuses = [
+      "PENDING", "APPROVED", "CHECKED_IN", "CHECKED IN", "INSIDE", 
+      "Pre-Booked", "Pending", "Approved"
+    ];
+
+    const duplicateOrConditions = [
+      { activeBookingKey }
+    ];
+    if (normalizedEmail) {
+      duplicateOrConditions.push({ email: { $regex: new RegExp(`^${normalizedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } });
+    }
+    if (mobileDigits && mobileDigits.length >= 6) {
+      duplicateOrConditions.push({ mobileNumber: { $regex: new RegExp(`${mobileDigits}$`) } });
+    }
+
+    if (duplicateOrConditions.length > 0) {
+      const existingPreBooking = await PreBooking.findOne({
+        status: { $in: activeStatuses },
+        $or: duplicateOrConditions
+      });
+
+      const Visitor = require("../models/Visitor");
+      const existingVisitor = existingPreBooking ? null : await Visitor.findOne({
+        status: { $in: activeStatuses },
+        $or: duplicateOrConditions
+      });
+
+      if (existingPreBooking || existingVisitor) {
+        return res.status(409).json({
+          success: false,
+          code: "ALREADY_REGISTERED",
+          message: "Already Registered. You already have an active pre-booking. Please wait until your existing visit is completed."
+        });
+      }
+    }
+
     let hrUser = null;
     if (assignedHr) {
       const User = require("../models/User");
@@ -74,8 +116,11 @@ const createPreBooking = async (req, res) => {
     const preBooking = await PreBooking.create({
       visitorId,
       fullName,
-      mobileNumber,
-      email,
+      mobileNumber: normalizedMobile || mobileNumber,
+      email: normalizedEmail || email,
+      activeBookingKey,
+      activeEmailLock: normalizedEmail || null,
+      activeMobileLock: normalizedMobile || null,
       visitingCompany,
       hostEmployee,
       visitPurpose,
@@ -126,6 +171,15 @@ const createPreBooking = async (req, res) => {
     });
   } catch (error) {
     console.error("Create Pre-Booking Error:", error);
+
+    // E11000 Duplicate Key Handling for simultaneous/concurrent requests
+    if (error.code === 11000 || error.name === 'MongoError' || error.name === 'MongoServerError') {
+      return res.status(409).json({
+        success: false,
+        code: "ALREADY_REGISTERED",
+        message: "Already Registered. You already have an active pre-booking. Please wait until your existing visit is completed."
+      });
+    }
 
     return res.status(500).json({
       success: false,
@@ -333,6 +387,9 @@ const rejectPreBooking = async (req, res) => {
     preBooking.status = "REJECTED";
     preBooking.rejectedAt = new Date();
     preBooking.qrToken = undefined;
+    preBooking.activeBookingKey = null;
+    preBooking.activeEmailLock = null;
+    preBooking.activeMobileLock = null;
 
     await preBooking.save();
 
@@ -822,6 +879,9 @@ const checkOutPreBooking = async (req, res) => {
     preBooking.checkOutBy = req.user?.fullName || req.user?.name || "Self Check-Out";
     preBooking.checkOutNotes = notes;
     preBooking.exitNotes = notes;
+    preBooking.activeBookingKey = null;
+    preBooking.activeEmailLock = null;
+    preBooking.activeMobileLock = null;
 
     await preBooking.save();
 

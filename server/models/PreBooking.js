@@ -24,6 +24,24 @@ const preBookingSchema = new mongoose.Schema(
       enum: ["PRE_BOOKING"]
     },
 
+    activeBookingKey: {
+      type: String,
+      default: null,
+      index: true
+    },
+
+    activeEmailLock: {
+      type: String,
+      default: null,
+      index: { unique: true, sparse: true }
+    },
+
+    activeMobileLock: {
+      type: String,
+      default: null,
+      index: { unique: true, sparse: true }
+    },
+
     fullName: {
       type: String,
       required: true,
@@ -215,6 +233,16 @@ const preBookingSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+  }
+);
+
+preBookingSchema.index(
+  { activeBookingKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      activeBookingKey: { $type: "string" }
+    }
   }
 );
 

@@ -92,6 +92,7 @@ const LandingPage = () => {
   });
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [alreadyRegisteredModal, setAlreadyRegisteredModal] = useState(false);
 
   const [hrUsers, setHrUsers] = useState([]);
 
@@ -358,6 +359,13 @@ const LandingPage = () => {
       });
 
       const data = await response.json();
+
+      if (response.status === 409 || data.code === "ALREADY_REGISTERED") {
+        const errorText = "Already Registered — You already have an active pre-booking. Please wait until your existing visit is completed before registering again.";
+        setErrorMsg(errorText);
+        setAlreadyRegisteredModal(true);
+        return;
+      }
 
       if (response.ok && (data.success || data.visitor || data.data)) {
         const savedRecord = data.data || data.visitor;
@@ -1256,6 +1264,33 @@ const LandingPage = () => {
 
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* Already Registered Custom Modal Overlay */}
+      {alreadyRegisteredModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
+          <div className="bg-slate-900 rounded-3xl border border-amber-500/30 shadow-2xl p-6 sm:p-8 max-w-md w-full text-center space-y-5 text-slate-100">
+            <div className="w-16 h-16 bg-amber-500/10 text-amber-400 rounded-2xl flex items-center justify-center mx-auto border border-amber-500/20 shadow-inner">
+              <ShieldAlert size={36} />
+            </div>
+            <div>
+              <h3 className="text-2xl font-black text-white tracking-tight">Already Registered</h3>
+              <p className="text-sm text-slate-300 mt-2 leading-relaxed font-medium">
+                You already have an active pre-booking. Please wait until your existing visit is completed before registering again.
+              </p>
+            </div>
+            <div className="p-3 bg-amber-500/10 rounded-xl border border-amber-500/20 text-amber-300 text-xs font-semibold">
+              🔒 Multiple active pre-bookings per visitor are restricted.
+            </div>
+            <button
+              type="button"
+              onClick={() => setAlreadyRegisteredModal(false)}
+              className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-all shadow-lg text-sm cursor-pointer"
+            >
+              OK / Close
+            </button>
           </div>
         </div>
       )}
