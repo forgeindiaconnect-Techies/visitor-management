@@ -1,3 +1,4 @@
+const express = require('express');
 const { getNotifications, markAsRead, markAllAsRead, deleteNotification, registerFcmToken } = require('../controllers/notificationController');
 const authMiddleware = require('../middleware/authMiddleware');
 
