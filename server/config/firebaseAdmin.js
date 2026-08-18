@@ -1,6 +1,9 @@
-const admin = require('firebase-admin');
+const adminModule = require('firebase-admin');
+const admin = (adminModule && adminModule.apps) ? adminModule : (adminModule.default || adminModule);
 
-if (!admin.apps.length) {
+const apps = (admin && admin.apps) ? admin.apps : [];
+
+if (apps.length === 0) {
   try {
     let serviceAccount;
 
@@ -16,11 +19,11 @@ if (!admin.apps.length) {
       serviceAccount = {
         projectId: process.env.FIREBASE_PROJECT_ID,
         clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
+        privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined
       };
     }
 
-    if (serviceAccount && (serviceAccount.projectId || serviceAccount.project_id)) {
+    if (serviceAccount && (serviceAccount.projectId || serviceAccount.project_id) && serviceAccount.privateKey) {
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount)
       });

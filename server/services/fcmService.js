@@ -20,7 +20,7 @@ const sendNotificationToRoles = async ({
       return;
     }
 
-    if (!admin.apps.length) {
+    if (!admin || !admin.apps || !admin.apps.length) {
       console.warn('Firebase Admin SDK is not initialized, skipping multicast FCM push.');
       return;
     }
