@@ -626,13 +626,19 @@ export default function SuperAdminPreBookings() {
                         <td className="px-4 py-3 text-gray-600">{r.branchLocation}</td>
                         <td className="px-4 py-3">{getStatusBadge(r.status)}</td>
                         <td className="px-4 py-3 text-gray-500">
-                          {r.approvedAt ? new Date(r.approvedAt).toLocaleString() : 'N/A'}
+                          {r.approvedAt 
+                            ? `${new Date(r.approvedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}, ${new Date(r.approvedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}`
+                            : 'N/A'}
                         </td>
-                        <td className="px-4 py-3 text-gray-500">
-                          {r.checkInTime ? new Date(r.checkInTime).toLocaleString() : 'N/A'}
+                        <td className="px-4 py-3 text-gray-500 font-mono text-xs">
+                          {r.checkInTime 
+                            ? new Date(r.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) 
+                            : 'N/A'}
                         </td>
-                        <td className="px-4 py-3 text-gray-500">
-                          {r.checkOutTime ? new Date(r.checkOutTime).toLocaleString() : 'N/A'}
+                        <td className="px-4 py-3 text-gray-500 font-mono text-xs">
+                          {r.checkOutTime 
+                            ? new Date(r.checkOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) 
+                            : 'N/A'}
                         </td>
                         <td className="px-4 py-3 font-semibold font-mono text-xs whitespace-nowrap">
                           <span className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded-md border border-indigo-100 font-bold">{calculateDuration(r.checkInTime, r.checkOutTime)}</span>

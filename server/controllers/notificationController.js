@@ -19,13 +19,12 @@ exports.getNotifications = async (req, res) => {
       orConditions.push({ recipient: String(userId) });
     }
 
-    if (role === 'Super Admin' || role === 'SaaS Super Admin' || role === 'MD') {
-      orConditions.push({ companyId: { $in: [userCompanyId, 'FIC001', 'SYSTEM', null] } });
-    }
-
-    const notifications = await Notification.find({
+    const query = {
+      companyId: { $in: [userCompanyId, 'SYSTEM', null] },
       $or: orConditions
-    })
+    };
+
+    const notifications = await Notification.find(query)
       .sort({ createdAt: -1 })
       .limit(100)
       .lean();
