@@ -109,14 +109,14 @@ export const AuthProvider = ({ children }) => {
         console.log("Using React Native Expo Push Token:", fcmToken);
       } else {
         try {
-          const messaging = getMessaging(app);
-          fcmToken = await getToken(messaging, {
-            vapidKey: "BMi4WOvwwzgiCpfLZj4rtSWDM0bHHL1ciowr6sbaGD6aQjSWsrkKae0Cfale0Q-Z8huo8grneu2XI5pEzfREgV"
-          });
-          console.log("FCM Token:", fcmToken);
-        } catch (error) {
-          console.log("FCM Error:", error);
-        }
+          if (('Notification' in window) && Notification.permission === 'granted') {
+            const messaging = getMessaging(app);
+            if (messaging) {
+              const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY || "BMi4WOvwwzgiCpfLZj4rtSWDM0bHHL1ciowr6sbaGD6aQjSWsrkKae0Cfale0Q-Z8huo8grneu2XI5pEzfREgV";
+              fcmToken = await getToken(messaging, { vapidKey }).catch(() => "");
+            }
+          }
+        } catch (error) {}
       }
 
       const response = await fetch(url, {
