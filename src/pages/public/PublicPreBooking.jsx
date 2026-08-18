@@ -82,7 +82,7 @@ const PublicPreBooking = () => {
     return hrUsers.length > 0 ? (hrUsers[0]._id || hrUsers[0].id) : '';
   };
 
-  const branchesList = ['Chennai', 'Head Office(KRISHNAGIRI)', 'Bangalore', 'Coimbatore'];
+  const branchesList = ['Chennai', 'Head Office(KRISHNAGIRI)', 'Bangalore', 'Thirupattur'];
 
   const _rawUrl = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
   const API_BASE = _rawUrl.replace(/\/api\/?$/, '');
