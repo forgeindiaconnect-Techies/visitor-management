@@ -80,15 +80,31 @@ export const VisitorProvider = ({ children }) => {
 
       if (visitorsRes.ok) {
         const vJson = await visitorsRes.json();
-        visitorsData = Array.isArray(vJson) ? vJson : (vJson.data || vJson.visitors || []);
+        visitorsData = Array.isArray(vJson)
+          ? vJson
+          : Array.isArray(vJson?.visitors)
+            ? vJson.visitors
+            : Array.isArray(vJson?.data)
+              ? vJson.data
+              : [];
       }
       if (preBookingsRes.ok) {
         const pbJson = await preBookingsRes.json();
-        preBookingsData = Array.isArray(pbJson) ? pbJson : (pbJson.data || pbJson.prebookings || []);
+        preBookingsData = Array.isArray(pbJson)
+          ? pbJson
+          : Array.isArray(pbJson?.prebookings)
+            ? pbJson.prebookings
+            : Array.isArray(pbJson?.data)
+              ? pbJson.data
+              : [];
       }
 
+      const safePBData = Array.isArray(preBookingsData) ? preBookingsData : [];
+      const safeVData = Array.isArray(visitorsData) ? visitorsData : [];
+
       // Normalize pre-bookings to match visitor schema for the Dashboard UI
-      const normalizedPreBookings = (preBookingsData || []).map(pb => {
+      const normalizedPreBookings = safePBData.map(pb => {
+        if (!pb) return null;
         // Dashboard uses v.status === 'Pending', but prebookings use 'Pending Approval' or 'PENDING'
         const rawStatus = pb.status || '';
         let normalizedStatus = rawStatus;
@@ -98,18 +114,18 @@ export const VisitorProvider = ({ children }) => {
 
         return {
           ...pb,
-          id: pb._id,
+          id: pb._id || pb.id,
           isPreBooking: true,
-          visitorName: pb.fullName || pb.visitorName,
-          purpose: pb.visitPurpose || pb.purpose,
-          branch: pb.branchLocation || pb.branch,
-          hostName: pb.hostEmployee || pb.hostName,
+          visitorName: pb.fullName || pb.visitorName || 'Visitor',
+          purpose: pb.visitPurpose || pb.purpose || 'Visit',
+          branch: pb.branchLocation || pb.branch || 'Head Office',
+          hostName: pb.hostEmployee || pb.hostName || 'Staff',
           status: normalizedStatus
         };
-      });
+      }).filter(Boolean);
 
       // Sort newest first before deduplication
-      const allCombined = [...visitorsData, ...normalizedPreBookings].sort(
+      const allCombined = [...safeVData, ...normalizedPreBookings].sort(
         (a, b) => new Date(b.createdAt || b.date || b.visitDate || 0) - new Date(a.createdAt || a.date || a.visitDate || 0)
       );
 
