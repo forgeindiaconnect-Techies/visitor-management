@@ -9,7 +9,8 @@ const LiveMonitoring = () => {
   const [searchTerm, setSearchTerm] = useState('');
 
   // Filter visitors who are actively Inside
-  const activeVisitors = allVisitors.filter(v => v.status === 'Inside');
+  const safeAll = Array.isArray(allVisitors) ? allVisitors : [];
+  const activeVisitors = safeAll.filter(v => v.status === 'Inside');
 
   // Filter by search term
   const filteredVisitors = activeVisitors.filter(v => 

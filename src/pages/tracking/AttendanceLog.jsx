@@ -22,9 +22,9 @@ const AttendanceLog = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState('');
 
-  const logsToDisplay = allAttendance && allAttendance.length > 0 ? allAttendance : (attendance ? [attendance] : []);
+  const logsToDisplay = (Array.isArray(allAttendance) && allAttendance.length > 0) ? allAttendance : (attendance ? [attendance] : []);
   
-  const filteredLogs = logsToDisplay.filter(log => {
+  const filteredLogs = (Array.isArray(logsToDisplay) ? logsToDisplay : []).filter(log => {
     const matchesSearch = log.securityName?.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           log.branch?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesDate = dateFilter ? log.date === dateFilter : true;

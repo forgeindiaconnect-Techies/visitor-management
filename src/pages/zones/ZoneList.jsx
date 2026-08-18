@@ -13,9 +13,9 @@ const ZoneList = () => {
     name: '', type: 'Public Area', accessLevel: 'Public', description: '', status: 'Active'
   });
 
-  const filteredZones = zones.filter(z => 
-    z.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    z.branch.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredZones = (Array.isArray(zones) ? zones : []).filter(z => 
+    (z.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+    (z.branch || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const handleSubmit = (e) => {
@@ -83,7 +83,8 @@ const ZoneList = () => {
                   <td className="px-6 py-4 text-sm text-gray-600">{zone.accessLevel}</td>
                   <td className="px-6 py-4">
                     {(() => {
-                      const visitorsInZone = allVisitors.filter(v => v.status === 'Inside' && v.currentZone === zone.name);
+                      const safeAll = Array.isArray(allVisitors) ? allVisitors : [];
+                      const visitorsInZone = safeAll.filter(v => v.status === 'Inside' && v.currentZone === zone.name);
                       return (
                         <button 
                           onClick={() => visitorsInZone.length > 0 && setSelectedZoneForVisitors(zone.name)}
@@ -181,7 +182,7 @@ const ZoneList = () => {
             </div>
             <div className="overflow-y-auto p-4 flex-1">
               <div className="space-y-3">
-                {allVisitors.filter(v => v.status === 'Inside' && v.currentZone === selectedZoneForVisitors).map(visitor => (
+                {(Array.isArray(allVisitors) ? allVisitors : []).filter(v => v.status === 'Inside' && v.currentZone === selectedZoneForVisitors).map(visitor => (
                   <div key={visitor.id} className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm flex items-start gap-4 hover:border-[var(--color-brand-indigo)] hover:shadow-md transition-all">
                     <div className="w-10 h-10 rounded-full bg-indigo-100 text-[var(--color-brand-indigo)] flex items-center justify-center font-bold shrink-0 text-lg">
                       {visitor.visitorName.charAt(0)}

@@ -12,7 +12,7 @@ const EntryExitLogs = () => {
   const [selectedZone, setSelectedZone] = useState('');
 
   // We track Approved and Inside visitors
-  const trackingVisitors = visitors.filter(v => 
+  const trackingVisitors = (Array.isArray(visitors) ? visitors : []).filter(v => 
     ['Approved', 'Inside'].includes(v.status) &&
     (v.visitorName || '').toLowerCase().includes(searchTerm.toLowerCase())
   );

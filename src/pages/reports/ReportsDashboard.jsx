@@ -15,9 +15,10 @@ const ReportsDashboard = () => {
   
   // Apply Strict Branch Filtering
   // If the user is assigned to a specific branch, they should ONLY see that branch's data, regardless of their role.
+  const safeAll = Array.isArray(allVisitors) ? allVisitors : [];
   const baseFilteredVisitors = user?.branch && user?.branch !== 'All' && user?.branch !== 'All Branches'
-    ? allVisitors.filter(v => v.branch === user.branch && !v.isPreBooking && v.registrationType !== 'Pre-Booking')
-    : allVisitors.filter(v => !v.isPreBooking && v.registrationType !== 'Pre-Booking');
+    ? safeAll.filter(v => v.branch === user.branch && !v.isPreBooking && v.registrationType !== 'Pre-Booking')
+    : safeAll.filter(v => !v.isPreBooking && v.registrationType !== 'Pre-Booking');
 
   const [dateFilter, setDateFilter] = useState('');
   const [activeTab, setActiveTab] = useState('visitor');
