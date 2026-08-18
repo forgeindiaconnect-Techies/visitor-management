@@ -51,7 +51,12 @@ export const calculateTimeSpent = (visitDate, entryTime, exitTime, status) => {
   if (!endTime) return '-';
 
   const diffMs = endTime - startTime;
-  if (diffMs < 0) return '0 Min'; // Negative diff
+  if (diffMs < 0) return '0 Sec'; // Negative diff
+
+  const diffSecs = Math.floor(diffMs / 1000);
+  if (diffSecs < 60) {
+    return diffSecs <= 0 ? '< 1 Min' : `${diffSecs} Sec`;
+  }
 
   const diffMins = Math.floor(diffMs / 60000);
   const hours = Math.floor(diffMins / 60);

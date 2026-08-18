@@ -147,10 +147,15 @@ export default function SuperAdminPreBookings() {
     if (!checkIn || !checkOut) return 'N/A';
     const start = new Date(checkIn);
     const end = new Date(checkOut);
-    if (isNaN(start) || isNaN(end)) return 'N/A';
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return 'N/A';
     
     const diffMs = end - start;
     if (diffMs < 0) return 'N/A';
+    
+    const diffSecs = Math.floor(diffMs / 1000);
+    if (diffSecs < 60) {
+      return diffSecs <= 0 ? '< 1m' : `${diffSecs}s`;
+    }
     
     const diffMins = Math.floor(diffMs / 60000);
     const hours = Math.floor(diffMins / 60);
@@ -629,8 +634,8 @@ export default function SuperAdminPreBookings() {
                         <td className="px-4 py-3 text-gray-500">
                           {r.checkOutTime ? new Date(r.checkOutTime).toLocaleString() : 'N/A'}
                         </td>
-                        <td className="px-4 py-3 text-indigo-600 font-semibold font-mono text-xs">
-                          {calculateDuration(r.checkInTime, r.checkOutTime)}
+                        <td className="px-4 py-3 font-semibold font-mono text-xs whitespace-nowrap">
+                          <span className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded-md border border-indigo-100 font-bold">{calculateDuration(r.checkInTime, r.checkOutTime)}</span>
                         </td>
                         <td className="px-4 py-3 text-gray-500 max-w-[200px] truncate" title={r.exitNotes || r.checkOutNotes}>
                           {r.exitNotes || r.checkOutNotes || 'N/A'}
@@ -924,9 +929,9 @@ export default function SuperAdminPreBookings() {
 
       {/* Visitor Details Modal */}
       {selectedVisitor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fadeIn overflow-y-auto">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-xl w-full overflow-hidden my-8">
-            <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/75 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-xl w-full max-h-[90vh] flex flex-col overflow-hidden my-auto">
+            <div className="p-5 sm:p-6 bg-slate-900 text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-indigo-500/20 rounded-xl text-indigo-400 border border-indigo-500/30">
                   <User size={20} />
@@ -938,13 +943,13 @@ export default function SuperAdminPreBookings() {
               </div>
               <button
                 onClick={() => setSelectedVisitor(null)}
-                className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:white transition-colors"
+                className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
               >
                 <X size={20} />
               </button>
             </div>
 
-            <div className="p-6 space-y-6">
+            <div className="p-6 space-y-6 overflow-y-auto">
               <div className="flex flex-col sm:flex-row items-center gap-6 pb-6 border-b border-gray-100">
                 {selectedVisitor.facePhoto ? (
                   <img

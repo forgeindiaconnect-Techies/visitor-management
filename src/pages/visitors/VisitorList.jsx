@@ -34,10 +34,15 @@ const VisitorList = () => {
     if (!checkIn || !checkOut) return 'N/A';
     const start = new Date(checkIn);
     const end = new Date(checkOut);
-    if (isNaN(start) || isNaN(end)) return 'N/A';
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return 'N/A';
     
     const diffMs = end - start;
     if (diffMs < 0) return 'N/A';
+    
+    const diffSecs = Math.floor(diffMs / 1000);
+    if (diffSecs < 60) {
+      return diffSecs <= 0 ? '< 1m' : `${diffSecs}s`;
+    }
     
     const diffMins = Math.floor(diffMs / 60000);
     const hours = Math.floor(diffMins / 60);
@@ -430,7 +435,9 @@ const VisitorList = () => {
                         </td>
                         <td className="px-4 py-3 text-gray-500">{r.checkInTime ? new Date(r.checkInTime).toLocaleString() : 'N/A'}</td>
                         <td className="px-4 py-3 text-gray-500">{r.checkOutTime ? new Date(r.checkOutTime).toLocaleString() : 'N/A'}</td>
-                        <td className="px-4 py-3 text-indigo-600 font-semibold font-mono text-xs">{calculateDuration(r.checkInTime, r.checkOutTime)}</td>
+                        <td className="px-4 py-3 font-semibold font-mono text-xs whitespace-nowrap">
+                          <span className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded-md border border-indigo-100 font-bold">{calculateDuration(r.checkInTime, r.checkOutTime)}</span>
+                        </td>
                         <td className="px-4 py-3 text-gray-500 max-w-[200px] truncate" title={r.remarks || r.exitNotes || r.notes || r.checkoutNotes}>
                           {r.remarks || r.exitNotes || r.notes || r.checkoutNotes || 'N/A'}
                         </td>
@@ -845,7 +852,7 @@ const VisitorList = () => {
       {/* Visitor Details Modal */}
       {selectedVisitorDetails && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl relative space-y-5 animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl relative space-y-5 animate-fadeIn max-h-[90vh] overflow-y-auto">
             <button 
               onClick={() => setSelectedVisitorDetails(null)}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-full p-1.5 transition-colors"
