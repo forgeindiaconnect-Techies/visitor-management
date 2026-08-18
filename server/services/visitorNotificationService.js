@@ -240,10 +240,15 @@ const notifyVisitorEvent = async ({
 
     // --- Create DB Notification ---
     if (notifyRecipients.length > 0) {
+      const formattedRecipients = notifyRecipients.map((id) => ({
+        userId: String(id),
+        user: id
+      }));
+
       const notificationDoc = await Notification.create({
         companyId: visitor.companyId,
         branchId: visitor.branch || visitor.branchLocation,
-        recipients: notifyRecipients,
+        recipients: formattedRecipients,
         type: 'Visitor',
         module: 'PreBooking',
         title: notificationTitle,
