@@ -32,12 +32,13 @@ exports.getNotifications = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      notifications
+      notifications: Array.isArray(notifications) ? notifications : []
     });
   } catch (error) {
     console.error('Error fetching notifications:', error);
     res.status(500).json({
       success: false,
+      notifications: [],
       message: 'Unable to load notifications'
     });
   }

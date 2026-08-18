@@ -161,7 +161,12 @@ export const VisitorProvider = ({ children }) => {
       // Fallback to local storage if API is down
       const saved = localStorage.getItem('zmvms_visitors');
       if (saved) {
-        setVisitors(JSON.parse(saved));
+        try {
+          const parsed = JSON.parse(saved);
+          setVisitors(Array.isArray(parsed) ? parsed : []);
+        } catch (e) {
+          setVisitors([]);
+        }
       } else {
         // Fallback dummy data if nothing exists
         setVisitors([{

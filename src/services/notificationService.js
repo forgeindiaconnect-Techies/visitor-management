@@ -1,3 +1,5 @@
+import { normalizeNotifications } from '../utils/notificationUtils';
+
 const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
 
 export const getNotifications = async () => {
@@ -13,11 +15,9 @@ export const getNotifications = async () => {
     if (!response.ok) return [];
 
     const data = await response.json();
-    return Array.isArray(data?.notifications)
-      ? data.notifications
-      : (Array.isArray(data) ? data : []);
+    return normalizeNotifications(data);
   } catch (error) {
-    console.error('Failed to load notifications from backend:', error);
+    console.error('GET /api/notifications failed:', error);
     return [];
   }
 };

@@ -1,45 +1,59 @@
 import React, { createContext, useState, useContext, useCallback, useEffect } from 'react';
 import { io } from 'socket.io-client';
 import { getNotifications } from '../services/notificationService';
+import { normalizeNotifications } from '../utils/notificationUtils';
 
 const NotificationContext = createContext(null);
 
 export const NotificationProvider = ({ children }) => {
-  const [notifications, setNotifications] = useState([]);
-  const [persistentNotifications, setPersistentNotifications] = useState([]);
+  const [notifications, setNotificationsState] = useState([]);
+  const [persistentNotifications, setPersistentNotificationsState] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
   const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+
+  const setNotifications = useCallback((value) => {
+    setNotificationsState((previous) => {
+      const nextValue = typeof value === 'function'
+        ? value(Array.isArray(previous) ? previous : [])
+        : value;
+      return normalizeNotifications(nextValue);
+    });
+  }, []);
+
+  const setPersistentNotifications = useCallback((value) => {
+    setPersistentNotificationsState((previous) => {
+      const nextValue = typeof value === 'function'
+        ? value(Array.isArray(previous) ? previous : [])
+        : value;
+      return normalizeNotifications(nextValue);
+    });
+  }, []);
 
   const addNotification = useCallback((title, message, type = 'info') => {
     const id = Date.now();
     setNotifications(prev => [...prev, { id, title, message, type }]);
     
-    // Auto remove toast after 5 seconds
     setTimeout(() => {
-      setNotifications(prev => (Array.isArray(prev) ? prev : []).filter(n => n.id !== id));
+      setNotifications(prev => prev.filter(n => n.id !== id));
     }, 5000);
-  }, []);
+  }, [setNotifications]);
 
   const removeNotification = useCallback((id) => {
-    setNotifications(prev => (Array.isArray(prev) ? prev : []).filter(n => n.id !== id));
-  }, []);
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  }, [setNotifications]);
 
-  // Fetch persistent notifications from MongoDB API
   const fetchPersistentNotifications = useCallback(async () => {
     try {
-      const data = await getNotifications();
-      const list = Array.isArray(data)
-        ? data
-        : Array.isArray(data?.notifications)
-          ? data.notifications
-          : [];
+      const response = await getNotifications();
+      const list = normalizeNotifications(response);
       setPersistentNotifications(list);
       setUnreadCount(list.filter(n => !n.isRead).length);
     } catch (err) {
       console.error('Error fetching persistent notifications:', err);
+      setPersistentNotifications([]);
     }
-  }, []);
+  }, [setPersistentNotifications]);
 
   const markAllRead = useCallback(async () => {
     try {
@@ -51,12 +65,12 @@ export const NotificationProvider = ({ children }) => {
           ...(token && { 'Authorization': `Bearer ${token}` })
         }
       });
-      setPersistentNotifications(prev => (Array.isArray(prev) ? prev : []).map(n => ({ ...n, isRead: true })));
+      setPersistentNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
       setUnreadCount(0);
     } catch (err) {
       console.error('Error marking all as read:', err);
     }
-  }, [API_URL]);
+  }, [API_URL, setPersistentNotifications]);
 
   useEffect(() => {
     fetchPersistentNotifications();
@@ -77,10 +91,9 @@ export const NotificationProvider = ({ children }) => {
     const handleNewNotif = (newNotif) => {
       if (!newNotif) return;
       setPersistentNotifications((prev) => {
-        const safeList = Array.isArray(prev) ? prev : [];
-        const alreadyExists = safeList.some((item) => item.eventId && item.eventId === newNotif.eventId);
-        if (alreadyExists) return safeList;
-        return [newNotif, ...safeList];
+        const alreadyExists = prev.some((item) => item.eventId && item.eventId === newNotif.eventId);
+        if (alreadyExists) return prev;
+        return [newNotif, ...prev];
       });
       setUnreadCount(prev => prev + 1);
       addNotification(newNotif.title || 'New Notification', newNotif.message || '', newNotif.type || 'info');
@@ -94,14 +107,16 @@ export const NotificationProvider = ({ children }) => {
       socket.off('notification:new');
       socket.disconnect();
     };
-  }, [fetchPersistentNotifications, addNotification, API_URL]);
+  }, [fetchPersistentNotifications, addNotification, API_URL, setPersistentNotifications]);
 
   return (
     <NotificationContext.Provider value={{ 
       notifications, 
+      setNotifications,
       addNotification, 
       removeNotification,
       persistentNotifications,
+      setPersistentNotifications,
       unreadCount,
       fetchPersistentNotifications,
       markAllRead

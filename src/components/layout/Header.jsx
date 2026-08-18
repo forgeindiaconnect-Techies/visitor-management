@@ -6,6 +6,7 @@ import { Bell, User, MapPin, Check, Menu, Trash2, ExternalLink } from 'lucide-re
 import { io } from 'socket.io-client';
 import { useNavigate } from 'react-router-dom';
 import { formatNotificationDate } from '../../utils/dateFormatter';
+import { normalizeNotifications } from '../../utils/notificationUtils';
 
 const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.match(/^\d{1,3}\./);
 const API_URL = `${import.meta.env.VITE_API_URL || (isLocalhost ? `http://${window.location.hostname}:5000` : 'https://fic-visitor-1.onrender.com')}/api/notifications`;
@@ -45,7 +46,7 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
       });
       if (res.ok) {
         const data = await res.json();
-        setNotifications(data);
+        setNotifications(normalizeNotifications(data));
       }
     } catch (err) {
       console.error('Failed to fetch notifications', err);
@@ -98,7 +99,7 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
         return;
       }
 
-      setNotifications(prev => [notification, ...prev]);
+      setNotifications(prev => [notification, ...(Array.isArray(prev) ? prev : [])]);
       addNotification(notification.title, notification.message, 'info');
     });
 
@@ -122,18 +123,17 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
         headers: getHeaders()
       });
       if (res.ok) {
-        setNotifications(prev => prev.map(n => n._id === id ? { ...n, isRead: true } : n));
+        setNotifications(prev => (Array.isArray(prev) ? prev : []).map(n => n._id === id ? { ...n, isRead: true } : n));
       }
     } catch (err) {
       console.error('Failed to mark read', err);
     }
   };
 
-  const handleNotificationClick = async (notification) => {
-    if (!notification.isRead) {
-      await markAsRead(notification._id);
-    }
+  const handleNotificationClick = (notification) => {
+    setNotifications(prev => (Array.isArray(prev) ? prev : []).map(n => n.id === notification.id ? { ...n, isRead: true } : n));
     setShowDropdown(false);
+    
     const preBookingId = notification.preBookingId?._id || notification.preBookingId;
     if (preBookingId) {
       if (user?.role === 'Security') {
@@ -151,14 +151,15 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
         headers: getHeaders()
       });
       if (res.ok) {
-        setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+        setNotifications(prev => (Array.isArray(prev) ? prev : []).map(n => ({ ...n, isRead: true })));
       }
     } catch (err) {
       console.error('Failed to mark all read', err);
     }
   };
 
-  const unreadCount = notifications.filter(n => !n.isRead).length;
+  const safeNotifications = Array.isArray(notifications) ? notifications : [];
+  const unreadCount = safeNotifications.filter(n => !n.isRead).length;
 
   return (
     <header className={`h-16 bg-white border-b border-gray-200 fixed top-0 right-0 left-0 ${isSidebarOpen ? 'md:left-64' : ''} flex items-center justify-between px-4 sm:px-6 z-10 shadow-sm transition-all duration-300`}>
