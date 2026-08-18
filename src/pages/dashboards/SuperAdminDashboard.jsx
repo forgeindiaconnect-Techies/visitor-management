@@ -43,20 +43,24 @@ const SuperAdminDashboard = () => {
     }
   }, [currentUser]);
 
+  const safeVisitors = Array.isArray(visitors) ? visitors : [];
+  const safeBranches = Array.isArray(branches) ? branches : [];
+
   const today = new Date().toISOString().split('T')[0];
-  const walkInVisitors = visitors.filter(v => v.registrationType !== 'Pre-Booking' && !v.isPreBooking);
-  const preBookedVisitors = visitors.filter(v => v.registrationType === 'Pre-Booking' || v.isPreBooking);
+  const walkInVisitors = safeVisitors.filter(v => v.registrationType !== 'Pre-Booking' && !v.isPreBooking);
+  const preBookedVisitors = safeVisitors.filter(v => v.registrationType === 'Pre-Booking' || v.isPreBooking);
   
   const totalWalkIns = walkInVisitors.length;
   const totalPreBookings = preBookedVisitors.length;
-  const insideVisitors = visitors.filter(v => v.status === 'Inside');
-  const pendingApprovals = visitors.filter(v => v.status?.toUpperCase() === 'PENDING').length;
-  const blockedVisitors = visitors.filter(v => v.status === 'Rejected').length;
-  const totalBranches = branches.length;
+  const insideVisitors = safeVisitors.filter(v => v.status === 'Inside');
+  const pendingApprovals = safeVisitors.filter(v => v.status?.toUpperCase() === 'PENDING').length;
+  const blockedVisitors = safeVisitors.filter(v => v.status === 'Rejected').length;
+  const totalBranches = safeBranches.length;
 
   // Check if a zone is restricted
   const isRestricted = (zoneName) => {
-    const zone = zones.find(z => z.name === zoneName);
+    const safeZones = Array.isArray(zones) ? zones : [];
+    const zone = safeZones.find(z => z.name === zoneName);
     return zone?.restricted || false;
   };
 
@@ -92,8 +96,8 @@ const SuperAdminDashboard = () => {
 
   // Branch Performance Data
   // Extract unique branches from visitors to ensure we show performance even if BranchSettings is empty
-  const activePhysicalBranches = new Set(branches.filter(b => b !== 'All Branches'));
-  visitors.forEach(v => {
+  const activePhysicalBranches = new Set(safeBranches.filter(b => b !== 'All Branches'));
+  safeVisitors.forEach(v => {
     if (v.branch) activePhysicalBranches.add(v.branch);
   });
   
@@ -102,7 +106,7 @@ const SuperAdminDashboard = () => {
 
   const branchData = chartBranches
     .map(b => {
-      let branchVisitors = visitors.filter(v => {
+      let branchVisitors = safeVisitors.filter(v => {
         if (!v.branch) return false;
         
         const branchUpper = v.branch.toUpperCase();
@@ -212,7 +216,7 @@ const SuperAdminDashboard = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-orange-100">
-                {visitors.filter(v => v.status?.toUpperCase() === 'PENDING').map(v => (
+                {safeVisitors.filter(v => v.status?.toUpperCase() === 'PENDING').map(v => (
                   <tr key={v.id}>
                     <td className="px-4 py-3 font-medium text-gray-900">{v.visitorName}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{v.hostName}</td>

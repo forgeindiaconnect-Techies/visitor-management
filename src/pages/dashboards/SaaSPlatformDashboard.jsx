@@ -327,7 +327,7 @@ const SaaSPlatformDashboard = () => {
     }
   };
 
-  const filteredAuditLogs = auditLogs.filter(log => {
+  const filteredAuditLogs = (Array.isArray(auditLogs) ? auditLogs : []).filter(log => {
     const matchesSearch = 
       (log.action || '').toLowerCase().includes(auditLogFilters.search.toLowerCase()) ||
       (log.userName || '').toLowerCase().includes(auditLogFilters.search.toLowerCase());
@@ -476,9 +476,9 @@ const SaaSPlatformDashboard = () => {
             className={`px-6 py-4 font-semibold text-sm border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'Upgrade Requests' ? 'border-[#1E1B6E] text-[#1E1B6E]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-slate-100'}`}
           >
             Upgrade Requests
-            {upgradeRequests.filter(req => req.status === 'Pending').length > 0 && (
+            {(Array.isArray(upgradeRequests) ? upgradeRequests : []).filter(req => req.status === 'Pending').length > 0 && (
               <span className="bg-red-500 text-white font-bold text-[10px] px-1.5 py-0.5 rounded-full">
-                {upgradeRequests.filter(req => req.status === 'Pending').length}
+                {(Array.isArray(upgradeRequests) ? upgradeRequests : []).filter(req => req.status === 'Pending').length}
               </span>
             )}
           </button>

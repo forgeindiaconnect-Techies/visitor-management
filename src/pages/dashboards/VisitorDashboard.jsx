@@ -13,7 +13,8 @@ const VisitorDashboard = () => {
   // to only show records belonging to the logged-in visitor.
   // Since we use a mock login ("Guest User"), we will just show a few recent ones
   // or simulate a specific visitor's data.
-  const myVisits = (visitors || []).slice(0, 4); // Simulate getting 4 past visits
+  const safeVisitors = Array.isArray(visitors) ? visitors : [];
+  const myVisits = safeVisitors.slice(0, 4); // Simulate getting 4 past visits
   
   // Find the active/upcoming visit (if any)
   const activeVisit = myVisits.find(v => v.status === 'Approved' || v.status === 'Inside');

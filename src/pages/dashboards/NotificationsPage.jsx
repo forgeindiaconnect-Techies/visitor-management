@@ -147,7 +147,7 @@ const NotificationsPage = () => {
   };
 
   const getFilteredAndGrouped = () => {
-    let filtered = notifications.filter(n => {
+    let filtered = (Array.isArray(notifications) ? notifications : []).filter(n => {
       const matchesSearch = n.title?.toLowerCase().includes(searchTerm.toLowerCase()) || n.message?.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesModule = filterModule === 'All' || (n.module || n.type) === filterModule;
       const matchesType = filterType === 'All' || n.type === filterType;

@@ -22,18 +22,20 @@ const BranchAdminDashboard = () => {
   const { activeBranch } = useBranch();
   const navigate = useNavigate();
 
-  const branchVisitors = visitors.length;
-  const approvedVisitors = visitors.filter(v => v.status === 'Approved').length;
-  const rejectedVisitors = visitors.filter(v => v.status === 'Rejected').length;
-  const activeVisitors = visitors.filter(v => v.status === 'Inside');
-  const recentVisitors = [...visitors].slice(-5).reverse();
+  const safeVisitors = Array.isArray(visitors) ? visitors : [];
+
+  const branchVisitors = safeVisitors.length;
+  const approvedVisitors = safeVisitors.filter(v => v.status === 'Approved').length;
+  const rejectedVisitors = safeVisitors.filter(v => v.status === 'Rejected').length;
+  const activeVisitors = safeVisitors.filter(v => v.status === 'Inside');
+  const recentVisitors = [...safeVisitors].slice(-5).reverse();
 
   const trendsDataMap = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
   sevenDaysAgo.setHours(0, 0, 0, 0);
 
-  visitors.forEach(v => {
+  safeVisitors.forEach(v => {
     if (!v.visitDate) return;
     const visitDate = new Date(v.visitDate);
     if (visitDate >= sevenDaysAgo) {
@@ -165,7 +167,7 @@ const BranchAdminDashboard = () => {
                 <Clock size={18} className="text-orange-500" />
                 <span className="font-medium">Pending Approvals</span>
               </div>
-              <span className="bg-orange-100 text-orange-700 py-0.5 px-2 rounded font-bold text-xs">{visitors.filter(v => v.status?.toUpperCase() === 'PENDING').length}</span>
+              <span className="bg-orange-100 text-orange-700 py-0.5 px-2 rounded font-bold text-xs">{safeVisitors.filter(v => v.status?.toUpperCase() === 'PENDING').length}</span>
             </div>
 
             <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-gray-100 cursor-pointer hover:border-[var(--color-brand-indigo)] transition-colors" onClick={() => navigate('/tracking')}>

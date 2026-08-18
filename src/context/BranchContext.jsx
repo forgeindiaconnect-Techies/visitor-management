@@ -29,7 +29,8 @@ export const BranchProvider = ({ children }) => {
         
         if (response.ok) {
           const data = await response.json();
-          const dynamicBranches = data.map(b => b.branchName);
+          const list = Array.isArray(data) ? data : (data && Array.isArray(data.branches) ? data.branches : []);
+          const dynamicBranches = list.map(b => b.branchName).filter(Boolean);
           const allB = ['All Branches', ...dynamicBranches];
           setBranches(allB);
           

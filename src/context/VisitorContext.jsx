@@ -182,13 +182,14 @@ export const VisitorProvider = ({ children }) => {
   }, [activeBranch, currentUser]);
 
   const visitors = React.useMemo(() => {
+    const safeAll = Array.isArray(allVisitors) ? allVisitors : [];
     // If not restricted (Super Admin) and 'All Branches' is selected
-    if (activeBranch === 'All Branches') return allVisitors;
+    if (activeBranch === 'All Branches') return safeAll;
     // Otherwise return visitors matching the active branch
-    return allVisitors.filter(v => {
-      if (!v.branch) return false;
-      const vBranchUpper = v.branch.toUpperCase();
-      const activeUpper = activeBranch.toUpperCase();
+    return safeAll.filter(v => {
+      if (!v || !v.branch) return false;
+      const vBranchUpper = (v.branch || '').toUpperCase();
+      const activeUpper = (activeBranch || '').toUpperCase();
       if (vBranchUpper === activeUpper) return true;
       if (activeUpper.includes('THIRUPATTUR') && vBranchUpper === 'TIRUPATTUR') return true;
       if (activeUpper.includes('KRISHNAGIRI') && vBranchUpper === 'SALEM') return true;

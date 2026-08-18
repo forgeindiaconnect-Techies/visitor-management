@@ -19,7 +19,8 @@ export const ZoneProvider = ({ children }) => {
       });
       if (response.ok) {
         const data = await response.json();
-        setZones(data);
+        const list = Array.isArray(data) ? data : (data && Array.isArray(data.zones) ? data.zones : []);
+        setZones(list);
       }
     } catch (err) {
       console.error('Failed to fetch zones from backend:', err);
@@ -33,8 +34,9 @@ export const ZoneProvider = ({ children }) => {
   }, []);
 
   const zones = React.useMemo(() => {
-    if (activeBranch === 'All Branches') return allZones;
-    return allZones.filter(z => z.branch === activeBranch);
+    const safeAll = Array.isArray(allZones) ? allZones : [];
+    if (activeBranch === 'All Branches') return safeAll;
+    return safeAll.filter(z => z.branch === activeBranch);
   }, [allZones, activeBranch]);
 
   const addZone = async (zoneData) => {

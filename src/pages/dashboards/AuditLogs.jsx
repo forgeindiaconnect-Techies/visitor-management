@@ -37,7 +37,7 @@ const AuditLogs = () => {
     }
   };
 
-  const filteredLogs = logs.filter(log => {
+  const filteredLogs = (Array.isArray(logs) ? logs : []).filter(log => {
     const matchesSearch = 
       (log.action || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (log.userName || '').toLowerCase().includes(searchTerm.toLowerCase());
