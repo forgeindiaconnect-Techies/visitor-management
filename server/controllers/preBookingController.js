@@ -1135,6 +1135,158 @@ const getPreBookingReports = async (req, res) => {
   }
 };
 
+const reschedulePreBooking = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { visitDate, expectedTime, appointmentEndTime, reason } = req.body;
+
+    const mongoose = require('mongoose');
+
+    const searchConditions = [
+      { visitorId: id },
+      { visitId: id }
+    ];
+
+    if (mongoose.isValidObjectId(id)) {
+      searchConditions.push({ _id: id });
+    }
+
+    const preBooking = await PreBooking.findOne({
+      $or: searchConditions
+    });
+
+    if (!preBooking) {
+      return res.status(404).json({
+        success: false,
+        message: "Pre-Booking not found."
+      });
+    }
+
+    if (preBooking.status === "CHECKED_IN" || preBooking.status === "CHECKED_OUT" || preBooking.status === "Checked Out") {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot reschedule an active or completed visit."
+      });
+    }
+
+    if (!visitDate) {
+      return res.status(400).json({
+        success: false,
+        message: "Please select a new appointment date."
+      });
+    }
+
+    if (!expectedTime) {
+      return res.status(400).json({
+        success: false,
+        message: "Please select a start time."
+      });
+    }
+
+    const oldVisitDate = preBooking.visitDate;
+    const oldExpectedTime = preBooking.expectedTime;
+    const oldEndTime = preBooking.appointmentEndTime;
+
+    const newDateObj = new Date(visitDate);
+    if (isNaN(newDateObj.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid new appointment date."
+      });
+    }
+
+    if (!preBooking.rescheduleHistory) {
+      preBooking.rescheduleHistory = [];
+    }
+
+    preBooking.rescheduleHistory.push({
+      oldVisitDate,
+      oldExpectedTime,
+      oldEndTime,
+      newVisitDate: newDateObj,
+      newExpectedTime: expectedTime,
+      newEndTime: appointmentEndTime || oldEndTime,
+      reason: reason || "Appointment Rescheduled",
+      rescheduledBy: {
+        userId: req.userId || 'system',
+        name: req.userName || req.userRole || 'Authorized User',
+        role: req.userRole || 'User'
+      },
+      rescheduledAt: new Date()
+    });
+
+    preBooking.visitDate = newDateObj;
+    preBooking.expectedTime = expectedTime;
+    if (appointmentEndTime) {
+      preBooking.appointmentEndTime = appointmentEndTime;
+    }
+    preBooking.approvalStatus = "DATE_CHANGED";
+
+    await preBooking.save();
+
+    // Real-time update for Security/Admin dashboards
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('visitor-status-updated', {
+        visitorId: preBooking._id.toString(),
+        visitorType: 'PRE_BOOKING',
+        status: preBooking.status,
+        visitDate: preBooking.visitDate,
+        expectedTime: preBooking.expectedTime,
+        visitor: {
+          _id: preBooking._id,
+          visitorId: preBooking.visitorId,
+          fullName: preBooking.fullName,
+          visitDate: preBooking.visitDate,
+          expectedTime: preBooking.expectedTime,
+          expectedArrivalTime: preBooking.expectedTime,
+          status: preBooking.status
+        }
+      });
+    }
+
+    // Trigger Notification Service
+    try {
+      await visitorNotificationService.notifyVisitorEvent({
+        visitor: {
+          _id: preBooking._id,
+          visitorId: preBooking.visitorId,
+          visitorName: preBooking.fullName,
+          fullName: preBooking.fullName,
+          visitDate: preBooking.visitDate,
+          expectedArrivalTime: preBooking.expectedTime,
+          expectedTime: preBooking.expectedTime,
+          hostName: preBooking.hostEmployee,
+          hostId: preBooking.assignedHr,
+          email: preBooking.email,
+          companyId: preBooking.companyId || 'FIC001',
+          branch: preBooking.branchLocation,
+          rescheduleHistory: preBooking.rescheduleHistory
+        },
+        event: visitorNotificationService.VISITOR_EVENTS.RESCHEDULED,
+        actor: req.user,
+        reason: reason || "Appointment Rescheduled",
+        io: req.app.get('io')
+      });
+    } catch (notifErr) {
+      console.error("Error triggering reschedule notifications:", notifErr);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Appointment rescheduled successfully.",
+      data: preBooking
+    });
+  } catch (error) {
+    console.error("Reschedule Pre-Booking Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to reschedule Pre-Booking.",
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   createPreBooking,
   getAllPreBookings,
@@ -1149,4 +1301,5 @@ module.exports = {
   backfillQrTokens,
   getMyPreBookings,
   getPreBookingReports,
+  reschedulePreBooking,
 };

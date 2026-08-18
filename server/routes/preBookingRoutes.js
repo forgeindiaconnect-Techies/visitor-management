@@ -15,6 +15,7 @@ const {
   backfillQrTokens,
   getMyPreBookings,
   getPreBookingReports,
+  reschedulePreBooking,
 } = require("../controllers/preBookingController");
 
 const router = express.Router();
@@ -33,7 +34,6 @@ router.get("/", authMiddleware, getAllPreBookings);
 
 // Get single Pre-Booking by visitorId / visitId
 router.get("/visitor/:visitorId", getPreBookingByVisitId);
-router.get("/visitor/:visitId", getPreBookingByVisitId);
 
 // Get single Pre-Booking by QR token
 router.get("/qr/:token", getPreBookingByQR);
@@ -53,6 +53,10 @@ router.put("/:id/approve", authMiddleware, approvePreBooking);
 
 // Reject Pre-Booking
 router.put("/:id/reject", authMiddleware, rejectPreBooking);
+
+// Reschedule Pre-Booking
+router.put("/:id/reschedule", authMiddleware, reschedulePreBooking);
+router.patch("/:id/reschedule", authMiddleware, reschedulePreBooking);
 
 // Clear all Pre-Bookings (must come before /:id)
 router.delete("/clear/all", clearAllPreBookings);

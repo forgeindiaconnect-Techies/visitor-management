@@ -554,8 +554,8 @@ const VisitorList = () => {
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">{visitor.companyName}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">{visitor.hostName}</td>
+                  <td className="px-6 py-4 text-sm text-gray-700 font-medium whitespace-nowrap">{visitor.companyName || visitor.visitingCompany || visitor.company || 'Forge India Connect Private Limited'}</td>
+                  <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap">{visitor.hostName || visitor.hostEmployee || visitor.host || 'Staff'}</td>
                   <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">{formatDisplayDate(visitor.visitDate)}</td>
                   <td className="px-6 py-4">
                     {visitor.status === 'Exited' || visitor.status === 'CHECKED_OUT' || visitor.status === 'Checked Out' ? (

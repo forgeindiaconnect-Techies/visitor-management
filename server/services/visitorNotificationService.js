@@ -160,10 +160,25 @@ const notifyVisitorEvent = async ({
 
       case VISITOR_EVENTS.RESCHEDULED:
         emailSubject = 'Appointment Rescheduled';
-        // Check previous history
-        const oldEntry = visitor.statusHistory && visitor.statusHistory.slice().reverse().find(h => h.status === 'APPOINTMENT_RESCHEDULED' || h.status === 'RESCHEDULED');
-        const oldDateFormatted = oldEntry && oldEntry.previousDate ? new Date(oldEntry.previousDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Previous Date';
-        const oldTimeFormatted = oldEntry && oldEntry.previousTime ? oldEntry.previousTime : 'Previous Time';
+        const latestReschedule =
+          visitor.rescheduleHistory && visitor.rescheduleHistory.length > 0
+            ? visitor.rescheduleHistory[visitor.rescheduleHistory.length - 1]
+            : null;
+
+        const oldDateFormatted =
+          latestReschedule?.oldVisitDate
+            ? new Date(latestReschedule.oldVisitDate).toLocaleDateString(
+                'en-GB',
+                {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric'
+                }
+              )
+            : 'Previous Date';
+
+        const oldTimeFormatted =
+          latestReschedule?.oldExpectedTime || 'Previous Time';
         
         emailHtml = `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">

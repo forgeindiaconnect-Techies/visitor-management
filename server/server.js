@@ -144,6 +144,7 @@ const preBookingRoutes = require('./routes/preBookingRoutes');
 
 app.use('/api/security', securityRoutes);
 app.use('/api/prebookings', preBookingRoutes);
+app.use('/api/pre-bookings', preBookingRoutes);
 app.use('/api/visitors', visitorsRouter);
 
 // Failsafe Public Pass Lookup Endpoint

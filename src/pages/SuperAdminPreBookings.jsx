@@ -931,19 +931,19 @@ export default function SuperAdminPreBookings() {
       {selectedVisitor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/75 backdrop-blur-sm animate-fadeIn">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-xl w-full max-h-[90vh] flex flex-col overflow-hidden my-auto">
-            <div className="p-5 sm:p-6 bg-slate-900 text-white flex items-center justify-between shrink-0">
+            <div className="p-5 sm:p-6 bg-gradient-to-r from-[#003A70] via-[#004B93] to-[#005EB8] text-white flex items-center justify-between shrink-0 shadow-md">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-indigo-500/20 rounded-xl text-indigo-400 border border-indigo-500/30">
+                <div className="p-2 bg-white/10 rounded-xl text-white border border-white/20">
                   <User size={20} />
                 </div>
                 <div>
                   <h3 className="text-lg font-bold">Pre-Booking Details</h3>
-                  <p className="text-xs text-slate-400 font-mono">Visitor Number: {selectedVisitor.visitorId || 'PENDING'}</p>
+                  <p className="text-xs text-blue-100/80 font-mono">Visitor Number: {selectedVisitor.visitorId || 'PENDING'}</p>
                 </div>
               </div>
               <button
                 onClick={() => setSelectedVisitor(null)}
-                className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
+                className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition-colors"
               >
                 <X size={20} />
               </button>

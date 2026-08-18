@@ -230,6 +230,21 @@ const preBookingSchema = new mongoose.Schema(
       changedByRole: String,
       changedAt: { type: Date, default: Date.now },
       reason: String
+    }],
+    rescheduleHistory: [{
+      oldVisitDate: Date,
+      oldExpectedTime: String,
+      oldEndTime: String,
+      newVisitDate: Date,
+      newExpectedTime: String,
+      newEndTime: String,
+      reason: String,
+      rescheduledBy: {
+        userId: String,
+        name: String,
+        role: String
+      },
+      rescheduledAt: { type: Date, default: Date.now }
     }]
   },
   {

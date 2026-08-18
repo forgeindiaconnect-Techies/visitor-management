@@ -76,6 +76,8 @@ const SecurityDashboard = () => {
         return {
           ...current,
           status: data.status,
+          visitDate: data.visitor?.visitDate || data.visitDate || current.visitDate,
+          expectedTime: data.visitor?.expectedTime || data.visitor?.expectedArrivalTime || data.expectedTime || current.expectedTime,
           ...(data.visitor ? {
             checkInTime: data.visitor.checkInTime || current.checkInTime,
             checkOutTime: data.visitor.checkOutTime || current.checkOutTime
@@ -85,6 +87,11 @@ const SecurityDashboard = () => {
     });
 
     socket.on('visitor:status-updated', (data) => {
+      if (typeof fetchPbList === 'function') fetchPbList();
+      if (typeof fetchVisitors === 'function') fetchVisitors();
+    });
+
+    socket.on('notification-created', (data) => {
       if (typeof fetchPbList === 'function') fetchPbList();
       if (typeof fetchVisitors === 'function') fetchVisitors();
     });
@@ -630,7 +637,7 @@ const SecurityDashboard = () => {
           {pbVisitor && (
             <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden animate-in fade-in duration-300">
               {/* Pass Header */}
-              <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+              <div className="bg-gradient-to-r from-[#003A70] via-[#004B93] to-[#005EB8] text-white px-6 py-4 flex items-center justify-between shadow-sm">
                 <div>
                   <h3 className="text-lg font-bold">VISITOR DETAILS</h3>
                   <p className="text-xs text-slate-300">{pbVisitor.visitingCompany}</p>

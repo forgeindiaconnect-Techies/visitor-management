@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Calendar, Clock, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { formatAppointmentDate, formatAppointmentTime } from '../../utils/dateUtils';
 
 const VisitorRescheduleModal = ({ visitor, onClose, onSuccess }) => {
   const { user } = useAuth();
@@ -9,7 +10,6 @@ const VisitorRescheduleModal = ({ visitor, onClose, onSuccess }) => {
   const getInitialDate = (dateStr) => {
     if (!dateStr) return '';
     try {
-      // Support common date formats like '14-Aug-2026' or ISO strings
       const d = new Date(dateStr);
       if (isNaN(d.getTime())) return '';
       return d.toISOString().split('T')[0];
@@ -20,7 +20,6 @@ const VisitorRescheduleModal = ({ visitor, onClose, onSuccess }) => {
 
   const getInitialTime = (timeStr) => {
     if (!timeStr) return '';
-    // Needs 24hr format for input type="time"
     try {
       const match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
       if (match) {
@@ -38,7 +37,7 @@ const VisitorRescheduleModal = ({ visitor, onClose, onSuccess }) => {
   };
 
   const [date, setDate] = useState(getInitialDate(visitor.visitDate));
-  const [startTime, setStartTime] = useState(getInitialTime(visitor.expectedArrivalTime));
+  const [startTime, setStartTime] = useState(getInitialTime(visitor.expectedArrivalTime || visitor.expectedTime));
   const [endTime, setEndTime] = useState(getInitialTime(visitor.appointmentEndTime));
   const [reason, setReason] = useState('Host requested rescheduling');
   
@@ -62,32 +61,58 @@ const VisitorRescheduleModal = ({ visitor, onClose, onSuccess }) => {
       return;
     }
 
+    if (endTime && endTime <= startTime) {
+      setError('End time must be later than start time.');
+      return;
+    }
+
     setLoading(true);
     setError('');
 
     try {
-      const formattedDate = new Date(date).toLocaleDateString('en-GB', {
-        day: '2-digit', month: 'short', year: 'numeric'
-      }).replace(/ /g, '-');
-      
       const payload = {
-        visitDate: formattedDate,
-        expectedArrivalTime: formatTo12Hour(startTime),
-        appointmentEndTime: endTime ? formatTo12Hour(endTime) : undefined,
-        reason
+        visitDate: date,
+        expectedTime: formatTo12Hour(startTime),
+        reason: reason || 'Appointment Rescheduled'
       };
 
       const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
       const token = localStorage.getItem('token');
+      const vId = visitor.visitorId || visitor.visitId || visitor._id || visitor.id;
       
-      const res = await fetch(`${API_URL}/api/visitors/${visitor._id || visitor.id}/reschedule`, {
-        method: 'PATCH',
+      console.log('🔍 Rescheduling visitor:', visitor);
+      console.log('🔍 Reschedule ID:', vId);
+      
+      let res = await fetch(`${API_URL}/api/prebookings/${vId}/reschedule`, {
+        method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}` 
         },
         body: JSON.stringify(payload)
       });
+
+      if (!res.ok && res.status === 404) {
+        res = await fetch(`${API_URL}/api/prebookings/${vId}/reschedule`, {
+          method: 'PUT',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}` 
+          },
+          body: JSON.stringify(payload)
+        });
+      }
+
+      if (!res.ok && res.status === 404) {
+        res = await fetch(`${API_URL}/api/visitors/${vId}/reschedule`, {
+          method: 'PATCH',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}` 
+          },
+          body: JSON.stringify(payload)
+        });
+      }
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
@@ -107,6 +132,8 @@ const VisitorRescheduleModal = ({ visitor, onClose, onSuccess }) => {
       setLoading(false);
     }
   };
+
+  const todayStr = new Date().toISOString().split('T')[0];
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 overflow-y-auto">
@@ -139,8 +166,8 @@ const VisitorRescheduleModal = ({ visitor, onClose, onSuccess }) => {
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex justify-between items-center text-sm">
             <div>
               <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">Current Appointment</span>
-              <p className="font-bold text-slate-800">{visitor.visitDate || 'N/A'}</p>
-              <p className="text-slate-600 font-medium">{visitor.expectedArrivalTime} {visitor.appointmentEndTime ? `- ${visitor.appointmentEndTime}` : ''}</p>
+              <p className="font-bold text-slate-800">{formatAppointmentDate(visitor.visitDate)}</p>
+              <p className="text-slate-600 font-medium">{formatAppointmentTime(visitor.expectedArrivalTime || visitor.expectedTime)} {visitor.appointmentEndTime ? `- ${formatAppointmentTime(visitor.appointmentEndTime)}` : ''}</p>
             </div>
             <Clock size={32} className="text-slate-300" />
           </div>
@@ -157,6 +184,7 @@ const VisitorRescheduleModal = ({ visitor, onClose, onSuccess }) => {
               <input
                 type="date"
                 required
+                min={todayStr}
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
                 className="block w-full pl-10 pr-3 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-600 focus:border-transparent outline-none text-sm font-medium transition-shadow"
