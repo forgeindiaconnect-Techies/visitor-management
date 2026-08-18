@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useCallback, useEffect } from 'react';
 import { io } from 'socket.io-client';
+import { getNotifications } from '../services/notificationService';
 
 const NotificationContext = createContext(null);
 
@@ -16,34 +17,29 @@ export const NotificationProvider = ({ children }) => {
     
     // Auto remove toast after 5 seconds
     setTimeout(() => {
-      setNotifications(prev => prev.filter(n => n.id !== id));
+      setNotifications(prev => (Array.isArray(prev) ? prev : []).filter(n => n.id !== id));
     }, 5000);
   }, []);
 
   const removeNotification = useCallback((id) => {
-    setNotifications(prev => prev.filter(n => n.id !== id));
+    setNotifications(prev => (Array.isArray(prev) ? prev : []).filter(n => n.id !== id));
   }, []);
 
   // Fetch persistent notifications from MongoDB API
   const fetchPersistentNotifications = useCallback(async () => {
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/api/notifications`, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token && { 'Authorization': `Bearer ${token}` })
-        }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const list = Array.isArray(data) ? data : (data && Array.isArray(data.notifications) ? data.notifications : []);
-        setPersistentNotifications(list);
-        setUnreadCount(list.filter(n => !n.isRead).length);
-      }
+      const data = await getNotifications();
+      const list = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.notifications)
+          ? data.notifications
+          : [];
+      setPersistentNotifications(list);
+      setUnreadCount(list.filter(n => !n.isRead).length);
     } catch (err) {
       console.error('Error fetching persistent notifications:', err);
     }
-  }, [API_URL]);
+  }, []);
 
   const markAllRead = useCallback(async () => {
     try {

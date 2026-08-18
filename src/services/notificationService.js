@@ -13,7 +13,9 @@ export const getNotifications = async () => {
     if (!response.ok) return [];
 
     const data = await response.json();
-    return data.notifications || data || [];
+    return Array.isArray(data?.notifications)
+      ? data.notifications
+      : (Array.isArray(data) ? data : []);
   } catch (error) {
     console.error('Failed to load notifications from backend:', error);
     return [];
