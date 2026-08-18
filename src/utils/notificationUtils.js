@@ -8,8 +8,5 @@ export const normalizeNotifications = (value) => {
   if (Array.isArray(value?.data?.notifications)) {
     return value.data.notifications;
   }
-  if (Array.isArray(value?.data)) {
-    return value.data;
-  }
   return [];
 };

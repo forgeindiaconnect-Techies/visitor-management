@@ -91,36 +91,47 @@ export const NotificationProvider = ({ children }) => {
     const handleNewNotif = (newNotif) => {
       if (!newNotif) return;
       setPersistentNotifications((prev) => {
-        const alreadyExists = prev.some((item) => item.eventId && item.eventId === newNotif.eventId);
-        if (alreadyExists) return prev;
-        return [newNotif, ...prev];
+        const safePrev = Array.isArray(prev) ? prev : [];
+        const exists = safePrev.some(
+          (item) => newNotif?.eventId && item?.eventId === newNotif.eventId
+        );
+        if (exists) return safePrev;
+        return [newNotif, ...safePrev];
       });
-      setUnreadCount(prev => prev + 1);
-      addNotification(newNotif.title || 'New Notification', newNotif.message || '', newNotif.type || 'info');
+
+      setUnreadCount((previous) => (Number.isFinite(previous) ? previous + 1 : 1));
+
+      addNotification(
+        newNotif.title || 'New Notification',
+        newNotif.message || '',
+        newNotif.type || 'info'
+      );
     };
 
     socket.on('notification-created', handleNewNotif);
     socket.on('notification:new', handleNewNotif);
 
     return () => {
-      socket.off('notification-created');
-      socket.off('notification:new');
+      socket.off('notification-created', handleNewNotif);
+      socket.off('notification:new', handleNewNotif);
       socket.disconnect();
     };
   }, [fetchPersistentNotifications, addNotification, API_URL, setPersistentNotifications]);
 
   return (
-    <NotificationContext.Provider value={{ 
-      notifications, 
-      setNotifications,
-      addNotification, 
-      removeNotification,
-      persistentNotifications,
-      setPersistentNotifications,
-      unreadCount,
-      fetchPersistentNotifications,
-      markAllRead
-    }}>
+    <NotificationContext.Provider
+      value={{ 
+        notifications, 
+        setNotifications,
+        addNotification, 
+        removeNotification,
+        persistentNotifications,
+        setPersistentNotifications,
+        unreadCount,
+        fetchPersistentNotifications,
+        markAllRead
+      }}
+    >
       {children}
     </NotificationContext.Provider>
   );
