@@ -60,6 +60,13 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: ""
   },
+  fcmTokens: [
+    {
+      token: { type: String, required: true },
+      createdAt: { type: Date, default: Date.now },
+      lastUsedAt: { type: Date, default: Date.now }
+    }
+  ],
   createdBy: {
     type: String,
     default: 'System'

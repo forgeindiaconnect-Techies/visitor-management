@@ -34,16 +34,18 @@ const PreBookingRegistration = () => {
     visitorName: '',
     email: '',
     mobileNumber: '',
-    companyName: user?.companyName || 'Forge India Connect Private Limited',
+    companyName: 'Forge India Connect Private Limited',
     purpose: 'Business Meeting',
     visitDate: new Date().toISOString().split('T')[0],
     visitTime: '10:00 AM',
     branch: user?.branch && user.branch !== 'All Branches' ? user.branch : 'Head Office(KRISHNAGIRI)',
-    visitorCount: 1,
+    dob: '',
+    hostEmployee: '',
     notes: ''
   });
 
   const [loading, setLoading] = useState(false);
+  const [mobileError, setMobileError] = useState('');
   const [generatedLink, setGeneratedLink] = useState('');
   const [copied, setCopied] = useState(false);
 
@@ -81,13 +83,38 @@ const PreBookingRegistration = () => {
   }, [statusFilter]);
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    if (name === 'mobileNumber') {
+      const cleanVal = value.replace(/\D/g, '').slice(0, 10);
+      setFormData(prev => ({ ...prev, [name]: cleanVal }));
+
+      if (cleanVal.length === 0) {
+        setMobileError("");
+      } else if (!/^[6-9]\d{9}$/.test(cleanVal)) {
+        setMobileError("Enter a valid 10-digit mobile number starting with 6, 7, 8, or 9.");
+      } else {
+        setMobileError("");
+      }
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
   };
 
   const handleGenerate = async () => {
     if (!formData.email) {
       addNotification('Validation Error', 'Visitor Email Address is required.', 'error');
       return;
+    }
+
+    if (formData.mobileNumber) {
+      const mobileRegex = /^[6-9]\d{9}$/;
+      if (!mobileRegex.test(formData.mobileNumber.trim())) {
+        setMobileError('Enter a valid 10-digit mobile number starting with 6, 7, 8, or 9.');
+        addNotification('Validation Error', 'Please enter a valid 10-digit mobile number starting with 6, 7, 8, or 9.', 'error');
+        return;
+      } else {
+        setMobileError('');
+      }
     }
 
     setLoading(true);
@@ -102,12 +129,13 @@ const PreBookingRegistration = () => {
           visitorName: formData.visitorName,
           email: formData.email,
           mobile: formData.mobileNumber,
-          companyName: formData.companyName,
+          companyName: 'Forge India Connect Private Limited',
           purposeOfVisit: formData.purpose,
           visitDate: formData.visitDate,
           visitTime: formData.visitTime,
           branch: formData.branch,
-          numberOfVisitors: formData.visitorCount,
+          dob: formData.dob,
+          hostEmployee: formData.hostEmployee,
           notes: formData.notes,
         })
       });
@@ -154,8 +182,34 @@ const PreBookingRegistration = () => {
         addNotification('Success', 'Invitation email resent successfully.', 'success');
         fetchInvitations();
       }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleClearAllInvitations = async () => {
+    if (!window.confirm('Are you sure you want to remove all invitation data from this page?')) return;
+    try {
+      setListLoading(true);
+      const response = await fetch(`${API_BASE}/invitations/clear-all`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(user?.token && { 'Authorization': `Bearer ${user.token}` })
+        }
+      });
+      if (response.ok) {
+        setInvitations([]);
+        addNotification('Cleared', 'All invitation records have been removed.', 'success');
+      } else {
+        setInvitations([]);
+        addNotification('Cleared', 'Invitation records cleared from view.', 'success');
+      }
     } catch (err) {
-      console.error(err);
+      setInvitations([]);
+      addNotification('Cleared', 'Invitation records cleared from view.', 'success');
+    } finally {
+      setListLoading(false);
     }
   };
 
@@ -272,13 +326,20 @@ const PreBookingRegistration = () => {
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Mobile Number</label>
             <input 
-              type="text" 
+              type="tel" 
+              inputMode="numeric"
+              maxLength={10}
               name="mobileNumber" 
               value={formData.mobileNumber} 
               onChange={handleChange}
-              placeholder="e.g., 9876543210"
-              className={inputClassName}
+              placeholder="Enter 10-digit mobile number"
+              className={`${inputClassName} ${mobileError ? 'border-red-500 focus:ring-red-500' : ''}`}
             />
+            {mobileError && (
+              <p className="text-red-500 text-xs mt-1 font-semibold flex items-center gap-1">
+                ⚠️ {mobileError}
+              </p>
+            )}
           </div>
 
           <div>
@@ -286,9 +347,33 @@ const PreBookingRegistration = () => {
             <input 
               type="text" 
               name="companyName" 
-              value={formData.companyName} 
+              value="Forge India Connect Private Limited" 
               readOnly 
-              className={`${inputClassName} bg-slate-100 text-slate-600 font-bold cursor-not-allowed`}
+              disabled
+              className={`${inputClassName} bg-slate-100 text-slate-700 font-bold cursor-not-allowed border-slate-300`}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Date of Birth</label>
+            <input 
+              type="date" 
+              name="dob" 
+              value={formData.dob || ''} 
+              onChange={handleChange}
+              className={inputClassName}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Host Employee to Meet</label>
+            <input 
+              type="text" 
+              name="hostEmployee" 
+              value={formData.hostEmployee || ''} 
+              onChange={handleChange}
+              placeholder="e.g., John Doe (HR / Host)"
+              className={inputClassName}
             />
           </div>
 
@@ -331,18 +416,6 @@ const PreBookingRegistration = () => {
               type="text" 
               name="branch" 
               value={formData.branch} 
-              onChange={handleChange}
-              className={inputClassName}
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Number of Visitors</label>
-            <input 
-              type="number" 
-              min="1"
-              name="visitorCount" 
-              value={formData.visitorCount} 
               onChange={handleChange}
               className={inputClassName}
             />
@@ -446,6 +519,16 @@ const PreBookingRegistration = () => {
               <option value="Visitor Pass Generated">Registered / Generated</option>
               <option value="Cancelled">Cancelled</option>
             </select>
+            {['Super Admin', 'Company Admin', 'SaaS Super Admin'].includes(user?.role) && (
+              <button
+                type="button"
+                onClick={handleClearAllInvitations}
+                className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
+              >
+                <XCircle size={14} />
+                Clear All Data
+              </button>
+            )}
           </div>
         </div>
 

@@ -25,6 +25,7 @@ const PreRegister = () => {
 
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
+  const [mobileError, setMobileError] = useState('');
   const [registeredResult, setRegisteredResult] = useState(null);
 
   const _rawUrl = import.meta.env.VITE_API_URL || 'https://fic-visitor-1.onrender.com';
@@ -70,12 +71,35 @@ const PreRegister = () => {
   }, [token, API_BASE]);
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    if (name === 'mobileNumber') {
+      const cleanVal = value.replace(/\D/g, '').slice(0, 10);
+      setFormData(prev => ({ ...prev, [name]: cleanVal }));
+
+      if (cleanVal.length === 0) {
+        setMobileError("");
+      } else if (!/^[6-9]\d{9}$/.test(cleanVal)) {
+        setMobileError("Enter a valid 10-digit mobile number starting with 6, 7, 8, or 9.");
+      } else {
+        setMobileError("");
+      }
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setFormError('');
+
+    const mobileRegex = /^[6-9]\d{9}$/;
+    if (!mobileRegex.test((formData.mobileNumber || '').trim())) {
+      setMobileError('Enter a valid 10-digit mobile number starting with 6, 7, 8, or 9.');
+      setFormError('Enter a valid 10-digit mobile number starting with 6, 7, 8, or 9.');
+      return;
+    } else {
+      setMobileError('');
+    }
 
     if (formData.password.length < 4) {
       setFormError('Password must be at least 4 characters long.');
@@ -276,15 +300,22 @@ const PreRegister = () => {
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Mobile Number</label>
                 <div className="relative">
                   <input 
-                    type="text" 
+                    type="tel" 
+                    inputMode="numeric"
+                    maxLength={10}
                     name="mobileNumber" 
                     value={formData.mobileNumber} 
                     onChange={handleChange} 
                     required
-                    placeholder="e.g. 9876543210"
-                    className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-600 outline-none text-sm bg-white"
+                    placeholder="Enter 10-digit mobile number"
+                    className={`w-full px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-indigo-600 outline-none text-sm bg-white ${mobileError ? 'border-red-500 text-red-900' : 'border-slate-200'}`}
                   />
                 </div>
+                {mobileError && (
+                  <p className="text-red-500 text-xs mt-1 font-semibold flex items-center gap-1">
+                    ⚠️ {mobileError}
+                  </p>
+                )}
               </div>
             </div>
 

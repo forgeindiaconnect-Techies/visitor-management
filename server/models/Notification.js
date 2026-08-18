@@ -2,6 +2,12 @@ const mongoose = require('mongoose');
 
 const notificationSchema = new mongoose.Schema(
   {
+    eventId: {
+      type: String,
+      sparse: true,
+      unique: true,
+      index: true
+    },
     companyId: {
       type: String,
       index: true
@@ -18,10 +24,23 @@ const notificationSchema = new mongoose.Schema(
       index: true,
     },
     recipients: [{
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      index: true,
+      role: { type: String },
+      userId: { type: String },
+      user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
     }],
+    readBy: [{
+      userId: { type: String },
+      readAt: { type: Date, default: Date.now }
+    }],
+    visitorId: {
+      type: String,
+      default: null
+    },
+    visitorType: {
+      type: String,
+      enum: ['PRE_BOOKING', 'DIRECT_VISIT', null],
+      default: null
+    },
     preBookingId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'PreBooking',
@@ -30,9 +49,6 @@ const notificationSchema = new mongoose.Schema(
     type: {
       type: String,
       default: 'info',
-      // The frontend can map these to icons/colors
-      // Keeping original enums just in case of old data, plus new ones
-      enum: ['success', 'warning', 'error', 'info', 'Tenant', 'Visitor', 'Security', 'Attendance', 'Subscription', 'System', 'Announcement', 'Branch', 'Admin', 'PREBOOKING_CREATED', 'PREBOOKING_APPROVED', 'PREBOOKING_REJECTED'],
     },
     module: {
       type: String,

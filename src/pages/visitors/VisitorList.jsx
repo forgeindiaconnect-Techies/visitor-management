@@ -24,12 +24,55 @@ const VisitorList = () => {
   const [selectedVisitorEdit, setSelectedVisitorEdit] = useState(null);
   const [selectedVisitorDetails, setSelectedVisitorDetails] = useState(null);
   const [reschedulingVisitor, setReschedulingVisitor] = useState(null);
-  const [selectedZone, setSelectedZone] = useState('');
   const [openDropdownId, setOpenDropdownId] = useState(null);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const location = useLocation();
   const [statusFilter, setStatusFilter] = useState('All');
   const [dateFilter, setDateFilter] = useState('');
+
+  const calculateDuration = (checkIn, checkOut) => {
+    if (!checkIn || !checkOut) return 'N/A';
+    const start = new Date(checkIn);
+    const end = new Date(checkOut);
+    if (isNaN(start) || isNaN(end)) return 'N/A';
+    
+    const diffMs = end - start;
+    if (diffMs < 0) return 'N/A';
+    
+    const diffMins = Math.floor(diffMs / 60000);
+    const hours = Math.floor(diffMins / 60);
+    const mins = diffMins % 60;
+    
+    if (hours > 0) {
+      return `${hours}h ${mins}m`;
+    }
+    return `${mins}m`;
+  };
+
+  const formatDisplayDate = (dateStr) => {
+    if (!dateStr) return 'N/A';
+    try {
+      const cleanStr = typeof dateStr === 'string' && dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
+      const d = new Date(cleanStr);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+      }
+    } catch (e) {}
+    return String(dateStr);
+  };
+
+  const formatVisitorId = (rawId, index = 0) => {
+    if (!rawId) return `VIS-${1001 + index}`;
+    const str = String(rawId).trim();
+    if (str.startsWith('VIS-') || str.startsWith('VISIT-') || str.startsWith('VIS')) {
+      return str.toUpperCase();
+    }
+    return `VIS-${str}`;
+  };
+
+  const [reportSearchQuery, setReportSearchQuery] = useState('');
+  const [reportStatusFilter, setReportStatusFilter] = useState('ALL');
+  const [reportDateFilter, setReportDateFilter] = useState('');
 
   const [hosts, setHosts] = useState([
     'PRIYADHARSHINI(HR)',
@@ -77,120 +120,392 @@ const VisitorList = () => {
     }
   };
 
-  const filteredVisitors = visitors.filter(v => {
-    const matchesSearch = (v.visitorName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          (v.companyName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+  const directVisitors = visitors.filter(v => 
+    v.hostEmployee === "Direct Visits" || 
+    v.hostEmployee === "Direct Visit" || 
+    v.hostName === "Direct Visits" || 
+    v.hostName === "Direct Visit" || 
+    v.visitorType === "NEW_VISITOR" || 
+    v.registrationType === "Direct Visit" ||
+    v.visitType === "DIRECT_VISIT"
+  );
+
+  const statusCounts = {
+    all: directVisitors.length,
+    pending: directVisitors.filter(v => (v.status || '').toUpperCase() === 'PENDING').length,
+    approved: directVisitors.filter(v => (v.status || '').toUpperCase() === 'APPROVED').length,
+    rejected: directVisitors.filter(v => ['REJECTED', 'CANCELLED'].includes((v.status || '').toUpperCase())).length,
+    checkedIn: directVisitors.filter(v => ['CHECKED_IN', 'CHECKED IN', 'INSIDE'].includes((v.status || '').toUpperCase())).length,
+    checkedOut: directVisitors.filter(v => ['CHECKED_OUT', 'CHECKED OUT', 'EXITED'].includes((v.status || '').toUpperCase())).length,
+  };
+
+  const filteredVisitors = directVisitors.filter(v => {
+    const matchesSearch = (v.visitorName || v.fullName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (v.companyName || v.visitingCompany || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                           (v.mobileNumber || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          (v.bookingId || '').toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'All' || 
-                          (statusFilter === 'Checked In' ? (v.status === 'Checked In' || v.status === 'Inside') : 
-                           statusFilter === 'Checked Out' ? (v.status === 'Checked Out' || v.status === 'Exited') : 
-                           v.status === statusFilter);
-    const matchesDate = !dateFilter || v.visitDate === dateFilter;
-    // For legacy data, visitType might default to 'PRE_BOOKING' even for Walk-ins.
-    // So we rely primarily on registrationType or explicit isPreBooking flag.
-    const isPreBooked = v.isPreBooking === true || v.registrationType === 'Pre-Booking';
+                          (v.bookingId || v.visitorId || v.visitId || '').toLowerCase().includes(searchTerm.toLowerCase());
     
-    return matchesSearch && matchesStatus && matchesDate && !isPreBooked;
+    const normStatus = (v.status || '').toUpperCase().replace(/\s+/g, '_');
+    const targetStatus = statusFilter.toUpperCase().replace(/\s+/g, '_');
+
+    const matchesStatus = statusFilter === 'All' || statusFilter === 'ALL' || statusFilter === 'Reports' ||
+                          (targetStatus === 'CHECKED_IN' && (normStatus === 'INSIDE' || normStatus === 'CHECKED_IN')) ||
+                          (targetStatus === 'CHECKED_OUT' && (normStatus === 'EXITED' || normStatus === 'CHECKED_OUT')) ||
+                          normStatus === targetStatus;
+
+    const matchesDate = !dateFilter || v.visitDate === dateFilter || (v.visitDate && new Date(v.visitDate).toISOString().split('T')[0] === dateFilter);
+
+    return matchesSearch && matchesStatus && matchesDate;
   });
 
+  const filteredReports = directVisitors.filter((r) => {
+    const q = reportSearchQuery.toLowerCase().trim();
+    const matchesQuery =
+      !q ||
+      (r.visitId && String(r.visitId).toLowerCase().includes(q)) ||
+      (r.visitorId && String(r.visitorId).toLowerCase().includes(q)) ||
+      (r.visitorName && r.visitorName.toLowerCase().includes(q)) ||
+      (r.fullName && r.fullName.toLowerCase().includes(q)) ||
+      (r.mobileNumber && r.mobileNumber.includes(q)) ||
+      (r.companyName && r.companyName.toLowerCase().includes(q)) ||
+      (r.visitingCompany && r.visitingCompany.toLowerCase().includes(q));
+
+    const itemStatus = (r.status || '').toUpperCase().replace(/\s+/g, '_');
+    const targetStatus = reportStatusFilter.toUpperCase().replace(/\s+/g, '_');
+
+    const matchesStatus =
+      reportStatusFilter === 'ALL' ||
+      itemStatus === targetStatus ||
+      (targetStatus === 'CHECKED_IN' && (itemStatus === 'INSIDE' || itemStatus === 'CHECKED_IN')) ||
+      (targetStatus === 'CHECKED_OUT' && (itemStatus === 'EXITED' || itemStatus === 'CHECKED_OUT'));
+
+    const matchesDate =
+      !reportDateFilter ||
+      (r.visitDate && new Date(r.visitDate).toISOString().split('T')[0] === reportDateFilter);
+
+    return matchesQuery && matchesStatus && matchesDate;
+  });
+
+  const exportToExcel = () => {
+    if (filteredReports.length === 0) return;
+    const headers = [
+      "Visitor Number", "Visitor Name", "Mobile", "Company", 
+      "Host", "Purpose", "Visit Date", "Expected Time", "Branch", 
+      "Status", "Check-In Time", "Check-Out Time", "Duration", "Checkout Notes"
+    ];
+    const rows = filteredReports.map(r => [
+      r.visitorId || r.visitId || r.id || '',
+      r.visitorName || r.fullName || '',
+      r.mobileNumber || '',
+      r.companyName || r.visitingCompany || '',
+      r.hostName || r.hostEmployee || '',
+      r.purpose || r.visitPurpose || '',
+      r.visitDate ? new Date(r.visitDate).toLocaleDateString() : '',
+      r.expectedArrivalTime || r.expectedTime || '10:00 AM',
+      r.branch || r.branchLocation || 'Head Office',
+      r.status || '',
+      r.checkInTime ? new Date(r.checkInTime).toLocaleString() : '',
+      r.checkOutTime ? new Date(r.checkOutTime).toLocaleString() : '',
+      calculateDuration(r.checkInTime, r.checkOutTime),
+      r.remarks || r.exitNotes || r.notes || r.checkoutNotes || ''
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + [headers.join(","), ...rows.map(e => e.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Direct_Visits_Report_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const exportToPDF = () => {
+    window.print();
+  };
+
   const isReturningVisitor = (visitor) => {
-    if (!allVisitors || allVisitors.length === 0) return false;
-    // Check if there is any visit for this profile that occurred BEFORE this specific visit
-    return allVisitors.some(v => 
-      v.profileId === visitor.profileId && 
-      new Date(v.createdAt) < new Date(visitor.createdAt)
-    );
+    if (!visitor) return false;
+    if (visitor.isReturning === true || (visitor.visitCount && visitor.visitCount > 1)) return true;
+
+    const listToCheck = allVisitors && allVisitors.length > 0 ? allVisitors : visitors;
+    
+    if (visitor.profileId && listToCheck.length > 0) {
+      const hasPrior = listToCheck.some(v => 
+        v.profileId === visitor.profileId && 
+        new Date(v.createdAt || v.visitDate) < new Date(visitor.createdAt || visitor.visitDate)
+      );
+      if (hasPrior) return true;
+    }
+
+    if (visitor.mobileNumber && listToCheck.length > 0) {
+      const mobile = String(visitor.mobileNumber).replace(/\D/g, '').slice(-10);
+      if (mobile) {
+        const count = listToCheck.filter(v => {
+          const vMobile = String(v.mobileNumber || '').replace(/\D/g, '').slice(-10);
+          return vMobile && vMobile === mobile;
+        }).length;
+        if (count > 1) return true;
+      }
+    }
+
+    return false;
   };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Visitors Management</h1>
-          <p className="text-gray-500 mt-1">Manage and track all visitors across zones.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <button 
-            onClick={() => navigate('/visitors/new')}
-            className="bg-[var(--color-brand-indigo)] hover:bg-[var(--color-brand-indigo-light)] text-white px-4 py-2.5 rounded-lg flex items-center space-x-2 font-medium transition-colors shadow-md text-sm"
-          >
-            <UserPlus size={18} />
-            <span>+ Direct Visit</span>
-          </button>
-          <button 
-            onClick={() => navigate('/invitations')}
-            className="bg-indigo-50 border border-indigo-200 text-[var(--color-brand-indigo)] hover:bg-indigo-100 px-4 py-2.5 rounded-lg flex items-center space-x-2 font-bold transition-colors shadow-sm text-sm"
-          >
-            <CalendarCheck size={18} />
-            <span>+ Pre-Booking</span>
-          </button>
+          <h1 className="text-2xl font-bold text-gray-900">Direct Visit Management</h1>
+          <p className="text-gray-500 mt-1">Manage and track on-site direct visit visitors across zones.</p>
         </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-visible">
-        <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row justify-between gap-4">
-          <div className="relative flex-1 max-w-md">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search size={18} className="text-gray-400" />
-            </div>
-            <input
-              type="text"
-              placeholder="Search visitors or company..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[var(--color-brand-indigo)] focus:border-transparent outline-none text-sm"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <input 
-              type="date" 
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-indigo)]"
-            />
-            {dateFilter && (
-              <button 
-                onClick={() => setDateFilter('')}
-                className="text-gray-400 hover:text-gray-600"
-                title="Clear Date Filter"
-              >
-                <X size={16} />
-              </button>
-            )}
-          </div>
-          <div className="relative">
-            <button 
-              onClick={() => setIsFilterOpen(!isFilterOpen)}
-              className={`flex items-center space-x-2 px-4 py-2 border rounded-lg text-sm font-medium transition-colors ${isFilterOpen || statusFilter !== 'All' ? 'border-[var(--color-brand-indigo)] text-[var(--color-brand-indigo)] bg-indigo-50' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+        {/* Status Filter Tabs */}
+        <div className="flex border-b border-gray-200 overflow-x-auto bg-white rounded-t-xl px-2 pt-2 gap-1">
+          {[
+            { key: 'All', label: 'All Direct Visits', count: statusCounts.all },
+            { key: 'Pending', label: 'Pending', count: statusCounts.pending },
+            { key: 'Approved', label: 'Approved', count: statusCounts.approved },
+            { key: 'Rejected', label: 'Rejected', count: statusCounts.rejected },
+            { key: 'Checked In', label: 'Checked In', count: statusCounts.checkedIn },
+            { key: 'Checked Out', label: 'Checked Out', count: statusCounts.checkedOut },
+            ...(user?.role !== 'Security' ? [{ key: 'Reports', label: '📊 Reports', count: statusCounts.all }] : [])
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setStatusFilter(tab.key)}
+              className={`pb-3 px-4 text-sm font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                statusFilter.toLowerCase() === tab.key.toLowerCase()
+                  ? 'border-[var(--color-brand-indigo)] text-[var(--color-brand-indigo)]'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
             >
-              <Filter size={18} />
-              <span>{statusFilter !== 'All' ? statusFilter : 'Filters'}</span>
+              <span>{tab.label}</span>
             </button>
-            
-            {isFilterOpen && (
-              <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-200 z-50 overflow-hidden">
-                <div className="p-2 space-y-1">
-                  {['All', 'Pre-Booked', 'Approved', 'Checked In', 'Checked Out', 'Cancelled', 'Expired', 'Draft', 'Pending', 'Rejected'].map((status) => (
-                    <button
-                      key={status}
-                      onClick={() => {
-                        setStatusFilter(status);
-                        setIsFilterOpen(false);
-                      }}
-                      className={`block w-full text-left px-4 py-2 text-sm rounded-lg transition-colors ${statusFilter === status ? 'bg-indigo-50 text-[var(--color-brand-indigo)] font-semibold' : 'text-gray-700 hover:bg-slate-50'}`}
-                    >
-                      {status === 'All' ? 'All Statuses' : status}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+          ))}
         </div>
+        {statusFilter === 'Reports' ? (
+          /* REPORTS DASHBOARD VIEW MATCHING SCREENSHOT 2 */
+          <div className="p-4 space-y-6">
+            {/* Stats Overview */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+              {[
+                { title: 'Total Visitors', count: filteredReports.length, color: 'bg-slate-50 text-slate-800 border-slate-200' },
+                { title: 'Pending', count: filteredReports.filter(r => (r.status || '').toUpperCase() === 'PENDING').length, color: 'bg-orange-50 text-orange-800 border-orange-200' },
+                { title: 'Approved', count: filteredReports.filter(r => (r.status || '').toUpperCase() === 'APPROVED').length, color: 'bg-green-50 text-green-800 border-green-200' },
+                { title: 'Rejected', count: filteredReports.filter(r => ['REJECTED', 'CANCELLED'].includes((r.status || '').toUpperCase())).length, color: 'bg-red-50 text-red-800 border-red-200' },
+                { title: 'Checked In', count: filteredReports.filter(r => ['CHECKED_IN', 'CHECKED IN', 'INSIDE'].includes((r.status || '').toUpperCase())).length, color: 'bg-blue-50 text-blue-800 border-blue-200' },
+                { title: 'Checked Out', count: filteredReports.filter(r => ['CHECKED_OUT', 'CHECKED OUT', 'EXITED'].includes((r.status || '').toUpperCase())).length, color: 'bg-purple-50 text-purple-800 border-purple-200' },
+              ].map((stat, idx) => (
+                <div key={idx} className={`p-4 rounded-xl border ${stat.color} flex flex-col shadow-sm`}>
+                  <span className="text-xs font-semibold uppercase tracking-wider opacity-85">{stat.title}</span>
+                  <span className="text-2xl font-bold mt-1">{stat.count}</span>
+                </div>
+              ))}
+            </div>
 
-        <div className="overflow-x-auto min-h-[400px] w-full">
-          <table className="w-full text-left border-collapse min-w-[1000px]">
+            {/* Filter Bar */}
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-2">
+              <div className="relative flex-1 max-w-md w-full">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Search size={18} className="text-gray-400" />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Search reports by visitor name, ID, phone..."
+                  value={reportSearchQuery}
+                  onChange={(e) => setReportSearchQuery(e.target.value)}
+                  className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[var(--color-brand-indigo)] focus:border-transparent outline-none text-sm"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-end">
+                <select
+                  value={reportStatusFilter}
+                  onChange={(e) => setReportStatusFilter(e.target.value)}
+                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-indigo)] bg-white cursor-pointer"
+                >
+                  <option value="ALL">All Statuses</option>
+                  <option value="PENDING">Pending</option>
+                  <option value="APPROVED">Approved</option>
+                  <option value="REJECTED">Rejected</option>
+                  <option value="CHECKED_IN">Checked In</option>
+                  <option value="CHECKED_OUT">Checked Out</option>
+                </select>
+
+                <input 
+                  type="date" 
+                  value={reportDateFilter}
+                  onChange={(e) => setReportDateFilter(e.target.value)}
+                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-indigo)] font-medium"
+                />
+
+                <button
+                  onClick={() => {
+                    setReportSearchQuery("");
+                    setReportStatusFilter("ALL");
+                    setReportDateFilter("");
+                  }}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-sm transition-colors border border-gray-200 cursor-pointer"
+                >
+                  Clear Filters
+                </button>
+
+                <button
+                  onClick={exportToExcel}
+                  className="bg-green-600 hover:bg-green-700 text-white font-bold px-3 py-2 rounded-lg flex items-center space-x-1.5 text-xs transition-colors shadow-sm cursor-pointer"
+                >
+                  <span>📊 Export Excel</span>
+                </button>
+                <button
+                  onClick={exportToPDF}
+                  className="bg-red-600 hover:bg-red-700 text-white font-bold px-3 py-2 rounded-lg flex items-center space-x-1.5 text-xs transition-colors shadow-sm cursor-pointer"
+                >
+                  <span>📄 Export PDF</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Reports Table */}
+            <div className="overflow-x-auto border border-gray-100 rounded-xl">
+              <table className="w-full text-left border-collapse min-w-[1300px]">
+                <thead>
+                  <tr className="bg-slate-50 text-gray-500 text-xs uppercase tracking-wider font-semibold border-b border-gray-100 whitespace-nowrap">
+                    <th className="px-4 py-3 font-semibold">Visitor No</th>
+                    <th className="px-4 py-3 font-semibold">Photo</th>
+                    <th className="px-4 py-3 font-semibold">Visitor Name</th>
+                    <th className="px-4 py-3 font-semibold">Company</th>
+                    <th className="px-4 py-3 font-semibold">Host Employee</th>
+                    <th className="px-4 py-3 font-semibold">Purpose</th>
+                    <th className="px-4 py-3 font-semibold">Visit Date</th>
+                    <th className="px-4 py-3 font-semibold">Expected Time</th>
+                    <th className="px-4 py-3 font-semibold">Status</th>
+                    <th className="px-4 py-3 font-semibold">Check-In Time</th>
+                    <th className="px-4 py-3 font-semibold">Check-Out Time</th>
+                    <th className="px-4 py-3 font-semibold">Duration</th>
+                    <th className="px-4 py-3 font-semibold">Checkout Notes</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 text-sm whitespace-nowrap">
+                  {filteredReports.length === 0 ? (
+                    <tr>
+                      <td colSpan="13" className="px-6 py-12 text-center text-gray-500 font-medium">
+                        No report records found.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredReports.map((r, index) => (
+                      <tr 
+                        key={r._id || r.id || index} 
+                        onClick={() => setSelectedVisitorDetails(r)}
+                        className="hover:bg-indigo-50/20 cursor-pointer transition-colors"
+                      >
+                        <td className="px-4 py-3">
+                          <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-100 text-xs shadow-xs">
+                            {formatVisitorId(r.visitorId || r.visitId || r.id, index)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {r.photoUrl || r.facePhoto ? (
+                            <img src={r.photoUrl || r.facePhoto} alt="Visitor" className="w-10 h-10 object-cover rounded-lg border border-gray-100" />
+                          ) : (
+                            <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center text-gray-400 text-xs font-bold">
+                              {(r.visitorName || r.fullName || 'V').charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 font-semibold text-gray-900">{r.visitorName || r.fullName}</td>
+                        <td className="px-4 py-3 text-gray-600">{r.companyName || r.visitingCompany || 'Forge India Connect Private Limited'}</td>
+                        <td className="px-4 py-3 font-semibold text-gray-900">{r.hostName || r.hostEmployee || 'Direct Visits'}</td>
+                        <td className="px-4 py-3 text-gray-600">{r.purpose || r.visitPurpose || 'Meeting'}</td>
+                        <td className="px-4 py-3 text-gray-600">{formatDisplayDate(r.visitDate)}</td>
+                        <td className="px-4 py-3 text-gray-600">{r.expectedArrivalTime || r.expectedTime || '10:00 AM'}</td>
+                        <td className="px-4 py-3">
+                          <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(r.status)}`}>
+                            {r.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-500">{r.checkInTime ? new Date(r.checkInTime).toLocaleString() : 'N/A'}</td>
+                        <td className="px-4 py-3 text-gray-500">{r.checkOutTime ? new Date(r.checkOutTime).toLocaleString() : 'N/A'}</td>
+                        <td className="px-4 py-3 text-indigo-600 font-semibold font-mono text-xs">{calculateDuration(r.checkInTime, r.checkOutTime)}</td>
+                        <td className="px-4 py-3 text-gray-500 max-w-[200px] truncate" title={r.remarks || r.exitNotes || r.notes || r.checkoutNotes}>
+                          {r.remarks || r.exitNotes || r.notes || r.checkoutNotes || 'N/A'}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : (
+          /* REGULAR DIRECT VISIT TABLE VIEW */
+          <div>
+            <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row justify-between gap-4">
+              <div className="relative flex-1 max-w-md">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Search size={18} className="text-gray-400" />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Search visitors or company..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[var(--color-brand-indigo)] focus:border-transparent outline-none text-sm"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <input 
+                  type="date" 
+                  value={dateFilter}
+                  onChange={(e) => setDateFilter(e.target.value)}
+                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-indigo)]"
+                />
+                {dateFilter && (
+                  <button 
+                    onClick={() => setDateFilter('')}
+                    className="text-gray-400 hover:text-gray-600"
+                    title="Clear Date Filter"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+              <div className="relative">
+                <button 
+                  onClick={() => setIsFilterOpen(!isFilterOpen)}
+                  className={`flex items-center space-x-2 px-4 py-2 border rounded-lg text-sm font-medium transition-colors ${isFilterOpen || statusFilter !== 'All' ? 'border-[var(--color-brand-indigo)] text-[var(--color-brand-indigo)] bg-indigo-50' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                >
+                  <Filter size={18} />
+                  <span>{statusFilter !== 'All' ? statusFilter : 'Filters'}</span>
+                </button>
+                
+                {isFilterOpen && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-200 z-50 overflow-hidden">
+                    <div className="p-2 space-y-1">
+                      {['All', 'Pending', 'Approved', 'Checked In', 'Checked Out', 'Rejected', 'Reports'].map((status) => (
+                        <button
+                          key={status}
+                          onClick={() => {
+                            setStatusFilter(status);
+                            setIsFilterOpen(false);
+                          }}
+                          className={`block w-full text-left px-4 py-2 text-sm rounded-lg transition-colors ${statusFilter === status ? 'bg-indigo-50 text-[var(--color-brand-indigo)] font-semibold' : 'text-gray-700 hover:bg-slate-50'}`}
+                        >
+                          {status === 'All' ? 'All Statuses' : status}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="overflow-x-auto min-h-[400px]">
+              <table className="w-full text-left border-collapse min-w-[1000px]">
             <thead>
               <tr className="bg-slate-50 text-gray-500 text-xs uppercase tracking-wider">
                 <th className="px-6 py-4 font-medium">Visitor</th>
@@ -234,12 +549,19 @@ const VisitorList = () => {
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">{visitor.companyName}</td>
                   <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">{visitor.hostName}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">{visitor.visitDate}</td>
+                  <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">{formatDisplayDate(visitor.visitDate)}</td>
                   <td className="px-6 py-4">
-                    {visitor.status === 'Exited' ? (
-                      <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-bold border border-gray-200 flex items-center gap-1 w-max">
-                        <span className="text-[10px]">🚪</span> Checked Out
-                      </span>
+                    {visitor.status === 'Exited' || visitor.status === 'CHECKED_OUT' || visitor.status === 'Checked Out' ? (
+                      <div className="flex flex-col gap-1">
+                        <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-bold border border-gray-200 flex items-center gap-1 w-max">
+                          <span className="text-[10px]">🚪</span> Checked Out
+                        </span>
+                        {(visitor.remarks || visitor.exitNotes || visitor.notes || visitor.checkoutNotes) && (
+                          <span className="text-[11px] font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/70 max-w-[220px] truncate block" title={visitor.remarks || visitor.exitNotes || visitor.notes || visitor.checkoutNotes}>
+                            📝 {visitor.remarks || visitor.exitNotes || visitor.notes || visitor.checkoutNotes}
+                          </span>
+                        )}
+                      </div>
                     ) : visitor.currentZone ? (
                       <span className="px-3 py-1 bg-indigo-100 text-[var(--color-brand-indigo)] rounded-full text-xs font-bold border border-indigo-200 flex items-center gap-1 w-max">
                         <span className="text-[10px]">📍</span> {visitor.currentZone}
@@ -330,6 +652,8 @@ const VisitorList = () => {
           </table>
         </div>
       </div>
+    )}
+  </div>
 
       {/* QR Code Modal */}
       {selectedVisitorQR && (
@@ -367,81 +691,7 @@ const VisitorList = () => {
         </div>
       )}
 
-      {/* Zone History Modal */}
-      {selectedVisitorHistory && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl relative">
-            <button 
-              onClick={() => setSelectedVisitorHistory(null)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-full p-1 transition-colors"
-            >
-              <X size={20} />
-            </button>
-            
-            <h2 className="text-xl font-bold text-gray-900 mb-1">Zone Movement History</h2>
-            <p className="text-gray-500 text-sm mb-6">Tracking log for {selectedVisitorHistory.visitorName} ({selectedVisitorHistory.visitId})</p>
-            
-            <div className="overflow-x-auto bg-slate-50 rounded-xl border border-gray-100">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="bg-slate-100 text-gray-500 text-xs uppercase tracking-wider">
-                    <th className="px-4 py-3 font-medium">Zone</th>
-                    <th className="px-4 py-3 font-medium">Entry Time</th>
-                    <th className="px-4 py-3 font-medium">Exit Time</th>
-                    <th className="px-4 py-3 font-medium">Duration</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 bg-white">
-                  {selectedVisitorHistory.zoneLogs && selectedVisitorHistory.zoneLogs.length > 0 ? (
-                    selectedVisitorHistory.zoneLogs.map((log, index) => (
-                      <tr key={index} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-4 py-3 font-medium text-gray-900">{log.zoneName}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {new Date(log.entryTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {log.exitTime ? new Date(log.exitTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }) : <span className="text-green-600 font-semibold">Active</span>}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">
-                          {log.durationMinutes !== undefined ? `${log.durationMinutes} min` : '-'}
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan="4" className="px-4 py-8 text-center text-gray-500">
-                        No movement history recorded for this visitor.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-            
-            {/* Checkout Notes Section */}
-            {selectedVisitorHistory.remarks && selectedVisitorHistory.status === 'Exited' && (
-              <div className="mt-6 bg-orange-50 border border-orange-100 rounded-xl p-4">
-                <h3 className="text-sm font-bold text-orange-900 mb-2 flex items-center gap-2">
-                  <FileText size={16} className="text-orange-600" />
-                  Visitor Checkout Notes
-                </h3>
-                <p className="text-sm text-orange-800 bg-white p-3 rounded border border-orange-100 whitespace-pre-wrap">
-                  {selectedVisitorHistory.remarks}
-                </p>
-              </div>
-            )}
-            
-            <div className="mt-6 flex justify-end">
-              <button 
-                onClick={() => setSelectedVisitorHistory(null)}
-                className="px-6 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {/* Update Zone Modal */}
       {selectedVisitorUpdateZone && (
@@ -626,7 +876,7 @@ const VisitorList = () => {
             <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50 p-4 rounded-2xl border border-slate-200">
               <div>
                 <span className="text-slate-400 font-semibold uppercase text-[10px] block">Visitor ID</span>
-                <span className="font-mono font-bold text-indigo-700 text-sm">{selectedVisitorDetails.visitId || selectedVisitorDetails.id}</span>
+                <span className="font-mono font-bold text-indigo-700 text-xs bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100/80">{formatVisitorId(selectedVisitorDetails.visitId || selectedVisitorDetails.visitorId || selectedVisitorDetails.id)}</span>
               </div>
               <div>
                 <span className="text-slate-400 font-semibold uppercase text-[10px] block">Mobile Number</span>
@@ -642,7 +892,7 @@ const VisitorList = () => {
               </div>
               <div>
                 <span className="text-slate-400 font-semibold uppercase text-[10px] block">Date & Time</span>
-                <span className="font-semibold text-slate-800">{selectedVisitorDetails.visitDate || 'Today'} @ {selectedVisitorDetails.expectedArrivalTime || '10:00 AM'}</span>
+                <span className="font-semibold text-slate-800">{formatDisplayDate(selectedVisitorDetails.visitDate)} @ {selectedVisitorDetails.expectedArrivalTime || '10:00 AM'}</span>
               </div>
               <div>
                 <span className="text-slate-400 font-semibold uppercase text-[10px] block">Branch</span>
@@ -692,6 +942,18 @@ const VisitorList = () => {
                 </div>
               </div>
             </div>
+
+            {/* Checkout / Exit Notes */}
+            {(selectedVisitorDetails.remarks || selectedVisitorDetails.exitNotes || selectedVisitorDetails.notes || selectedVisitorDetails.checkoutNotes) && (
+              <div className="bg-amber-50 p-4 rounded-2xl border border-amber-200">
+                <span className="text-xs font-bold text-amber-900 uppercase tracking-wider block mb-1 flex items-center gap-1.5">
+                  📝 Visitor Checkout / Exit Notes
+                </span>
+                <p className="text-sm font-semibold text-amber-950 bg-white p-3 rounded-xl border border-amber-200/60 whitespace-pre-wrap shadow-sm">
+                  {selectedVisitorDetails.remarks || selectedVisitorDetails.exitNotes || selectedVisitorDetails.notes || selectedVisitorDetails.checkoutNotes}
+                </p>
+              </div>
+            )}
 
             {/* QR Code Section */}
             <div className="p-4 bg-slate-900 rounded-2xl flex items-center justify-between">

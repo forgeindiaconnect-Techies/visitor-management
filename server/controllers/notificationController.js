@@ -2,88 +2,44 @@ const Notification = require('../models/Notification');
 
 exports.getNotifications = async (req, res) => {
   try {
-    const role = req.userRole;
-    let query = {};
+    const role = req.userRole || req.user?.role || 'User';
+    const userId = req.userId || req.user?.id || req.user?._id;
+    const userCompanyId = req.companyId || req.user?.companyId || 'FIC001';
 
-    // Role-based filtering based on Step 4 of user request
-    if (role === 'SaaS Super Admin') {
-      // SaaS Super Admin sees platform-level notifications AND notifications they sent
-      query.$or = [
-        { type: { $in: ['Tenant', 'Subscription', 'System', 'Branch', 'Admin', 'Announcement'] } },
-        { createdBy: 'SaaS Super Admin' },
-        { companyId: 'SYSTEM' },
-        { recipient: req.userId },
-        { recipients: req.userId }
-      ];
-    } else if (role === 'Super Admin') {
-      // Tenant Super Admin sees everything for their own company
-      query.companyId = req.companyId;
-      query.$or = [
-        { recipient: { $exists: false }, recipients: { $exists: false } },
-        { recipient: null },
-        { recipient: req.userId },
-        { recipients: req.userId }
-      ];
-    } else if (role === 'Admin' || role === 'MD' || role === 'Company Admin') {
-      // Admin sees their own branch
-      query.companyId = req.companyId;
-      query.branchId = req.branchId;
-      query.$or = [
-        { recipient: req.userId },
-        { recipients: req.userId },
-        {
-          recipient: { $exists: false },
-          recipients: { $exists: false },
-          type: { $nin: ['Attendance', 'PREBOOKING_CREATED', 'Visitor', 'visitor'] }
-        }
-      ];
-    } else if (role === 'Security') {
-      // Security sees their own branch
-      query.companyId = req.companyId;
-      query.branchId = req.branchId;
-      query.$or = [
-        { recipient: req.userId },
-        { recipients: req.userId },
-        {
-          recipient: { $exists: false },
-          recipients: { $exists: false },
-          type: { $nin: ['Attendance', 'PREBOOKING_CREATED', 'Visitor', 'visitor'] }
-        }
-      ];
-    } else {
-      // Fallback (like HR)
-      query.companyId = req.companyId;
-      query.$or = [
-        { recipient: req.userId },
-        { recipients: req.userId },
-        {
-          recipient: { $exists: false },
-          recipients: { $exists: false },
-          type: { $nin: ['Attendance', 'PREBOOKING_CREATED', 'Visitor', 'visitor'] }
-        }
-      ];
+    let orConditions = [
+      { recipient: null },
+      { recipients: { $size: 0 } },
+      { 'recipients.role': role },
+      { recipientRole: role },
+      { targetRole: role }
+    ];
+
+    if (userId) {
+      orConditions.push({ 'recipients.userId': String(userId) });
+      orConditions.push({ recipient: String(userId) });
     }
 
-    // Explicit query overrides
-    if (req.query.companyId && role === 'SaaS Super Admin') {
-        query.companyId = req.query.companyId;
-    }
-    
-    if (req.query.branchId || req.query.branch) {
-      const b = req.query.branchId || req.query.branch;
-      if (role === 'SaaS Super Admin' || role === 'Super Admin') {
-         query.branchId = b;
-      }
-    }
-    
-    if (req.query.type) {
-      query.type = req.query.type;
+    if (role === 'Super Admin' || role === 'SaaS Super Admin' || role === 'MD') {
+      orConditions.push({ companyId: { $in: [userCompanyId, 'FIC001', 'SYSTEM', null] } });
     }
 
-    const notifications = await Notification.find(query).sort({ createdAt: -1 });
-    res.status(200).json(notifications);
+    const notifications = await Notification.find({
+      $or: orConditions
+    })
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      notifications
+    });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Error fetching notifications:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Unable to load notifications'
+    });
   }
 };
 
@@ -147,21 +103,45 @@ exports.deleteNotification = async (req, res) => {
   }
 };
 
-exports.clearAllNotifications = async (req, res) => {
+exports.registerFcmToken = async (req, res) => {
   try {
-    const { role, companyId: userCompanyId, branch: userBranch } = req.user || {};
-    let query = {};
-
-    if (role !== 'SaaS Super Admin' && role !== 'Super Admin') {
-       query.companyId = req.companyId || userCompanyId;
-       if (role === 'Branch Admin' || role === 'Security') {
-         query.branchId = userBranch;
-       }
+    const { token } = req.body;
+    if (!token) {
+      return res.status(400).json({ success: false, message: 'FCM token is required.' });
     }
 
-    await Notification.deleteMany(query);
-    res.status(200).json({ message: 'All notifications cleared' });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+    const userId = req.userId || req.user?.id || req.user?._id;
+    const role = req.userRole || req.user?.role || 'User';
+
+    if (userId) {
+      const User = require('../models/User');
+      await User.findByIdAndUpdate(userId, {
+        fcmToken: token,
+        $addToSet: {
+          fcmTokens: {
+            token,
+            createdAt: new Date(),
+            lastUsedAt: new Date()
+          }
+        }
+      });
+
+      const FCMToken = require('../models/FCMToken');
+      await FCMToken.findOneAndUpdate(
+        { token },
+        {
+          userId,
+          role,
+          token,
+          lastUsedAt: new Date()
+        },
+        { upsert: true, new: true }
+      );
+    }
+
+    return res.status(200).json({ success: true, message: 'FCM token registered successfully.' });
+  } catch (err) {
+    console.error('Error registering FCM token:', err);
+    return res.status(500).json({ success: false, message: err.message });
   }
 };

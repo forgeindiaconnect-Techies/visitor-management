@@ -86,12 +86,15 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
       }
 
       // If notification has a recipient or recipients list, verify match
-      const currentUserId = user?.id || user?._id;
-      if (notification.recipients && Array.isArray(notification.recipients)) {
-        if (!notification.recipients.includes(currentUserId)) {
+      const currentUserId = String(user?.id || user?._id || '');
+      const currentUserRole = user?.role || '';
+      
+      if (notification.recipients && Array.isArray(notification.recipients) && notification.recipients.length > 0) {
+        const matchesUser = notification.recipients.some(r => String(r) === currentUserId || String(r) === currentUserRole);
+        if (!matchesUser && notification.recipient && String(notification.recipient) !== currentUserId) {
           return;
         }
-      } else if (notification.recipient && notification.recipient !== currentUserId) {
+      } else if (notification.recipient && String(notification.recipient) !== currentUserId && String(notification.recipient) !== currentUserRole) {
         return;
       }
 

@@ -37,6 +37,7 @@ const PreBookingForm = () => {
   const [existingVisitorMatch, setExistingVisitorMatch] = useState(null);
   const [showQRModal, setShowQRModal] = useState(false);
   const [blacklistedVisitor, setBlacklistedVisitor] = useState(null);
+  const [mobileError, setMobileError] = useState('');
 
   const [formData, setFormData] = useState({
     visitorName: '',
@@ -85,11 +86,22 @@ const PreBookingForm = () => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    let cleanVal = value;
+    if (name === 'mobileNumber') {
+      cleanVal = value.replace(/\D/g, '').slice(0, 10);
+      if (cleanVal.length === 0) {
+        setMobileError("");
+      } else if (!/^[6-9]\d{9}$/.test(cleanVal)) {
+        setMobileError("Enter a valid 10-digit mobile number starting with 6, 7, 8, or 9.");
+      } else {
+        setMobileError("");
+      }
+    }
+    setFormData(prev => ({ ...prev, [name]: cleanVal }));
 
-    if (name === 'mobileNumber' && value.length >= 10) {
-      checkBlacklist(value);
-      const existing = allVisitors.find(v => v.mobileNumber === value);
+    if (name === 'mobileNumber' && cleanVal.length >= 10) {
+      checkBlacklist(cleanVal);
+      const existing = allVisitors.find(v => v.mobileNumber === cleanVal);
       if (existing) {
         setExistingVisitorMatch(existing);
       } else {
@@ -139,6 +151,15 @@ const PreBookingForm = () => {
     if (uploadingDoc) {
       addNotification('Action Required', 'Please wait for document upload to finish.', 'warning');
       return;
+    }
+
+    const mobileRegex = /^[6-9]\d{9}$/;
+    if (!mobileRegex.test((formData.mobileNumber || '').trim())) {
+      setMobileError('Enter a valid 10-digit mobile number starting with 6, 7, 8, or 9.');
+      addNotification('Validation Error', 'Please enter a valid 10-digit mobile number starting with 6, 7, 8, or 9.', 'error');
+      return;
+    } else {
+      setMobileError('');
     }
 
     if (user?.role === 'Super Admin' && !formData.branch && activeBranch === 'All Branches') {
@@ -269,12 +290,19 @@ const PreBookingForm = () => {
                 <input 
                   required 
                   type="tel" 
+                  inputMode="numeric"
+                  maxLength={10}
                   name="mobileNumber" 
                   value={formData.mobileNumber} 
                   onChange={handleChange} 
-                  className={inputClassName} 
-                  placeholder="e.g., 9876543210" 
+                  className={`${inputClassName} ${mobileError ? 'border-red-500 focus:ring-red-500' : ''}`} 
+                  placeholder="Enter 10-digit mobile number" 
                 />
+                {mobileError && (
+                  <p className="text-red-500 text-xs mt-1 font-semibold flex items-center gap-1">
+                    ⚠️ {mobileError}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Email Address</label>

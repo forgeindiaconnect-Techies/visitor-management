@@ -108,10 +108,23 @@ export const VisitorProvider = ({ children }) => {
         };
       });
 
-      const mergedData = [...visitorsData, ...normalizedPreBookings];
-      
-      // Sort by newest first
-      mergedData.sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date));
+      // Sort newest first before deduplication
+      const allCombined = [...visitorsData, ...normalizedPreBookings].sort(
+        (a, b) => new Date(b.createdAt || b.date || b.visitDate || 0) - new Date(a.createdAt || a.date || a.visitDate || 0)
+      );
+
+      // Deduplicate strictly by Document ID (preventing cross-endpoint duplication of the exact same document)
+      const seenIds = new Set();
+      const mergedData = [];
+
+      for (const item of allCombined) {
+        const idKey = String(item._id || item.id || item.visitorId || '');
+
+        if (idKey && seenIds.has(idKey)) continue;
+
+        if (idKey) seenIds.add(idKey);
+        mergedData.push(item);
+      }
 
       if (allVisitorsRef.current.length > 0) {
         const existingIds = new Set(allVisitorsRef.current.map(v => v._id || v.id));

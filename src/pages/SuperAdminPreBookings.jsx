@@ -36,6 +36,14 @@ export default function SuperAdminPreBookings() {
   const [reportDateFilter, setReportDateFilter] = useState("");
   const [reportHrFilter, setReportHrFilter] = useState("ALL");
   const [hrUsers, setHrUsers] = useState([]);
+  const formatVisitorId = (rawId, index = 0) => {
+    if (!rawId) return `VIS-${1001 + index}`;
+    const str = String(rawId).trim();
+    if (str.startsWith('VIS-') || str.startsWith('VISIT-') || str.startsWith('VIS')) {
+      return str.toUpperCase();
+    }
+    return `VIS-${str}`;
+  };
 
   const fetchReports = async () => {
     try {
@@ -312,7 +320,15 @@ export default function SuperAdminPreBookings() {
 
     const matchesDate = !dateFilter || (item.visitDate && item.visitDate.startsWith(dateFilter));
 
-    return matchesQuery && matchesStatus && matchesDate;
+    const isDirectVisit = item.hostEmployee === "Direct Visits" || 
+                          item.hostEmployee === "Direct Visit" || 
+                          item.hostName === "Direct Visits" || 
+                          item.hostName === "Direct Visit" || 
+                          item.visitorType === "NEW_VISITOR" ||
+                          item.registrationType === "Direct Visit" ||
+                          item.visitType === "DIRECT_VISIT";
+
+    return matchesQuery && matchesStatus && matchesDate && !isDirectVisit;
   });
 
   const approveVisitor = async (id) => {
@@ -579,7 +595,11 @@ export default function SuperAdminPreBookings() {
                         onClick={() => setSelectedVisitor(r)}
                         className="hover:bg-indigo-50/20 cursor-pointer transition-colors"
                       >
-                        <td className="px-4 py-3 font-mono font-bold text-gray-700">{r.visitorId}</td>
+                        <td className="px-4 py-3">
+                          <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-100 text-xs shadow-xs">
+                            {formatVisitorId(r.visitorId, index)}
+                          </span>
+                        </td>
                         <td className="px-4 py-3">
                           {r.facePhoto ? (
                             <img src={r.facePhoto} alt="Visitor" className="w-10 h-10 object-cover rounded-lg border border-gray-100" />
@@ -728,7 +748,7 @@ export default function SuperAdminPreBookings() {
                   </td>
                 </tr>
               ) : (
-                filteredPreBookings.map((visitor) => {
+                filteredPreBookings.map((visitor, index) => {
                   const id = visitor._id || visitor.id;
                   return (
                     <tr key={id} className="hover:bg-slate-50/50 transition-colors">
@@ -750,7 +770,7 @@ export default function SuperAdminPreBookings() {
                             <div className="flex items-center gap-2">
                               <p className="font-semibold text-gray-900 text-sm">{visitor.fullName || 'Unknown'}</p>
                               <span className="text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded font-mono font-bold tracking-wider">
-                                {visitor.visitorId || 'PRE-BOOKED'}
+                                {formatVisitorId(visitor.visitorId || visitor.visitId || visitor.id, index)}
                               </span>
                             </div>
                             <div className="flex flex-col items-start mt-0.5 gap-0.5">
@@ -939,7 +959,12 @@ export default function SuperAdminPreBookings() {
                 )}
 
                 <div className="space-y-2 text-center sm:text-left">
-                  <h4 className="text-xl font-bold text-gray-900">{selectedVisitor.fullName}</h4>
+                  <div className="flex items-center gap-2 justify-center sm:justify-start flex-wrap">
+                    <h4 className="text-xl font-bold text-gray-900">{selectedVisitor.fullName}</h4>
+                    <span className="font-mono font-bold text-indigo-700 text-xs bg-indigo-50 px-2.5 py-0.5 rounded border border-indigo-100">
+                      {formatVisitorId(selectedVisitor.visitorId || selectedVisitor.visitId || selectedVisitor._id)}
+                    </span>
+                  </div>
                   <p className="text-sm text-gray-500 font-medium">📞 {selectedVisitor.mobileNumber}</p>
                   <p className="text-sm text-gray-500 font-medium">✉️ {selectedVisitor.email || '-'}</p>
                   <div>{getStatusBadge(selectedVisitor.status)}</div>

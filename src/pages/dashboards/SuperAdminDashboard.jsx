@@ -246,7 +246,7 @@ const SuperAdminDashboard = () => {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-        <DashboardCard onClick={() => navigate('/visitors')} title="Walk-in Visitors" value={totalWalkIns} icon={Users} colorClass="bg-blue-100 text-blue-600" />
+        <DashboardCard onClick={() => navigate('/visitors')} title="Total Visitors" value={visitors.length} icon={Users} colorClass="bg-blue-100 text-blue-600" />
         <DashboardCard onClick={() => navigate('/pre-bookings')} title="Pre-Bookings" value={totalPreBookings} icon={Users} colorClass="bg-indigo-100 text-indigo-600" />
         <DashboardCard onClick={() => navigate('/tracking')} title="Visitors Inside" value={insideVisitors.length} icon={UserCheck} colorClass="bg-green-100 text-green-600" />
         <DashboardCard onClick={() => navigate('/approvals')} title="Pending Approvals" value={pendingApprovals} icon={Clock} colorClass="bg-orange-100 text-orange-600" />
@@ -289,8 +289,16 @@ const SuperAdminDashboard = () => {
                       <td className="px-6 py-4 text-sm text-gray-600">{visitor.branch}</td>
                       <td className="px-6 py-4 text-sm text-gray-600">{visitor.purpose}</td>
                       <td className="px-6 py-4">
-                        <div className="text-sm font-medium text-gray-900">{visitor.entryTime || '-'}</div>
-                        <div className="text-xs text-gray-500">{visitor.visitDate || '-'}</div>
+                        <div className="text-sm font-semibold text-gray-900">
+                          {visitor.checkInTime 
+                            ? new Date(visitor.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })
+                            : (visitor.entryTime && visitor.entryTime !== '-' ? visitor.entryTime : 'Not Checked In')}
+                        </div>
+                        <div className="text-xs text-gray-500 font-mono">
+                          {visitor.checkInTime 
+                            ? new Date(visitor.checkInTime).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                            : (visitor.visitDate ? (visitor.visitDate.includes('T') ? visitor.visitDate.split('T')[0] : visitor.visitDate) : '-')}
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-600 font-mono">{visitor.exitTime || '-'}</td>
                       <td className="px-6 py-4">

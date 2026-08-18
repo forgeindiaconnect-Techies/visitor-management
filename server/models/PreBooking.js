@@ -52,6 +52,7 @@ const preBookingSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
+      match: [/^[6-9]\d{9}$/, "Please enter a valid 10-digit mobile number starting with 6, 7, 8, or 9"]
     },
 
     email: {

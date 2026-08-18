@@ -67,6 +67,7 @@ const PublicPreBooking = () => {
   const [uploadingIdProof, setUploadingIdProof] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [mobileError, setMobileError] = useState('');
   const [alreadyRegisteredModal, setAlreadyRegisteredModal] = useState(false);
   const [preBookResult, setPreBookResult] = useState(null);
   const [step, setStep] = useState(1); // 1: Form, 2: Success QR Pass
@@ -104,7 +105,21 @@ const PublicPreBooking = () => {
   }, [API_BASE]);
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    if (name === 'mobileNumber') {
+      const cleanVal = value.replace(/\D/g, '').slice(0, 10);
+      setFormData(prev => ({ ...prev, [name]: cleanVal }));
+
+      if (cleanVal.length === 0) {
+        setMobileError("");
+      } else if (!/^[6-9]\d{9}$/.test(cleanVal)) {
+        setMobileError("Enter a valid 10-digit mobile number starting with 6, 7, 8, or 9.");
+      } else {
+        setMobileError("");
+      }
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
   };
 
   const handleIdProofChange = async (e) => {
@@ -157,9 +172,13 @@ const PublicPreBooking = () => {
       setErrorMsg('Please enter your full name.');
       return;
     }
-    if (!formData.mobileNumber.trim() || formData.mobileNumber.length < 10) {
-      setErrorMsg('Please enter a valid 10-digit mobile number.');
+    const mobileRegex = /^[6-9]\d{9}$/;
+    if (!mobileRegex.test(formData.mobileNumber.trim())) {
+      setMobileError('Enter a valid 10-digit mobile number starting with 6, 7, 8, or 9.');
+      setErrorMsg('Enter a valid 10-digit mobile number starting with 6, 7, 8, or 9.');
       return;
+    } else {
+      setMobileError('');
     }
     if (!capturedPhoto) {
       setErrorMsg('Face photo capture is mandatory to pre-book a visit pass.');
@@ -395,14 +414,21 @@ const PublicPreBooking = () => {
                   <Phone className="w-4 h-4 absolute left-3.5 top-3.5 text-[var(--color-brand-indigo)]" />
                   <input
                     type="tel"
+                    inputMode="numeric"
+                    maxLength={10}
                     name="mobileNumber"
                     value={formData.mobileNumber}
                     onChange={handleChange}
-                    placeholder="10-digit phone number"
-                    className={inputClassName}
+                    placeholder="Enter 10-digit mobile number"
+                    className={`${inputClassName} ${mobileError ? 'border-red-500 focus:ring-red-500' : ''}`}
                     required
                   />
                 </div>
+                {mobileError && (
+                  <p className="text-red-500 text-xs mt-1 font-semibold flex items-center gap-1">
+                    ⚠️ {mobileError}
+                  </p>
+                )}
               </div>
             </div>
 

@@ -7,6 +7,7 @@ import { Users, UserCheck, QrCode, ShieldAlert, Ban, Search, Clock, AlertTriangl
 import Webcam from 'react-webcam';
 import { Html5Qrcode } from 'html5-qrcode';
 import { useNavigate } from 'react-router-dom';
+import { io } from 'socket.io-client';
 import { calculateTimeSpent } from '../../utils/timeUtils';
 import { useAttendance } from '../../context/AttendanceContext';
 import TodaysVisitorsCard from '../../components/dashboard/TodaysVisitorsCard';
@@ -52,7 +53,46 @@ const SecurityDashboard = () => {
   const [qrScannerError, setQrScannerError] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
 
-  // Pre-Booking Search & Verification State
+  // Real-Time Socket.IO Synchronization Effect
+  useEffect(() => {
+    const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+    const socket = io(API_URL, { transports: ['websocket', 'polling'] });
+
+    socket.on('visitor-status-updated', (data) => {
+      console.log('⚡ Real-time visitor status update received:', data);
+
+      if (data.visitorType === 'PRE_BOOKING') {
+        if (typeof fetchPbList === 'function') fetchPbList();
+      } else if (data.visitorType === 'DIRECT_VISIT') {
+        if (typeof fetchVisitors === 'function') fetchVisitors();
+      }
+
+      setPbVisitor((current) => {
+        if (!current) return current;
+        const currentTargetId = current._id || current.id || current.visitorId || current.visitId;
+        if (String(currentTargetId) !== String(data.visitorId) && String(current.visitorId) !== String(data.visitorId)) {
+          return current;
+        }
+        return {
+          ...current,
+          status: data.status,
+          ...(data.visitor ? {
+            checkInTime: data.visitor.checkInTime || current.checkInTime,
+            checkOutTime: data.visitor.checkOutTime || current.checkOutTime
+          } : {})
+        };
+      });
+    });
+
+    socket.on('visitor:status-updated', (data) => {
+      if (typeof fetchPbList === 'function') fetchPbList();
+      if (typeof fetchVisitors === 'function') fetchVisitors();
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
   const [pbSearchQuery, setPbSearchQuery] = useState('');
   const [pbVisitor, setPbVisitor] = useState(null);
   const [pbSearchLoading, setPbSearchLoading] = useState(false);
@@ -63,36 +103,51 @@ const SecurityDashboard = () => {
 
   const handlePbSearch = async (e) => {
     if (e) e.preventDefault();
-    if (!pbSearchQuery.trim()) return;
+    const cleanQuery = pbSearchQuery.trim();
+    if (!cleanQuery) {
+      setPbSearchError('Please enter a Visitor ID or mobile number.');
+      return;
+    }
 
     setPbSearchLoading(true);
     setPbSearchError('');
     setPbVisitor(null);
 
-    const cleanQuery = pbSearchQuery.trim();
     try {
       const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+      const reqHeaders = {
+        'x-company-id': user?.companyId || 'FIC001',
+        'Authorization': user?.token ? `Bearer ${user.token}` : `Bearer ${localStorage.getItem('token')}`
+      };
 
-      let response = await fetch(`${API_URL}/api/prebookings/visitor/${encodeURIComponent(cleanQuery)}`);
+      const isMobile = /^\d{10}$/.test(cleanQuery);
+      const paramKey = isMobile ? 'mobile' : 'visitorId';
+
+      let response = await fetch(`${API_URL}/api/security/visitor/search?${paramKey}=${encodeURIComponent(cleanQuery)}`, { headers: reqHeaders });
+      
       if (!response.ok) {
-        response = await fetch(`${API_URL}/api/visitors/search/${encodeURIComponent(cleanQuery)}`);
+        response = await fetch(`${API_URL}/api/security/visitor/search?query=${encodeURIComponent(cleanQuery)}`, { headers: reqHeaders });
       }
       if (!response.ok) {
-        response = await fetch(`${API_URL}/api/pass-lookup/${encodeURIComponent(cleanQuery)}`);
+        response = await fetch(`${API_URL}/api/prebookings/visitor/${encodeURIComponent(cleanQuery)}`, { headers: reqHeaders });
       }
 
       if (response.ok) {
         const json = await response.json();
-        const raw = json.data || json;
+        const vType = json.visitorType || (json.data?.bookingType === 'DIRECT_VISIT' ? 'DIRECT_VISIT' : 'PRE_BOOKING');
+        const raw = json.visitor || json.data || json;
+
         setPbVisitor({
           id: raw._id || raw.id,
           _id: raw._id || raw.id,
           visitorId: raw.visitorId || raw.visitId || raw._id,
-          fullName: raw.fullName || raw.visitorName || 'Visitor',
-          mobileNumber: raw.mobileNumber || '-',
+          visitorType: vType,
+          fullName: raw.fullName || raw.visitorName || raw.name || 'Visitor',
+          name: raw.fullName || raw.visitorName || raw.name || 'Visitor',
+          mobileNumber: raw.mobileNumber || raw.mobile || '-',
           email: raw.email || '-',
           visitingCompany: raw.visitingCompany || raw.companyName || 'Forge India Connect Private Limited',
-          hostEmployee: raw.hostEmployee || raw.hostName || 'Staff',
+          hostEmployee: raw.hostEmployee || raw.hostName || raw.host || 'Staff',
           visitPurpose: raw.visitPurpose || raw.purpose || 'Official Visit',
           visitDate: raw.visitDate || new Date().toISOString().split('T')[0],
           expectedTime: raw.expectedTime || raw.expectedArrivalTime || '10:00 AM',
@@ -107,7 +162,12 @@ const SecurityDashboard = () => {
           checkOutNotes: raw.checkOutNotes || raw.exitNotes || ''
         });
       } else {
-        setPbSearchError(`Visitor not found for "${cleanQuery}".`);
+        const errJson = await response.json().catch(() => ({}));
+        if (errJson.code === 'VISITOR_NOT_FOUND' || response.status === 404) {
+          setPbSearchError('Visitor not found.');
+        } else {
+          setPbSearchError(errJson.message || 'Unable to search visitor.');
+        }
       }
     } catch (err) {
       setPbSearchError('Search failed. Check server connection.');
@@ -116,79 +176,61 @@ const SecurityDashboard = () => {
     }
   };
 
-  // Approval and Rejection actions removed from Security Dashboard 
-  // as per permission-based approval system
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState('');
+  const [actionSuccess, setActionSuccess] = useState('');
 
-  const handlePbCheckIn = async () => {
+  const handleVisitorAction = async (action) => {
     if (!pbVisitor) return;
 
     try {
+      setActionLoading(true);
+      setActionError('');
+      setActionSuccess('');
+
       const targetId = pbVisitor._id || pbVisitor.id || pbVisitor.visitId || pbVisitor.visitorId;
       const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
 
-      const response = await fetch(`${API_URL}/api/visitors/${encodeURIComponent(targetId)}/check-in`, {
+      const response = await fetch(`${API_URL}/api/security/visitor/action`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': user?.token ? `Bearer ${user.token}` : ''
-        }
-      });
-      
-      const data = await response.json();
-      
-      if (response.ok && data.success) {
-        setPbVisitor(prev => ({
-          ...prev,
-          status: 'CHECKED_IN',
-          checkInTime: new Date(),
-          checkInBy: 'Security'
-        }));
-        alert('✅ Visitor checked in successfully.');
-        addNotification('Check-In Success', `${pbVisitor.fullName} is now checked in.`, 'success');
-      } else {
-        alert(`❌ Check-In failed: ${data.message || 'Unknown error'}`);
-      }
-    } catch (err) {
-      alert('Failed to execute Check-In.');
-    }
-  };
-
-  const handlePbCheckOut = async (e) => {
-    e.preventDefault();
-    setCheckoutError('');
-
-    try {
-      const targetId = pbVisitor._id || pbVisitor.id || pbVisitor.visitId || pbVisitor.visitorId;
-      const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
-
-      const response = await fetch(`${API_URL}/api/visitors/${encodeURIComponent(targetId)}/check-out`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': user?.token ? `Bearer ${user.token}` : ''
+          'Authorization': user?.token ? `Bearer ${user.token}` : `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify({ exitNotes: checkoutNotes.trim() })
+        body: JSON.stringify({
+          visitorId: targetId,
+          visitorType: pbVisitor.visitorType || 'PRE_BOOKING',
+          action,
+          notes: action === 'CHECK_OUT' ? checkoutNotes.trim() : undefined
+        })
       });
-      
+
       const data = await response.json();
-      
+
       if (response.ok && data.success) {
+        const newStatus = action === 'CHECK_IN' ? (pbVisitor.visitorType === 'DIRECT_VISIT' ? 'Checked In' : 'CHECKED_IN') : (pbVisitor.visitorType === 'DIRECT_VISIT' ? 'Checked Out' : 'CHECKED_OUT');
         setPbVisitor(prev => ({
           ...prev,
-          status: 'CHECKED_OUT',
-          checkOutTime: new Date(),
-          checkOutBy: 'Security',
-          checkOutNotes: checkoutNotes.trim()
+          status: newStatus,
+          ...(action === 'CHECK_IN' ? { checkInTime: new Date(), checkInBy: 'Security' } : { checkOutTime: new Date(), checkOutBy: 'Security', checkOutNotes: checkoutNotes.trim() })
         }));
-        setShowCheckoutModal(false);
-        setCheckoutNotes('');
-        alert('✅ Visitor checked out successfully.');
-        addNotification('Check-Out Success', `${pbVisitor.fullName} checked out.`, 'success');
+        setActionSuccess(data.message || `Visitor ${action === 'CHECK_IN' ? 'checked in' : 'checked out'} successfully.`);
+        if (action === 'CHECK_OUT') setShowCheckoutModal(false);
+        addNotification(action === 'CHECK_IN' ? 'Check-In Success' : 'Check-Out Success', `${pbVisitor.fullName} ${action === 'CHECK_IN' ? 'is now checked in.' : 'has checked out.'}`, 'success');
+
+        // Automatically refresh corresponding tab data
+        if (data.visitorType === 'PRE_BOOKING' || pbVisitor.visitorType === 'PRE_BOOKING') {
+          if (typeof fetchPbList === 'function') fetchPbList();
+        } else {
+          if (typeof fetchVisitors === 'function') fetchVisitors();
+        }
       } else {
-        setCheckoutError(data.message || 'Check-out failed.');
+        setActionError(data.message || 'Unable to update visitor status.');
       }
     } catch (err) {
-      setCheckoutError('Failed to execute Check-Out.');
+      setActionError('Failed to execute security action. Check server connection.');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -352,8 +394,10 @@ const SecurityDashboard = () => {
     });
   };
 
+  const [scannerLocked, setScannerLocked] = useState(false);
+
   const processQrScan = async (scannedValue) => {
-    if (!scannedValue) return;
+    if (!scannedValue || scannerLocked) return;
 
     let cleanToken = scannedValue.trim();
     if (cleanToken.includes('/pass/')) {
@@ -361,6 +405,9 @@ const SecurityDashboard = () => {
       cleanToken = parts[parts.length - 1];
     }
     cleanToken = cleanToken.trim();
+    if (!cleanToken) return;
+
+    setScannerLocked(true);
 
     try {
       setPbSearchLoading(true);
@@ -368,47 +415,64 @@ const SecurityDashboard = () => {
       setPbVisitor(null);
 
       const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+      const reqHeaders = {
+        'x-company-id': user?.companyId || 'FIC001',
+        'Authorization': user?.token ? `Bearer ${user.token}` : `Bearer ${localStorage.getItem('token')}`
+      };
 
-      const response = await fetch(`${API_URL}/api/visitors/scan-pass`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ passToken: cleanToken })
-      });
-
-      const json = await response.json();
+      let response = await fetch(`${API_URL}/api/security/visitor/search?qrToken=${encodeURIComponent(cleanToken)}`, { headers: reqHeaders });
       
-      if (response.ok && json.valid) {
-        const raw = json.visitor;
+      if (!response.ok) {
+        response = await fetch(`${API_URL}/api/security/visitor/search?query=${encodeURIComponent(cleanToken)}`, { headers: reqHeaders });
+      }
+      if (!response.ok) {
+        response = await fetch(`${API_URL}/api/visitors/scan-pass`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ passToken: cleanToken })
+        });
+      }
+
+      if (response.ok) {
+        const json = await response.json();
+        const vType = json.visitorType || (json.visitor?.visitorType || (json.data?.bookingType === 'DIRECT_VISIT' ? 'DIRECT_VISIT' : 'PRE_BOOKING'));
+        const raw = json.visitor || json.data || json;
+
         setPbVisitor({
           id: raw._id || raw.id,
           _id: raw._id || raw.id,
           visitorId: raw.visitorId || raw.visitId || raw._id,
-          fullName: raw.fullName || raw.visitorName || 'Visitor',
-          mobileNumber: raw.mobileNumber || '-',
+          visitorType: vType,
+          fullName: raw.fullName || raw.visitorName || raw.name || 'Visitor',
+          name: raw.fullName || raw.visitorName || raw.name || 'Visitor',
+          mobileNumber: raw.mobileNumber || raw.mobile || '-',
           email: raw.email || '-',
           visitingCompany: raw.visitingCompany || raw.companyName || 'Forge India Connect Private Limited',
-          hostEmployee: raw.hostEmployee || raw.hostName || 'Staff',
+          hostEmployee: raw.hostEmployee || raw.hostName || raw.host || 'Staff',
           visitPurpose: raw.visitPurpose || raw.purpose || 'Official Visit',
-          visitDate: raw.visitDate || raw.appointmentDate || new Date().toISOString().split('T')[0],
-          expectedTime: raw.expectedTime || raw.appointmentTime || raw.expectedArrivalTime || '10:00 AM',
+          visitDate: raw.visitDate || new Date().toISOString().split('T')[0],
+          expectedTime: raw.expectedTime || raw.expectedArrivalTime || '10:00 AM',
           branchLocation: raw.branchLocation || raw.branch || activeBranch || 'Head Office',
           vehicleNumber: raw.vehicleNumber || '-',
           facePhoto: raw.facePhoto || raw.photoUrl || '',
-          status: raw.status || raw.approvalStatus || 'APPROVED', // Assume approved if valid
+          status: raw.status || 'PENDING',
           checkInTime: raw.checkInTime || null,
           checkInBy: raw.checkInBy || null,
           checkOutTime: raw.checkOutTime || null,
           checkOutBy: raw.checkOutBy || null,
           checkOutNotes: raw.checkOutNotes || raw.exitNotes || ''
         });
-        setActiveSubTab('prebooking');
         setShowQrModal(false);
         setQrVisitId('');
-        addNotification('QR Scan Success', `Visitor Pass verified for ${raw.fullName || raw.visitorName}`, 'success');
+        addNotification('QR Scan Success', `Visitor Pass verified for ${raw.fullName || raw.visitorName || raw.name}`, 'success');
       } else {
-        setPbSearchError(json.message || `Visitor not valid for QR token "${cleanToken}".`);
-        addNotification('QR Validation Failed', json.message || 'Pass is invalid', 'error');
-        setActiveSubTab('prebooking'); // Still open the tab so they see the error
+        const errJson = await response.json().catch(() => ({}));
+        if (errJson.code === 'VISITOR_NOT_FOUND' || response.status === 404) {
+          setPbSearchError('Visitor not found.');
+        } else {
+          setPbSearchError(errJson.message || 'Unable to find visitor.');
+        }
+        addNotification('QR Validation Failed', errJson.message || 'Visitor not found.', 'error');
         setShowQrModal(false);
       }
     } catch (err) {
@@ -417,6 +481,9 @@ const SecurityDashboard = () => {
       addNotification('Scan Error', 'Network error during QR lookup', 'error');
     } finally {
       setPbSearchLoading(false);
+      setTimeout(() => {
+        setScannerLocked(false);
+      }, 1500);
     }
   };
 
@@ -466,7 +533,7 @@ const SecurityDashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-        <DashboardCard onClick={() => navigate('/visitors')} title="Walk-in Visitors" value={visitors.filter(v => v.registrationType !== 'Pre-Booking' && !v.isPreBooking).length} icon={Users} colorClass="bg-blue-100 text-blue-600" />
+        <DashboardCard onClick={() => navigate('/visitors')} title="Total Visitors" value={visitors.length} icon={Users} colorClass="bg-blue-100 text-blue-600" />
         <DashboardCard onClick={() => navigate('/pre-bookings')} title="Pre-Bookings" value={visitors.filter(v => v.registrationType === 'Pre-Booking' || v.isPreBooking).length} icon={Users} colorClass="bg-indigo-100 text-indigo-600" />
         <DashboardCard onClick={() => navigate('/tracking')} title="Visitors Inside" value={visitorsInside.length} icon={UserCheck} colorClass="bg-green-100 text-green-600" />
         <DashboardCard onClick={() => navigate('/visitors?filter=checked-in')} title="QR Scans" value={qrScans} icon={QrCode} colorClass="bg-purple-100 text-purple-600" />
@@ -564,10 +631,10 @@ const SecurityDashboard = () => {
               {/* Pass Header */}
               <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-bold">VISITOR PASS</h3>
+                  <h3 className="text-lg font-bold">VISITOR DETAILS</h3>
                   <p className="text-xs text-slate-300">{pbVisitor.visitingCompany}</p>
                 </div>
-                <div>
+                <div className="flex items-center gap-3">
                   <span className={`px-3 py-1 rounded-full text-xs font-bold ${
                     (pbVisitor.status === 'PENDING' || pbVisitor.status === 'Pending' || pbVisitor.status === 'Pending Approval') ? 'bg-amber-100 text-amber-800' :
                     (pbVisitor.status === 'APPROVED' || pbVisitor.status === 'Approved') ? 'bg-emerald-100 text-emerald-800' :
@@ -579,6 +646,18 @@ const SecurityDashboard = () => {
                      (pbVisitor.status === 'CHECKED_IN' || pbVisitor.status === 'Checked In') ? '🟢 CHECKED IN' :
                      (pbVisitor.status === 'CHECKED_OUT' || pbVisitor.status === 'Checked Out') ? '🔵 CHECKED OUT' : pbVisitor.status}
                   </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPbVisitor(null);
+                      setPbSearchError('');
+                      setActionError('');
+                      setActionSuccess('');
+                    }}
+                    className="px-3 py-1 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer border border-white/20"
+                  >
+                    Clear
+                  </button>
                 </div>
               </div>
 
@@ -601,6 +680,19 @@ const SecurityDashboard = () => {
                     <div className="bg-gray-50 p-3.5 rounded-xl border">
                       <span className="text-xs text-gray-400 block font-medium uppercase">Visitor Number</span>
                       <span className="font-mono font-bold text-indigo-900 text-base">{pbVisitor.visitorId}</span>
+                    </div>
+
+                    <div className="bg-gray-50 p-3.5 rounded-xl border">
+                      <span className="text-xs text-gray-400 block font-medium uppercase">Visitor Type</span>
+                      {pbVisitor.visitorType === 'DIRECT_VISIT' ? (
+                        <span className="inline-block px-2.5 py-1 bg-amber-100 text-amber-800 font-bold rounded-lg text-xs border border-amber-300 mt-1">
+                          ⚡ DIRECT VISIT
+                        </span>
+                      ) : (
+                        <span className="inline-block px-2.5 py-1 bg-indigo-100 text-indigo-800 font-bold rounded-lg text-xs border border-indigo-300 mt-1">
+                          📅 PRE-BOOKING
+                        </span>
+                      )}
                     </div>
 
                     <div className="bg-gray-50 p-3.5 rounded-xl border">
@@ -667,8 +759,20 @@ const SecurityDashboard = () => {
                   </div>
                 </div>
 
+                {/* ACTION ALERTS */}
+                {actionError && (
+                  <div className="mt-3 p-3 bg-red-50 border border-red-200 text-red-700 text-sm font-semibold rounded-xl">
+                    ⚠️ {actionError}
+                  </div>
+                )}
+                {actionSuccess && (
+                  <div className="mt-3 p-3 bg-green-50 border border-green-200 text-green-700 text-sm font-semibold rounded-xl">
+                    ✅ {actionSuccess}
+                  </div>
+                )}
+
                 {/* PASS ACTION BAR */}
-                <div className="pt-4 border-t flex items-center justify-between">
+                <div className="pt-4 border-t flex items-center justify-between mt-4">
                   <span className="text-xs font-semibold text-gray-500">Status: {pbVisitor.status}</span>
 
                   <div>
@@ -687,19 +791,21 @@ const SecurityDashboard = () => {
 
                     {(pbVisitor.status === 'APPROVED' || pbVisitor.status === 'Approved' || pbVisitor.status === 'Pre-Booked') && (
                       <button
-                        onClick={handlePbCheckIn}
-                        className="px-8 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-lg transition-transform active:scale-95 text-base"
+                        onClick={() => handleVisitorAction('CHECK_IN')}
+                        disabled={actionLoading}
+                        className="px-8 py-3.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-lg transition-transform active:scale-95 text-base cursor-pointer"
                       >
-                        CHECK IN
+                        {actionLoading ? 'Processing...' : 'CHECK IN'}
                       </button>
                     )}
 
                     {(pbVisitor.status === 'CHECKED_IN' || pbVisitor.status === 'Checked In') && (
                       <button
-                        onClick={() => { setCheckoutNotes(''); setCheckoutError(''); setShowCheckoutModal(true); }}
-                        className="px-8 py-3.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-lg transition-transform active:scale-95 text-base"
+                        onClick={() => handleVisitorAction('CHECK_OUT')}
+                        disabled={actionLoading}
+                        className="px-8 py-3.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-lg transition-transform active:scale-95 text-base cursor-pointer"
                       >
-                        CHECK OUT
+                        {actionLoading ? 'Processing...' : 'CHECK OUT'}
                       </button>
                     )}
 
@@ -942,8 +1048,16 @@ const SecurityDashboard = () => {
                       {visitor.visitorCount || 1}
                     </td>
                     <td className="px-6 py-4">
-                      <div className="text-sm font-medium text-gray-900">{visitor.entryTime || '-'}</div>
-                      <div className="text-xs text-gray-500">{visitor.visitDate || '-'}</div>
+                      <div className="text-sm font-semibold text-gray-900">
+                        {visitor.checkInTime 
+                          ? new Date(visitor.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })
+                          : (visitor.entryTime && visitor.entryTime !== '-' ? visitor.entryTime : 'Not Checked In')}
+                      </div>
+                      <div className="text-xs text-gray-500 font-mono">
+                        {visitor.checkInTime 
+                          ? new Date(visitor.checkInTime).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                          : (visitor.visitDate ? (visitor.visitDate.includes('T') ? visitor.visitDate.split('T')[0] : visitor.visitDate) : '-')}
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">
                       {visitor.exitTime || '-'}

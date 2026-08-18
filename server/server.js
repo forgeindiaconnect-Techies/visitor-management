@@ -38,6 +38,14 @@ app.set('io', io);
 
 io.on('connection', (socket) => {
   console.log('⚡ Socket connected:', socket.id);
+
+  socket.on('join-notification-room', ({ userId, role }) => {
+    if (role) {
+      socket.join(`notification:${role}`);
+      console.log(`Socket ${socket.id} joined room: notification:${role}`);
+    }
+  });
+
   socket.on('disconnect', () => {
     console.log('🔌 Socket disconnected:', socket.id);
   });
@@ -131,8 +139,10 @@ const testNotification = require('./routes/testNotification');
 const approvalPermissionRoutes = require('./routes/approvalPermissionRoutes');
 const invitationsRouter = require('./routes/invitations');
 const visitorInvitationRoutes = require('./routes/visitorInvitationRoutes');
+const securityRoutes = require('./routes/securityRoutes');
 const preBookingRoutes = require('./routes/preBookingRoutes');
 
+app.use('/api/security', securityRoutes);
 app.use('/api/prebookings', preBookingRoutes);
 app.use('/api/visitors', visitorsRouter);
 
@@ -142,25 +152,43 @@ app.get('/api/pass-lookup/:visitId', async (req, res) => {
     const { visitId } = req.params;
     const Visitor = require('./models/Visitor');
     const PreBooking = require('./models/PreBooking');
-    const isValidObjectId = require('mongoose').isValidObjectId(visitId);
+    const cleanId = visitId.trim();
+    const digits = cleanId.replace(/\D/g, '');
+    const alphaNum = cleanId.replace(/[^a-zA-Z0-9]/g, '');
+    const isValidObjectId = require('mongoose').isValidObjectId(cleanId);
+    const escapedRaw = cleanId.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
 
-    let visitor = await Visitor.findOne({
-      $or: [
-        { visitId: visitId },
-        { profileId: visitId },
-        { bookingId: visitId },
-        ...(isValidObjectId ? [{ _id: visitId }] : [])
-      ]
-    });
+    const searchConditions = [
+      { visitorId: new RegExp(escapedRaw, 'i') },
+      { visitId: new RegExp(escapedRaw, 'i') },
+      { profileId: new RegExp(escapedRaw, 'i') },
+      { bookingId: new RegExp(escapedRaw, 'i') },
+      { mobileNumber: cleanId },
+      { qrToken: cleanId }
+    ];
+
+    if (alphaNum && alphaNum !== cleanId) {
+      searchConditions.push({ visitorId: new RegExp(alphaNum, 'i') });
+      searchConditions.push({ visitId: new RegExp(alphaNum, 'i') });
+      searchConditions.push({ profileId: new RegExp(alphaNum, 'i') });
+      searchConditions.push({ bookingId: new RegExp(alphaNum, 'i') });
+    }
+
+    if (digits && digits.length >= 2) {
+      searchConditions.push({ visitorId: new RegExp(`${digits}$`, 'i') });
+      searchConditions.push({ visitId: new RegExp(`${digits}$`, 'i') });
+      searchConditions.push({ profileId: new RegExp(`${digits}$`, 'i') });
+      searchConditions.push({ bookingId: new RegExp(`${digits}$`, 'i') });
+    }
+
+    if (isValidObjectId) {
+      searchConditions.push({ _id: cleanId });
+    }
+
+    let visitor = await Visitor.findOne({ $or: searchConditions });
 
     if (!visitor) {
-      const pb = await PreBooking.findOne({
-        $or: [
-          { visitorId: visitId },
-          { qrToken: visitId },
-          ...(isValidObjectId ? [{ _id: visitId }] : [])
-        ]
-      });
+      const pb = await PreBooking.findOne({ $or: searchConditions });
 
       if (pb) {
         visitor = {

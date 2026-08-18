@@ -50,6 +50,12 @@ const registrationTokenSchema = new mongoose.Schema(
     notes: {
       type: String
     },
+    dob: {
+      type: String
+    },
+    hostEmployee: {
+      type: String
+    },
     expiresAt: {
       type: Date,
       required: true

@@ -31,7 +31,7 @@ const logAction = async (req, action, targetModule, details) => {
 // 1. Create Pre-Booking Registration & Generate Token / Send Invitation
 router.post('/create', async (req, res) => {
   try {
-    const { visitorName, email, mobileNumber, companyName, purpose, visitDate, visitTime, branch, visitorCount, notes, sendEmailNow } = req.body;
+    const { visitorName, email, mobileNumber, companyName, purpose, purposeOfVisit, visitDate, visitTime, branch, visitorCount, notes, dob, hostEmployee, sendEmailNow } = req.body;
 
     if (!email) {
       return res.status(400).json({ message: 'Email address is required.' });
@@ -46,16 +46,17 @@ router.post('/create', async (req, res) => {
 
     const newToken = new RegistrationToken({
       token,
-      companyId: req.companyId || 'COMP001',
+      companyId: req.companyId || 'FIC001',
       visitorName: visitorName || 'Valued Visitor',
       email,
       mobileNumber: mobileNumber || '',
-      companyName: companyName || 'Forge India Connect Private Limited',
-      purpose: purpose || 'Business Meeting',
+      companyName: 'Forge India Connect Private Limited',
+      purpose: purpose || purposeOfVisit || 'Business Meeting',
       visitDate: visitDate || new Date().toISOString().split('T')[0],
       visitTime: visitTime || '10:00 AM',
       branch: branch || 'Head Office(KRISHNAGIRI)',
-      visitorCount: visitorCount || 1,
+      dob: dob || '',
+      hostEmployee: hostEmployee || '',
       notes: notes || '',
       expiresAt,
       status: sendEmailNow !== false ? 'Invitation Sent' : 'Pending Invitation',
@@ -254,7 +255,10 @@ router.post('/register', async (req, res) => {
 router.get('/list', async (req, res) => {
   try {
     const { search, status } = req.query;
-    let query = { companyId: req.companyId || 'COMP001' };
+    let query = {};
+    if (req.companyId && req.companyId !== 'ALL' && req.companyId !== 'FIC001' && req.companyId !== 'COMP001') {
+      query.companyId = req.companyId;
+    }
 
     if (status && status !== 'All') {
       query.status = status;
@@ -356,5 +360,21 @@ router.post('/:id/cancel', async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
+
+// 8. Delete All Registration Tokens / Pre-Booking Invitations
+const clearAllHandler = async (req, res) => {
+  try {
+    const result = await RegistrationToken.deleteMany({});
+    return res.json({
+      success: true,
+      message: `Cleared all ${result.deletedCount} invitation records successfully.`
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+router.delete('/clear-all', clearAllHandler);
+router.post('/clear-all', clearAllHandler);
 
 module.exports = router;

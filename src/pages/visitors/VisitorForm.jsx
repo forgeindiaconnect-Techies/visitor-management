@@ -60,6 +60,7 @@ const VisitorForm = () => {
   const [uploading, setUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
   const [blacklistedVisitor, setBlacklistedVisitor] = useState(null);
+  const [mobileError, setMobileError] = useState('');
 
   const checkBlacklist = async (mobileNumber) => {
     try {
@@ -85,12 +86,23 @@ const VisitorForm = () => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    let cleanVal = value;
+    if (name === 'mobileNumber') {
+      cleanVal = value.replace(/\D/g, '').slice(0, 10);
+      if (cleanVal.length === 0) {
+        setMobileError("");
+      } else if (!/^[6-9]\d{9}$/.test(cleanVal)) {
+        setMobileError("Enter a valid 10-digit mobile number starting with 6, 7, 8, or 9.");
+      } else {
+        setMobileError("");
+      }
+    }
+    setFormData(prev => ({ ...prev, [name]: cleanVal }));
     
     // Check for existing visitor when mobile number is typed
-    if (name === 'mobileNumber' && value.length >= 10) {
-      checkBlacklist(value);
-      const existing = allVisitors.find(v => v.mobileNumber === value);
+    if (name === 'mobileNumber' && cleanVal.length >= 10) {
+      checkBlacklist(cleanVal);
+      const existing = allVisitors.find(v => v.mobileNumber === cleanVal);
       if (existing) {
         setExistingVisitorMatch(existing);
       } else {
@@ -159,6 +171,15 @@ const VisitorForm = () => {
     if (uploading) {
       addNotification('Action Required', 'Please wait for the photo to finish uploading.', 'warning');
       return;
+    }
+
+    const mobileRegex = /^[6-9]\d{9}$/;
+    if (!mobileRegex.test((formData.mobileNumber || '').trim())) {
+      setMobileError('Enter a valid 10-digit mobile number starting with 6, 7, 8, or 9.');
+      addNotification('Validation Error', 'Please enter a valid 10-digit mobile number starting with 6, 7, 8, or 9.', 'error');
+      return;
+    } else {
+      setMobileError('');
     }
     if (user?.role === 'Super Admin' && !formData.branch && activeBranch === 'All Branches') {
       addNotification('Action Required', 'Please select a branch location.', 'warning');
@@ -328,12 +349,19 @@ const VisitorForm = () => {
                 <input 
                   required 
                   type="tel" 
+                  inputMode="numeric"
+                  maxLength={10}
                   name="mobileNumber" 
                   value={formData.mobileNumber} 
                   onChange={handleChange} 
-                  className={`${inputClassName} ${isBlacklisted(formData.mobileNumber) ? 'border-red-500 bg-red-50 focus:ring-red-500 focus:border-red-500' : ''}`} 
-                  placeholder="e.g., 9876543210" 
+                  className={`${inputClassName} ${mobileError || isBlacklisted(formData.mobileNumber) ? 'border-red-500 bg-red-50 focus:ring-red-500 focus:border-red-500' : ''}`} 
+                  placeholder="Enter 10-digit mobile number" 
                 />
+                {mobileError && (
+                  <p className="text-red-500 text-xs mt-1 font-semibold flex items-center gap-1">
+                    ⚠️ {mobileError}
+                  </p>
+                )}
                 {isBlacklisted(formData.mobileNumber) && (
                   <p className="text-xs text-red-600 mt-1.5 font-semibold flex items-center gap-1">
                     <AlertCircle size={12} /> This number is blacklisted. Registration blocked.

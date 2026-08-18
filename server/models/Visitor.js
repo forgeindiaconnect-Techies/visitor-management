@@ -26,8 +26,12 @@ const visitorSchema = new mongoose.Schema({
     enum: ["DIRECT_VISIT"]
   },
   visitorName: { type: String, required: true },
-  mobileNumber: { type: String, required: true },
-  email: { type: String },
+  mobileNumber: { 
+    type: String, 
+    required: true,
+    trim: true,
+    match: [/^[6-9]\d{9}$/, "Please enter a valid 10-digit mobile number starting with 6, 7, 8, or 9"]
+  },
   companyName: { type: String },
   hostName: { type: String, required: true },
   hostTeam: { type: String, default: 'General' },
@@ -80,7 +84,7 @@ const visitorSchema = new mongoose.Schema({
   qrCode: { type: String },
   qrPayload: { type: Object },
   approvedBy: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: mongoose.Schema.Types.Mixed,
     ref: "User",
     default: null
   },
@@ -101,7 +105,7 @@ const visitorSchema = new mongoose.Schema({
   statusHistory: [{
     status: String,
     changedBy: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: mongoose.Schema.Types.Mixed,
       ref: "User"
     },
     changedByRole: String,

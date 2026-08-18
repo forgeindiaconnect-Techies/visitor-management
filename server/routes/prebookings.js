@@ -162,12 +162,19 @@ router.get('/', async (req, res) => {
       filter.branch = branch;
     }
 
-    const prebookings = await Visitor.find(filter)
-      .populate('approvedBy', 'name email role')
-      .populate('statusHistory.changedBy', 'name email role')
-      .sort({ createdAt: -1 });
+    let prebookings;
+    try {
+      prebookings = await Visitor.find(filter)
+        .populate('approvedBy', 'name email role')
+        .populate('statusHistory.changedBy', 'name email role')
+        .sort({ createdAt: -1 });
+    } catch (popErr) {
+      console.warn('Populate failed on prebookings query, returning raw results:', popErr.message);
+      prebookings = await Visitor.find(filter).sort({ createdAt: -1 });
+    }
     res.json(prebookings);
   } catch (err) {
+    console.error('Error fetching prebookings:', err);
     res.status(500).json({ message: err.message });
   }
 });
@@ -239,6 +246,32 @@ router.put('/:id/approve', authMiddleware, checkApprovalPermission, async (req, 
       event: visitorNotificationService.EVENTS.VISITOR_APPROVED,
       io: req.app.get('io')
     });
+
+    try {
+      const { createNotification } = require('../services/notificationService');
+      const vId = updatedVisitor.visitorId || updatedVisitor.visitId || updatedVisitor._id.toString();
+      await createNotification({
+        eventId: `PREBOOK_APPROVED_${vId}`,
+        type: 'PRE_BOOKING_APPROVED',
+        title: 'Pre-Booking Approved',
+        message: `${updatedVisitor.fullName || updatedVisitor.visitorName}'s pre-booking has been approved.`,
+        visitorId: vId,
+        visitorType: 'PRE_BOOKING',
+        recipients: [
+          { role: 'Super Admin' },
+          { role: 'SaaS Super Admin' },
+          { role: 'Company Admin' },
+          { role: 'Admin' },
+          { role: 'MD' },
+          { role: 'HR' },
+          { role: 'Security' }
+        ],
+        companyId: updatedVisitor.companyId || req.companyId || 'FIC001',
+        io: req.app.get('io')
+      });
+    } catch (e) {
+      console.error('Error creating approval notification:', e);
+    }
 
     if (updatedVisitor.email) {
       const emailService = require('../utils/emailService');

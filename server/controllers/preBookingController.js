@@ -6,10 +6,20 @@ const visitorNotificationService = require('../services/visitorNotificationServi
 const logAction = require('../utils/auditLogger');
 const { sendApprovalEmail } = require('../utils/emailService');
 
-const createVisitorId = () => {
-  const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-
-  return `VIS-${date}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+const createVisitorId = async () => {
+  try {
+    const lastDoc = await PreBooking.findOne().sort({ createdAt: -1 });
+    let nextSeq = 1001;
+    if (lastDoc && lastDoc.visitorId) {
+      const match = lastDoc.visitorId.match(/\d+$/);
+      if (match) {
+        nextSeq = parseInt(match[0], 10) + 1;
+      }
+    }
+    return `VIS-${nextSeq}`;
+  } catch (err) {
+    return `VIS-${Math.floor(1000 + Math.random() * 9000)}`;
+  }
 };
 
 // Create Pre-Booking
@@ -46,6 +56,17 @@ const createPreBooking = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Please fill all required fields.",
+      });
+    }
+
+    // Strict Indian Mobile Number Validation (10 digits starting with 6, 7, 8, or 9)
+    const mobileRegex = /^[6-9]\d{9}$/;
+    const cleanMobile = String(mobileNumber || "").trim().replace(/\D/g, "");
+    if (!mobileRegex.test(cleanMobile)) {
+      return res.status(400).json({
+        success: false,
+        code: "INVALID_MOBILE",
+        message: "Please enter a valid 10-digit mobile number starting with 6, 7, 8, or 9."
       });
     }
 
@@ -107,7 +128,7 @@ const createPreBooking = async (req, res) => {
       }
     }
 
-    const visitorId = createVisitorId();
+    const visitorId = await createVisitorId();
 
     const isNewVisitor = hostEmployee === "New Visitors" || hostEmployee === "New Visitor" || hostEmployee === "Direct Visits" || hostEmployee === "Direct Visit";
     const finalAssignedHr = (isNewVisitor || !assignedHr) ? null : assignedHr;
@@ -160,6 +181,28 @@ const createPreBooking = async (req, res) => {
         io: req.app.get('io')
       });
 
+      const { createNotification } = require('../services/notificationService');
+      const vId = preBooking.visitorId || preBooking._id.toString();
+      await createNotification({
+        eventId: `PREBOOK_CREATED_${vId}`,
+        type: 'PRE_BOOKING_CREATED',
+        title: 'New Pre-Booking',
+        message: `${preBooking.fullName} has registered for a pre-booking.`,
+        visitorId: vId,
+        visitorType: 'PRE_BOOKING',
+        recipients: [
+          { role: 'Super Admin' },
+          { role: 'SaaS Super Admin' },
+          { role: 'Company Admin' },
+          { role: 'Admin' },
+          { role: 'MD' },
+          { role: 'HR' },
+          { role: 'Security' }
+        ],
+        companyId: preBooking.companyId || req.companyId || 'FIC001',
+        io: req.app.get('io')
+      });
+
     } catch (notifErr) {
       console.error("Error creating pre-booking notifications:", notifErr);
     }
@@ -171,6 +214,14 @@ const createPreBooking = async (req, res) => {
     });
   } catch (error) {
     console.error("Create Pre-Booking Error:", error);
+
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        success: false,
+        code: "VALIDATION_ERROR",
+        message: error.message
+      });
+    }
 
     // E11000 Duplicate Key Handling for simultaneous/concurrent requests
     if (error.code === 11000 || error.name === 'MongoError' || error.name === 'MongoServerError') {
@@ -297,36 +348,38 @@ const approvePreBooking = async (req, res) => {
       const approverName = req.userName || req.userRole || "Authorized Personnel";
       const notificationMessage = `Visitor pre-booking for ${preBooking.fullName} has been approved by ${approverName}.`;
 
-      // 2. Create notification for each dashboard user
-      const dashboardNotifications = dashboardUsers.map((u) => ({
+      // 2. Create main persistent notification document in DB
+      const mainNotification = await Notification.create({
         companyId: preBooking.companyId || 'FIC001',
-        branchId: preBooking.branchLocation,
-        recipient: u._id,
+        branchId: preBooking.branchLocation || 'Head Office(KRISHNAGIRI)',
         type: "PREBOOKING_APPROVED",
         title: "Pre-Booking Approved",
         message: notificationMessage,
         preBookingId: preBooking._id,
-        createdBy: "System Approval"
+        createdBy: approverName,
+        recipients: dashboardUsers.map(u => String(u._id))
+      });
+
+      // Also insert per-user notifications so user queries match both ways
+      const dashboardNotifications = dashboardUsers.map((u) => ({
+        companyId: preBooking.companyId || 'FIC001',
+        branchId: preBooking.branchLocation,
+        recipient: String(u._id),
+        type: "PREBOOKING_APPROVED",
+        title: "Pre-Booking Approved",
+        message: notificationMessage,
+        preBookingId: preBooking._id,
+        createdBy: approverName
       }));
 
       if (dashboardNotifications.length > 0) {
         await Notification.insertMany(dashboardNotifications);
       }
 
-      // 3. Emit live socket alert to all dashboard users
+      // 3. Emit real saved DB notification over socket.io
       const io = req.app.get('io');
       if (io) {
-        io.emit('new_notification', {
-          _id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-          createdAt: new Date().toISOString(),
-          type: 'PREBOOKING_APPROVED',
-          title: 'Pre-Booking Approved',
-          message: notificationMessage,
-          preBookingId: preBooking._id,
-          companyId: preBooking.companyId || 'FIC001',
-          branchId: preBooking.branchLocation,
-          recipients: dashboardUsers.map(u => u._id.toString())
-        });
+        io.emit('new_notification', mainNotification);
       }
     } catch (notifErr) {
       console.error("Error creating approval notifications:", notifErr);
@@ -497,20 +550,82 @@ const getPreBookingByVisitId = async (req, res) => {
       return res.status(400).json({ success: false, message: "Visitor ID is required." });
     }
 
-    const isValidObjectId = require('mongoose').isValidObjectId(rawId);
-    const searchRegex = new RegExp(`^${rawId.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')}$`, 'i');
+    const cleanId = rawId.trim();
+    const digits = cleanId.replace(/\D/g, '');
+    const alphaNum = cleanId.replace(/[^a-zA-Z0-9]/g, '');
+    const isValidObjectId = require('mongoose').isValidObjectId(cleanId);
+    const escapedRaw = cleanId.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
 
-    const pb = await PreBooking.findOne({
-      $or: [
-        { visitorId: searchRegex },
-        { visitorId: rawId.toUpperCase() },
-        { mobileNumber: rawId },
-        { qrToken: rawId },
-        ...(isValidObjectId ? [{ _id: rawId }] : [])
-      ]
-    }).populate("assignedHr");
+    const searchConditions = [
+      { visitorId: new RegExp(escapedRaw, 'i') },
+      { visitId: new RegExp(escapedRaw, 'i') },
+      { profileId: new RegExp(escapedRaw, 'i') },
+      { bookingId: new RegExp(escapedRaw, 'i') },
+      { mobileNumber: cleanId },
+      { qrToken: cleanId },
+      { trackingToken: cleanId }
+    ];
+
+    if (alphaNum && alphaNum !== cleanId) {
+      searchConditions.push({ visitorId: new RegExp(alphaNum, 'i') });
+      searchConditions.push({ visitId: new RegExp(alphaNum, 'i') });
+      searchConditions.push({ profileId: new RegExp(alphaNum, 'i') });
+      searchConditions.push({ bookingId: new RegExp(alphaNum, 'i') });
+    }
+
+    if (digits && digits.length >= 2) {
+      searchConditions.push({ visitorId: new RegExp(`${digits}$`, 'i') });
+      searchConditions.push({ visitId: new RegExp(`${digits}$`, 'i') });
+      searchConditions.push({ profileId: new RegExp(`${digits}$`, 'i') });
+      searchConditions.push({ bookingId: new RegExp(`${digits}$`, 'i') });
+    }
+
+    if (isValidObjectId) {
+      searchConditions.push({ _id: cleanId });
+    }
+
+    let pb = await PreBooking.findOne({ $or: searchConditions }).populate("assignedHr");
 
     if (!pb) {
+      const Visitor = require("../models/Visitor");
+      const vDoc = await Visitor.findOne({ $or: searchConditions });
+
+      if (vDoc) {
+        return res.status(200).json({
+          success: true,
+          data: {
+            id: vDoc._id,
+            _id: vDoc._id,
+            visitorId: vDoc.visitorId || vDoc.visitId || vDoc.profileId || vDoc._id,
+            visitId: vDoc.visitId || vDoc.visitorId || vDoc.profileId,
+            profileId: vDoc.profileId || vDoc.visitId || vDoc.visitorId,
+            fullName: vDoc.visitorName || vDoc.fullName,
+            visitorName: vDoc.visitorName || vDoc.fullName,
+            mobileNumber: vDoc.mobileNumber,
+            email: vDoc.email || '',
+            visitingCompany: vDoc.companyName || 'Forge India Connect Private Limited',
+            companyName: vDoc.companyName || 'Forge India Connect Private Limited',
+            hostEmployee: vDoc.hostName,
+            hostName: vDoc.hostName,
+            visitPurpose: vDoc.purpose,
+            purpose: vDoc.purpose,
+            visitDate: vDoc.visitDate,
+            expectedTime: vDoc.expectedArrivalTime || '10:00 AM',
+            expectedArrivalTime: vDoc.expectedArrivalTime || '10:00 AM',
+            branchLocation: vDoc.branch || 'Head Office',
+            branch: vDoc.branch || 'Head Office',
+            vehicleNumber: vDoc.vehicleNumber || '-',
+            idType: vDoc.idType || '',
+            idProofUrl: vDoc.idProofUrl || '',
+            facePhoto: vDoc.photoUrl,
+            photoUrl: vDoc.photoUrl,
+            status: vDoc.status || 'PENDING',
+            checkInTime: vDoc.checkInTime || null,
+            checkOutTime: vDoc.checkOutTime || null
+          }
+        });
+      }
+
       return res.status(404).json({
         success: false,
         message: "Visitor not found.",

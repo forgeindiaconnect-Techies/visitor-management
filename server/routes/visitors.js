@@ -76,6 +76,17 @@ router.post('/public-prebook', async (req, res) => {
       return res.status(400).json({ message: 'Full Name, Mobile Number, Host, and Purpose are required.' });
     }
 
+    // Strict Indian Mobile Number Validation (10 digits starting with 6, 7, 8, or 9)
+    const mobileRegex = /^[6-9]\d{9}$/;
+    const cleanMobile = String(mobileNumber || "").trim().replace(/\D/g, "");
+    if (!mobileRegex.test(cleanMobile)) {
+      return res.status(400).json({
+        success: false,
+        code: "INVALID_MOBILE",
+        message: "Please enter a valid 10-digit mobile number starting with 6, 7, 8, or 9."
+      });
+    }
+
     const companyId = req.headers['x-company-id'] || 'FIC001';
     const targetBranch = branch || 'Chennai';
     const profileId = 'VP-' + Date.now().toString().slice(-6);
@@ -198,6 +209,13 @@ router.post('/public-prebook', async (req, res) => {
     });
   } catch (err) {
     console.error('Public Pre-booking Error:', err);
+    if (err.name === 'ValidationError') {
+      return res.status(400).json({
+        success: false,
+        code: 'VALIDATION_ERROR',
+        message: err.message
+      });
+    }
     res.status(500).json({ message: err.message || 'Failed to complete pre-booking' });
   }
 });
@@ -326,12 +344,19 @@ router.get('/', async (req, res) => {
       }
     }
 
-    const visitors = await Visitor.find(query)
-      .populate('approvedBy', 'name email role')
-      .populate('statusHistory.changedBy', 'name email role')
-      .sort({ createdAt: -1 });
+    let visitors;
+    try {
+      visitors = await Visitor.find(query)
+        .populate('approvedBy', 'name email role')
+        .populate('statusHistory.changedBy', 'name email role')
+        .sort({ createdAt: -1 });
+    } catch (popErr) {
+      console.warn('Populate failed on visitors query, returning raw results:', popErr.message);
+      visitors = await Visitor.find(query).sort({ createdAt: -1 });
+    }
     res.json(visitors);
   } catch (err) {
+    console.error('Error fetching visitors:', err);
     res.status(500).json({ message: err.message });
   }
 });
@@ -457,6 +482,32 @@ router.post('/', async (req, res) => {
     });
     const newVisitor = await visitor.save();
 
+    try {
+      const { createNotification } = require('../services/notificationService');
+      const vId = newVisitor.visitorId || newVisitor.visitId || newVisitor.profileId || newVisitor._id.toString();
+      await createNotification({
+        eventId: `DIRECT_VISIT_CREATED_${vId}`,
+        type: 'DIRECT_VISIT_CREATED',
+        title: 'New Direct Visit',
+        message: `${newVisitor.visitorName || newVisitor.fullName} has registered as a direct visitor.`,
+        visitorId: vId,
+        visitorType: 'DIRECT_VISIT',
+        recipients: [
+          { role: 'Super Admin' },
+          { role: 'SaaS Super Admin' },
+          { role: 'Company Admin' },
+          { role: 'Admin' },
+          { role: 'MD' },
+          { role: 'HR' },
+          { role: 'Security' }
+        ],
+        companyId: newVisitor.companyId || req.companyId || 'FIC001',
+        io: req.app.get('io')
+      });
+    } catch (e) {
+      console.error('Error creating direct visit notification:', e);
+    }
+
     const notification = await Notification.create({
       companyId: req.companyId,
       branchId: newVisitor.branch,
@@ -501,16 +552,69 @@ router.get('/search/:query', async (req, res) => {
       }
     }
 
-    const visitor = await Visitor.findOne({
-      companyId: req.companyId,
-      $or: [
-        { bookingId: searchTerm },
-        { visitId: searchTerm },
-        { mobileNumber: searchTerm },
-        { aadhaarNumber: searchTerm },
-        { profileId: searchTerm }
-      ]
-    }).sort({ createdAt: -1 });
+    const cleanId = searchTerm.trim();
+    const digits = cleanId.replace(/\D/g, '');
+    const alphaNum = cleanId.replace(/[^a-zA-Z0-9]/g, '');
+    const isValidObjectId = require('mongoose').isValidObjectId(cleanId);
+    const escapedRaw = cleanId.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+
+    const searchConditions = [
+      { visitorId: new RegExp(escapedRaw, 'i') },
+      { visitId: new RegExp(escapedRaw, 'i') },
+      { profileId: new RegExp(escapedRaw, 'i') },
+      { bookingId: new RegExp(escapedRaw, 'i') },
+      { mobileNumber: cleanId },
+      { aadhaarNumber: cleanId },
+      { qrToken: cleanId },
+      { trackingToken: cleanId }
+    ];
+
+    if (alphaNum && alphaNum !== cleanId) {
+      searchConditions.push({ visitorId: new RegExp(alphaNum, 'i') });
+      searchConditions.push({ visitId: new RegExp(alphaNum, 'i') });
+      searchConditions.push({ profileId: new RegExp(alphaNum, 'i') });
+      searchConditions.push({ bookingId: new RegExp(alphaNum, 'i') });
+    }
+
+    if (digits && digits.length >= 2) {
+      searchConditions.push({ visitorId: new RegExp(`${digits}$`, 'i') });
+      searchConditions.push({ visitId: new RegExp(`${digits}$`, 'i') });
+      searchConditions.push({ profileId: new RegExp(`${digits}$`, 'i') });
+      searchConditions.push({ bookingId: new RegExp(`${digits}$`, 'i') });
+    }
+
+    if (isValidObjectId) {
+      searchConditions.push({ _id: cleanId });
+    }
+
+    let visitor = await Visitor.findOne({ $or: searchConditions }).sort({ createdAt: -1 });
+
+    if (!visitor) {
+      const PreBooking = require('../models/PreBooking');
+      const pb = await PreBooking.findOne({ $or: searchConditions });
+
+      if (pb) {
+        visitor = {
+          id: pb._id,
+          _id: pb._id,
+          visitorId: pb.visitorId,
+          visitId: pb.visitorId,
+          profileId: pb.visitorId,
+          visitorName: pb.fullName,
+          fullName: pb.fullName,
+          mobileNumber: pb.mobileNumber,
+          email: pb.email,
+          companyName: pb.visitingCompany || 'Forge India Connect Private Limited',
+          hostName: pb.hostEmployee,
+          purpose: pb.visitPurpose,
+          visitDate: pb.visitDate,
+          expectedArrivalTime: pb.expectedTime,
+          branch: pb.branchLocation || 'Head Office',
+          status: pb.status || 'PENDING',
+          photoUrl: pb.facePhoto || ''
+        };
+      }
+    }
 
     if (!visitor) {
       return res.status(404).json({ message: 'No booking or visitor found matching search criteria' });

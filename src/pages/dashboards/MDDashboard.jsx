@@ -134,7 +134,7 @@ const MDDashboard = () => {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-        <DashboardCard onClick={() => navigate('/visitors')} title="Walk-in Visitors" value={totalWalkIns} icon={Users} colorClass="bg-blue-100 text-blue-600" />
+        <DashboardCard onClick={() => navigate('/visitors')} title="Total Visitors" value={visitors.length} icon={Users} colorClass="bg-blue-100 text-blue-600" />
         <DashboardCard onClick={() => navigate('/pre-bookings')} title="Pre-Bookings" value={totalPreBookings} icon={Users} colorClass="bg-indigo-100 text-indigo-600" />
         <DashboardCard onClick={() => navigate('/tracking')} title="Visitors Inside" value={insideVisitors.length} icon={Users} colorClass="bg-green-100 text-green-600" />
         <DashboardCard onClick={() => navigate('/approvals')} title="Pending Approvals" value={pendingApprovals} icon={Clock} colorClass="bg-orange-100 text-orange-600" />

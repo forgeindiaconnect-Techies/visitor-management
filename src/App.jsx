@@ -115,8 +115,8 @@ const AppRoutes = () => {
         <Route path="visitors/returning" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin', 'Security', 'HR', 'Receptionist']}><ReturningVisitor /></ProtectedRoute>} />
         
         {/* Approvals & Pre-Bookings Module */}
-        <Route path="pre-bookings" element={<ProtectedRoute allowedRoles={['SaaS Super Admin', 'Super Admin', 'Company Admin', 'MD', 'Admin', 'HR', 'Receptionist']}><SuperAdminPreBookings /></ProtectedRoute>} />
-        <Route path="super-admin/pre-bookings" element={<ProtectedRoute allowedRoles={['SaaS Super Admin', 'Super Admin', 'Company Admin', 'MD', 'Admin', 'HR', 'Receptionist']}><SuperAdminPreBookings /></ProtectedRoute>} />
+        <Route path="pre-bookings" element={<ProtectedRoute allowedRoles={['SaaS Super Admin', 'Super Admin', 'Company Admin', 'MD', 'Admin', 'HR', 'Receptionist', 'Security']}><SuperAdminPreBookings /></ProtectedRoute>} />
+        <Route path="super-admin/pre-bookings" element={<ProtectedRoute allowedRoles={['SaaS Super Admin', 'Super Admin', 'Company Admin', 'MD', 'Admin', 'HR', 'Receptionist', 'Security']}><SuperAdminPreBookings /></ProtectedRoute>} />
         <Route path="approvals" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin', 'HR', 'Receptionist']}><ApprovalList /></ProtectedRoute>} />
         <Route path="approvals/:id" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin', 'HR', 'Receptionist']}><ApprovalDetails /></ProtectedRoute>} />
         

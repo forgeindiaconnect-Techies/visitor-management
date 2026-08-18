@@ -26,8 +26,8 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
 
   const allNavItems = [
     { name: 'Dashboard', path: '/', icon: <LayoutDashboard size={20} />, roles: ['SaaS Super Admin', 'Super Admin', 'Company Admin', 'MD', 'Admin', 'Security', 'Visitor', 'HR', 'Receptionist', 'Employee'] },
-    { name: 'Pre-Bookings', path: '/pre-bookings', icon: <CalendarCheck size={20} />, roles: ['SaaS Super Admin', 'Super Admin', 'Company Admin', 'MD', 'Admin', 'HR', 'Receptionist'] },
-    { name: 'Visitor List', path: '/visitors', icon: <Users size={20} />, roles: ['Super Admin', 'Company Admin', 'MD', 'Admin', 'Security', 'HR', 'Receptionist'] },
+    { name: 'Pre-Bookings', path: '/pre-bookings', icon: <CalendarCheck size={20} />, roles: ['SaaS Super Admin', 'Super Admin', 'Company Admin', 'MD', 'Admin', 'HR', 'Receptionist', 'Security'] },
+    { name: 'Direct Visit', path: '/visitors', icon: <Users size={20} />, roles: ['Super Admin', 'Company Admin', 'MD', 'Admin', 'Security', 'HR', 'Receptionist'] },
     { name: 'User Management', path: '/users', icon: <Shield size={20} />, roles: ['Super Admin', 'Company Admin'] },
     { name: 'Branch Setup', path: '/branches', icon: <Map size={20} />, roles: ['Super Admin', 'Company Admin'] },
     { name: 'Host Approvals', path: '/approvals', icon: <CheckSquare size={20} />, roles: ['SaaS Super Admin', 'Super Admin', 'Company Admin', 'MD', 'Admin', 'HR', 'Receptionist', 'Employee'] },
