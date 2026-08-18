@@ -120,7 +120,7 @@ const VisitorList = () => {
     }
   };
 
-  const directVisitors = visitors.filter(v => 
+  const directVisitors = (Array.isArray(visitors) ? visitors : []).filter(v => 
     v.hostEmployee === "Direct Visits" || 
     v.hostEmployee === "Direct Visit" || 
     v.hostName === "Direct Visits" || 

@@ -183,7 +183,7 @@ export default function SuperAdminPreBookings() {
     }
   };
 
-  const filteredReports = reportsData.filter((r) => {
+  const filteredReports = (Array.isArray(reportsData) ? reportsData : []).filter((r) => {
     const q = reportSearchQuery.toLowerCase().trim();
     const matchesQuery =
       !q ||
@@ -299,7 +299,7 @@ export default function SuperAdminPreBookings() {
     printWindow.document.close();
   };
 
-  const filteredPreBookings = preBookings.filter((item) => {
+  const filteredPreBookings = (Array.isArray(preBookings) ? preBookings : []).filter((item) => {
     const q = searchQuery.toLowerCase().trim();
     const matchesQuery =
       !q ||

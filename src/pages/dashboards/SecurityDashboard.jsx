@@ -499,15 +499,16 @@ const SecurityDashboard = () => {
 
   // Metrics
   const today = new Date().toISOString().split('T')[0];
-  const todaysVisitors = visitors.filter(v => v.visitDate === today).length;
-  const visitorsInside = visitors.filter(v => v.status === 'Inside');
-  const qrScans = visitors.filter(v => v.status === 'Inside' || v.status === 'Exited').length;
-  const blockedAttempts = visitors.filter(v => v.status === 'Rejected').length; // Treating rejected as blocked for security proxy
+  const safeVisitors = Array.isArray(visitors) ? visitors : [];
+  const todaysVisitors = safeVisitors.filter(v => v.visitDate === today).length;
+  const visitorsInside = safeVisitors.filter(v => v.status === 'Inside');
+  const qrScans = safeVisitors.filter(v => v.status === 'Inside' || v.status === 'Exited').length;
+  const blockedAttempts = safeVisitors.filter(v => v.status === 'Rejected').length; // Treating rejected as blocked for security proxy
   const securityAlerts = 0; // Simulated
 
   // Change to recent registrations to improve UX
   // Show expected arrivals (Approved) and visitors currently Inside
-  const recentRegistrations = visitors
+  const recentRegistrations = safeVisitors
     .filter(v => 
       ((v.visitorName || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
       (v.mobileNumber || '').includes(searchQuery))
@@ -533,8 +534,8 @@ const SecurityDashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-        <DashboardCard onClick={() => navigate('/visitors')} title="Total Visitors" value={visitors.length} icon={Users} colorClass="bg-blue-100 text-blue-600" />
-        <DashboardCard onClick={() => navigate('/pre-bookings')} title="Pre-Bookings" value={visitors.filter(v => v.registrationType === 'Pre-Booking' || v.isPreBooking).length} icon={Users} colorClass="bg-indigo-100 text-indigo-600" />
+        <DashboardCard onClick={() => navigate('/visitors')} title="Total Visitors" value={safeVisitors.length} icon={Users} colorClass="bg-blue-100 text-blue-600" />
+        <DashboardCard onClick={() => navigate('/pre-bookings')} title="Pre-Bookings" value={safeVisitors.filter(v => v.registrationType === 'Pre-Booking' || v.isPreBooking).length} icon={Users} colorClass="bg-indigo-100 text-indigo-600" />
         <DashboardCard onClick={() => navigate('/tracking')} title="Visitors Inside" value={visitorsInside.length} icon={UserCheck} colorClass="bg-green-100 text-green-600" />
         <DashboardCard onClick={() => navigate('/visitors?filter=checked-in')} title="QR Scans" value={qrScans} icon={QrCode} colorClass="bg-purple-100 text-purple-600" />
         <DashboardCard onClick={() => navigate('/tracking')} title="Security Alerts" value={securityAlerts} icon={ShieldAlert} colorClass="bg-red-100 text-red-600" />
