@@ -69,7 +69,8 @@ const PreBookingRegistration = () => {
       });
       if (response.ok) {
         const data = await response.json();
-        setInvitations(data);
+        const list = Array.isArray(data) ? data : (data && Array.isArray(data.invitations) ? data.invitations : []);
+        setInvitations(list);
       }
     } catch (err) {
       console.error(err);
@@ -270,7 +271,7 @@ const PreBookingRegistration = () => {
     }
   };
 
-  const filteredInvitations = invitations.filter(inv => 
+  const filteredInvitations = (Array.isArray(invitations) ? invitations : []).filter(inv => 
     (inv.visitorName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (inv.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (inv.companyName || '').toLowerCase().includes(searchTerm.toLowerCase())

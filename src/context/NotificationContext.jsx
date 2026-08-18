@@ -36,7 +36,7 @@ export const NotificationProvider = ({ children }) => {
       });
       if (res.ok) {
         const data = await res.json();
-        const list = Array.isArray(data) ? data : (data.notifications || []);
+        const list = Array.isArray(data) ? data : (data && Array.isArray(data.notifications) ? data.notifications : []);
         setPersistentNotifications(list);
         setUnreadCount(list.filter(n => !n.isRead).length);
       }
@@ -55,7 +55,7 @@ export const NotificationProvider = ({ children }) => {
           ...(token && { 'Authorization': `Bearer ${token}` })
         }
       });
-      setPersistentNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+      setPersistentNotifications(prev => (Array.isArray(prev) ? prev : []).map(n => ({ ...n, isRead: true })));
       setUnreadCount(0);
     } catch (err) {
       console.error('Error marking all as read:', err);
@@ -81,9 +81,10 @@ export const NotificationProvider = ({ children }) => {
     const handleNewNotif = (newNotif) => {
       if (!newNotif) return;
       setPersistentNotifications((prev) => {
-        const alreadyExists = prev.some((item) => item.eventId && item.eventId === newNotif.eventId);
-        if (alreadyExists) return prev;
-        return [newNotif, ...prev];
+        const safeList = Array.isArray(prev) ? prev : [];
+        const alreadyExists = safeList.some((item) => item.eventId && item.eventId === newNotif.eventId);
+        if (alreadyExists) return safeList;
+        return [newNotif, ...safeList];
       });
       setUnreadCount(prev => prev + 1);
       addNotification(newNotif.title || 'New Notification', newNotif.message || '', newNotif.type || 'info');
