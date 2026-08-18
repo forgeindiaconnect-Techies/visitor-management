@@ -138,14 +138,7 @@ const createPreBooking = async (req, res) => {
 const getAllPreBookings = async (req, res) => {
   try {
     const filter = {};
-    if (req.query.status) {
-      // Support matching single status or an array/comma-separated list if needed
-      filter.status = req.query.status;
-    }
-
-    // Explicitly lock to PRE_BOOKING records only to maintain absolute separation
-    filter.bookingType = "PRE_BOOKING";
-
+    // Return all prebooking records for Super Admin (matching Reports data)
     // Role-based filtering: HR users only see their assigned visitors
     if (req.userRole === 'HR' || req.userRole === 'Employee') {
       filter.assignedHr = req.userId;

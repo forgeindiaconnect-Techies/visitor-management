@@ -301,9 +301,14 @@ export default function SuperAdminPreBookings() {
       (item.visitingCompany && item.visitingCompany.toLowerCase().includes(q)) ||
       (item.hostEmployee && item.hostEmployee.toLowerCase().includes(q));
 
+    const itemStatus = (item.status || "").toUpperCase().replace(/\s+/g, "_");
+    const targetStatus = statusFilter.toUpperCase().replace(/\s+/g, "_");
+
     const matchesStatus =
       statusFilter === "ALL" ||
-      item.status?.toUpperCase() === statusFilter.toUpperCase();
+      itemStatus === targetStatus ||
+      (targetStatus === "CHECKED_IN" && (itemStatus === "INSIDE" || itemStatus === "CHECKED_IN")) ||
+      (targetStatus === "CHECKED_OUT" && (itemStatus === "EXITED" || itemStatus === "CHECKED_OUT"));
 
     const matchesDate = !dateFilter || (item.visitDate && item.visitDate.startsWith(dateFilter));
 
@@ -403,6 +408,9 @@ export default function SuperAdminPreBookings() {
             <button
               key={tab.val}
               onClick={() => {
+                if (activeTab === 'REPORTS') {
+                  fetchPreBookings();
+                }
                 setActiveTab(tab.val);
                 setStatusFilter(tab.val);
               }}

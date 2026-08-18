@@ -411,6 +411,63 @@ const LandingPage = () => {
     window.print();
   };
 
+  const handleDownloadQR = () => {
+    try {
+      const svgElement = document.querySelector('#landing-qr-code svg') || document.querySelector('.landing-qr-box svg') || document.querySelector('svg');
+      if (!svgElement) {
+        alert("QR Code element not found for download.");
+        return;
+      }
+
+      const svgData = new XMLSerializer().serializeToString(svgElement);
+      const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+      const URL = window.URL || window.webkitURL || window;
+      const blobURL = URL.createObjectURL(svgBlob);
+
+      const image = new Image();
+      image.onload = () => {
+        const canvas = document.createElement('canvas');
+        const padding = 40;
+        const qrSize = 300;
+        canvas.width = qrSize + (padding * 2);
+        canvas.height = qrSize + (padding * 2) + 90;
+
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.strokeStyle = '#E2E8F0';
+        ctx.lineWidth = 4;
+        ctx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
+
+        ctx.drawImage(image, padding, padding, qrSize, qrSize);
+
+        ctx.fillStyle = '#0F172A';
+        ctx.font = 'bold 16px monospace';
+        ctx.textAlign = 'center';
+        const visitIdText = preBookResult?.visitId ? `ID: ${preBookResult.visitId}` : 'VISITOR PASS QR';
+        ctx.fillText(visitIdText, canvas.width / 2, padding + qrSize + 35);
+
+        ctx.fillStyle = '#475569';
+        ctx.font = '12px sans-serif';
+        ctx.fillText('SCAN AT GATE / RECEPTION KIOSK', canvas.width / 2, padding + qrSize + 58);
+
+        const pngUrl = canvas.toDataURL('image/png');
+        const downloadLink = document.createElement('a');
+        downloadLink.href = pngUrl;
+        downloadLink.download = `PreBooking_QR_${preBookResult?.visitId || 'Pass'}.png`;
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+        URL.revokeObjectURL(blobURL);
+      };
+      image.src = blobURL;
+    } catch (err) {
+      console.error("QR Download Error:", err);
+      alert("Failed to download QR Code image.");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-indigo-500 selection:text-white relative overflow-x-hidden">
       
@@ -1130,7 +1187,7 @@ const LandingPage = () => {
                     </div>
 
                     {/* Centered Large QR Code */}
-                    <div className="p-5 bg-white rounded-3xl shadow-xl flex flex-col items-center justify-center">
+                    <div id="landing-qr-code" className="p-5 bg-white rounded-3xl shadow-xl flex flex-col items-center justify-center landing-qr-box">
                       <QRCodeSVG 
                         value={window.location.hostname === 'localhost' ? `http://${import.meta.env.VITE_NETWORK_IP || '192.168.1.10'}:5173/pass/${preBookResult.visitId}` : `${window.location.origin}/pass/${preBookResult.visitId}`}
                         size={180} 
@@ -1148,8 +1205,17 @@ const LandingPage = () => {
                   {/* Actions */}
                   <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
                     <button
+                      type="button"
+                      onClick={handleDownloadQR}
+                      className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-all duration-200 flex items-center gap-2 shadow-lg hover:shadow-emerald-500/20 active:scale-95 cursor-pointer"
+                    >
+                      <Download className="w-4 h-4 text-white" />
+                      Download QR Code
+                    </button>
+                    <button
+                      type="button"
                       onClick={handlePrintPass}
-                      className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs border border-slate-700 transition-colors flex items-center gap-2"
+                      className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs border border-slate-700 transition-colors flex items-center gap-2 cursor-pointer"
                     >
                       <Printer className="w-4 h-4 text-indigo-400" />
                       Print QR Code
