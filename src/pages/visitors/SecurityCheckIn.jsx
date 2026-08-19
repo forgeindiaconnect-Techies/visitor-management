@@ -74,7 +74,8 @@ const SecurityCheckIn = () => {
     fetchPendingVisitors();
 
     const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
-    const socket = io(API_URL);
+    const socketUrl = API_URL ? API_URL.replace(/\/api\/?$/, '') : (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+    const socket = io(socketUrl);
 
     socket.on('new_notification', (data) => {
       if (data && data.type === 'PREBOOKING_CREATED' && data.preBookingId) {

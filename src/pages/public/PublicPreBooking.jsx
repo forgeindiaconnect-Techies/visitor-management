@@ -632,7 +632,11 @@ const PublicPreBooking = () => {
             
             <div>
               <h4 className="text-2xl font-black text-gray-900 tracking-tight">Pre-Booking Submitted!</h4>
-              <p className="text-xs text-amber-600 font-bold mt-1 bg-amber-50 inline-block px-3 py-1 rounded-full border border-amber-100">Status: PENDING Approval</p>
+              {preBookResult.status === 'APPROVED' || preBookResult.status === 'Approved' ? (
+                <p className="text-xs text-emerald-600 font-bold mt-1 bg-emerald-50 inline-block px-3 py-1 rounded-full border border-emerald-100">Status: APPROVED ✓</p>
+              ) : (
+                <p className="text-xs text-amber-600 font-bold mt-1 bg-amber-50 inline-block px-3 py-1 rounded-full border border-amber-100">Status: PENDING Approval</p>
+              )}
               <p className="text-xs text-gray-500 mt-3 max-w-sm mx-auto font-medium leading-relaxed">
                 Scan this QR code or present your Visitor ID at the gate reception kiosk to complete entry validation.
               </p>

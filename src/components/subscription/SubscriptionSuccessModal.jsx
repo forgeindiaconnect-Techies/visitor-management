@@ -11,7 +11,9 @@ const SubscriptionSuccessModal = () => {
   useEffect(() => {
     if (!user) return;
 
-    const socket = io(`${import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com')}`);
+    const rawApiUrl = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+    const socketUrl = rawApiUrl.replace(/\/api\/?$/, '');
+    const socket = io(socketUrl);
     
     socket.on('new_notification', (notification) => {
       // Check if it's for this company and is a subscription success notification

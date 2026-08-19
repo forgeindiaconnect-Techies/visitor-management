@@ -46,7 +46,7 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
       });
       if (res.ok) {
         const data = await res.json();
-        const rawList = Array.isArray(data) ? data : [];
+        const rawList = normalizeNotifications(data);
         const seen = new Set();
         const uniqueList = rawList.filter((item) => {
           const key =
@@ -57,7 +57,7 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
           seen.add(key);
           return true;
         });
-        setNotifications(normalizeNotifications(uniqueList));
+        setNotifications(uniqueList);
       }
     } catch (err) {
       console.error('Failed to fetch notifications', err);

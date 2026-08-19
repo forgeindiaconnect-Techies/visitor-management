@@ -75,7 +75,8 @@ export const NotificationProvider = ({ children }) => {
   useEffect(() => {
     fetchPersistentNotifications();
 
-    const socket = io(API_URL, { transports: ['websocket', 'polling'] });
+    const socketUrl = API_URL ? API_URL.replace(/\/api\/?$/, '') : (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+    const socket = io(socketUrl, { transports: ['websocket', 'polling'] });
 
     try {
       const userStored = localStorage.getItem('user');

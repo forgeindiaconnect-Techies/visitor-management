@@ -35,7 +35,8 @@ const VisitorStatusTracking = () => {
   useEffect(() => {
     fetchStatus();
 
-    const socket = io(API_URL);
+    const socketUrl = API_URL ? API_URL.replace(/\/api\/?$/, '') : (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+    const socket = io(socketUrl);
     socket.on('visitor:status-updated', (data) => {
       if (data.visitorId === id) {
         fetchStatus();

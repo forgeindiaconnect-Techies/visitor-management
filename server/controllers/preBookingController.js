@@ -1274,65 +1274,6 @@ const reschedulePreBooking = async (req, res) => {
   }
 };
 
-const cleanupDuplicateNotifications = async (req, res) => {
-  try {
-    const Notification = require("../models/Notification");
-
-    const duplicates = await Notification.aggregate([
-      {
-        $match: {
-          type: {
-            $in: [
-              "PREBOOKING_CHECKED_IN",
-              "PREBOOKING_CHECKED_OUT"
-            ]
-          },
-          preBookingId: { $ne: null }
-        }
-      },
-      {
-        $group: {
-          _id: {
-            preBookingId: "$preBookingId",
-            type: "$type"
-          },
-          ids: { $push: "$_id" },
-          count: { $sum: 1 }
-        }
-      },
-      {
-        $match: {
-          count: { $gt: 1 }
-        }
-      }
-    ]);
-
-    let deletedCount = 0;
-
-    for (const group of duplicates) {
-      const idsToDelete = group.ids.slice(1);
-
-      const result = await Notification.deleteMany({
-        _id: { $in: idsToDelete }
-      });
-
-      deletedCount += result.deletedCount;
-    }
-
-    return res.json({
-      success: true,
-      message: "Duplicate notifications cleaned successfully.",
-      deletedCount
-    });
-
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message
-    });
-  }
-};
-
 module.exports = {
   createPreBooking,
   getAllPreBookings,
@@ -1348,5 +1289,5 @@ module.exports = {
   getMyPreBookings,
   getPreBookingReports,
   reschedulePreBooking,
-  cleanupDuplicateNotifications,
+
 };
