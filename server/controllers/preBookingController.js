@@ -1096,10 +1096,11 @@ const getMyPreBookings = async (req, res) => {
 
 const getPreBookingReports = async (req, res) => {
   try {
-    if (req.userRole !== "Super Admin" && req.userRole !== "SaaS Super Admin") {
+    const allowedRoles = ["Super Admin", "SaaS Super Admin", "Admin", "MD", "Company Admin"];
+    if (!allowedRoles.includes(req.userRole)) {
       return res.status(403).json({
         success: false,
-        message: "Only Super Admin can access pre-booking reports"
+        message: "Only authorized roles can access pre-booking reports"
       });
     }
 
