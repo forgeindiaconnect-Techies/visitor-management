@@ -33,7 +33,6 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
     { name: 'Host Approvals', path: '/approvals', icon: <CheckSquare size={20} />, roles: ['SaaS Super Admin', 'Super Admin', 'Company Admin', 'MD', 'Admin', 'HR', 'Receptionist', 'Employee'] },
     { name: 'Pre-Booking Registration', path: '/invitations', icon: <CalendarCheck size={20} />, roles: ['SaaS Super Admin', 'Super Admin', 'Company Admin', 'MD', 'Admin', 'HR', 'Receptionist'] },
     { name: 'Blacklist', path: '/blacklist', icon: <Ban size={20} />, roles: ['Super Admin', 'Company Admin', 'MD', 'Admin', 'Security', 'Receptionist'] },
-    { name: 'Reports', path: '/reports', icon: <FileText size={20} />, roles: ['Super Admin', 'Company Admin', 'MD', 'Admin'] },
     { name: 'Subscription', path: '/subscription', icon: <CreditCard size={20} />, roles: ['Super Admin', 'Company Admin', 'MD', 'Admin'] },
     { name: 'Attendance', path: '/attendance', icon: <Clock size={20} />, roles: ['Super Admin', 'Company Admin', 'MD', 'Admin'] },
     { name: 'Audit Logs', path: '/audit-logs', icon: <Activity size={20} />, roles: ['Super Admin', 'Company Admin', 'MD', 'Admin'] },

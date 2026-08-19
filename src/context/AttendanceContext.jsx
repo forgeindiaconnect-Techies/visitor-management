@@ -25,7 +25,7 @@ export const AttendanceProvider = ({ children }) => {
       } else {
         // Admin, MD, Super Admin fetch all attendance logs (filtered by branch)
         let queryBranch = user.branch;
-        if (user.role === 'Super Admin') {
+        if (['Super Admin', 'SaaS Super Admin', 'MD', 'Admin'].includes(user.role)) {
           queryBranch = activeBranch === 'All Branches' ? null : activeBranch;
         }
         queryUrl = queryBranch ? `${API_URL}?branch=${encodeURIComponent(queryBranch)}` : API_URL;

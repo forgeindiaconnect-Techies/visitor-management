@@ -17,7 +17,7 @@ router.get('/', async (req, res) => {
     let query = { companyId: req.companyId };
     
     // Enforce strict branch isolation based on role
-    if (req.userRole === 'Security' || req.userRole === 'Admin' || req.userRole === 'MD') {
+    if (req.userRole === 'Security' || req.userRole === 'Branch Admin' || req.userRole === 'Receptionist') {
        query.branch = req.branchId;
     } else if (req.query.branch && req.query.branch !== 'All Branches') {
       const branchUpper = req.query.branch.toUpperCase();

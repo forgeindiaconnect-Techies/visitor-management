@@ -176,7 +176,7 @@ const MDDashboard = () => {
         {/* Branch Performance Chart */}
         <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6 flex flex-col">
           <h3 className="text-[11px] font-bold text-gray-500 mb-6 uppercase tracking-wider">Branch Performance</h3>
-          <div className="flex-1 space-y-6 flex flex-col justify-center">
+          <div className="flex-1 space-y-6 flex flex-col justify-start mt-2">
             {branchData.map((branch, index) => (
               <div key={index}>
                 <div className="flex justify-between text-sm mb-1">
