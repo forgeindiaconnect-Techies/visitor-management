@@ -245,16 +245,31 @@ const notifyVisitorEvent = async ({
         user: id
       }));
 
-      const notificationDoc = await Notification.create({
-        companyId: visitor.companyId,
-        branchId: visitor.branch || visitor.branchLocation,
-        recipients: formattedRecipients,
-        type: 'Visitor',
-        module: 'PreBooking',
-        title: notificationTitle,
-        message: notificationMessage,
-        isRead: false
-      });
+      const notificationEventId =
+        event === VISITOR_EVENTS.RESCHEDULED
+          ? `PREBOOK_RESCHEDULED_${visitor._id}_${new Date(visitor.visitDate).getTime()}_${visitor.expectedArrivalTime || visitor.expectedTime}`
+          : `${event}_${visitor._id}`;
+
+      const notificationDoc = await Notification.findOneAndUpdate(
+        { eventId: notificationEventId },
+        {
+          $setOnInsert: {
+            eventId: notificationEventId,
+            companyId: visitor.companyId,
+            branchId: visitor.branch || visitor.branchLocation,
+            recipients: formattedRecipients,
+            type: 'Visitor',
+            module: 'PreBooking',
+            title: notificationTitle,
+            message: notificationMessage,
+            isRead: false
+          }
+        },
+        {
+          new: true,
+          upsert: true
+        }
+      );
 
       // --- Emit Socket.IO Event for App Notification ---
       if (io) {

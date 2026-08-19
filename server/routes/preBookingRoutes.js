@@ -16,6 +16,7 @@ const {
   getMyPreBookings,
   getPreBookingReports,
   reschedulePreBooking,
+  cleanupDuplicateNotifications,
 } = require("../controllers/preBookingController");
 
 const router = express.Router();
@@ -57,6 +58,9 @@ router.put("/:id/reject", authMiddleware, rejectPreBooking);
 // Reschedule Pre-Booking
 router.put("/:id/reschedule", authMiddleware, reschedulePreBooking);
 router.patch("/:id/reschedule", authMiddleware, reschedulePreBooking);
+
+// Cleanup duplicate notifications (Temporary GET route for easy one-off execution)
+router.get("/cleanup-duplicates", cleanupDuplicateNotifications);
 
 // Clear all Pre-Bookings (must come before /:id)
 router.delete("/clear/all", clearAllPreBookings);

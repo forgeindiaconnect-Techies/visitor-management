@@ -46,7 +46,18 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
       });
       if (res.ok) {
         const data = await res.json();
-        setNotifications(normalizeNotifications(data));
+        const rawList = Array.isArray(data) ? data : [];
+        const seen = new Set();
+        const uniqueList = rawList.filter((item) => {
+          const key =
+            item.eventId ||
+            `${item.type || ''}_${item.preBookingId || ''}_${item.message || ''}`;
+
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        setNotifications(normalizeNotifications(uniqueList));
       }
     } catch (err) {
       console.error('Failed to fetch notifications', err);
@@ -99,7 +110,15 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
         return;
       }
 
-      setNotifications(prev => [notification, ...(Array.isArray(prev) ? prev : [])]);
+      setNotifications(prev => {
+        const list = Array.isArray(prev) ? prev : [];
+        const exists = list.some(item => 
+          String(item._id || item.id) === String(notification._id || notification.id) ||
+          (item.eventId && notification.eventId && item.eventId === notification.eventId)
+        );
+        if (exists) return list;
+        return [notification, ...list];
+      });
       addNotification(notification.title, notification.message, 'info');
     });
 
@@ -241,7 +260,7 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
                 ) : (
                   notifications.slice(0, 10).map(notification => (
                     <div 
-                      key={notification._id} 
+                      key={notification._id || notification.id || notification.eventId} 
                       onClick={() => handleNotificationClick(notification)}
                       className={`p-4 transition-colors cursor-pointer flex gap-3 ${!notification.isRead ? 'bg-indigo-50/40 hover:bg-indigo-50/80' : 'hover:bg-gray-50'}`}
                     >

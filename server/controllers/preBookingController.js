@@ -140,8 +140,8 @@ const createPreBooking = async (req, res) => {
       mobileNumber: normalizedMobile || mobileNumber,
       email: normalizedEmail || email,
       activeBookingKey,
-      activeEmailLock: normalizedEmail || null,
-      activeMobileLock: normalizedMobile || null,
+      activeEmailLock: normalizedEmail || undefined,
+      activeMobileLock: normalizedMobile || undefined,
       visitingCompany,
       hostEmployee,
       visitPurpose,
@@ -178,28 +178,6 @@ const createPreBooking = async (req, res) => {
       await visitorNotificationService.notifyVisitorEvent({
         visitor: visitorObj,
         event: visitorNotificationService.VISITOR_EVENTS.REGISTERED,
-        io: req.app.get('io')
-      });
-
-      const { createNotification } = require('../services/notificationService');
-      const vId = preBooking.visitorId || preBooking._id.toString();
-      await createNotification({
-        eventId: `PREBOOK_CREATED_${vId}`,
-        type: 'PRE_BOOKING_CREATED',
-        title: 'New Pre-Booking',
-        message: `${preBooking.fullName} has registered for a pre-booking.`,
-        visitorId: vId,
-        visitorType: 'PRE_BOOKING',
-        recipients: [
-          { role: 'Super Admin' },
-          { role: 'SaaS Super Admin' },
-          { role: 'Company Admin' },
-          { role: 'Admin' },
-          { role: 'MD' },
-          { role: 'HR' },
-          { role: 'Security' }
-        ],
-        companyId: preBooking.companyId || req.companyId || 'FIC001',
         io: req.app.get('io')
       });
 
@@ -359,33 +337,27 @@ const approvePreBooking = async (req, res) => {
       const approverName = req.userName || req.userRole || "Authorized Personnel";
       const notificationMessage = `Visitor pre-booking for ${preBooking.fullName} has been approved by ${approverName}.`;
 
+      const recipientIds = dashboardUsers.map(u => String(u._id));
+      const uniqueRecipientIds = [...new Set(recipientIds)];
+
       // 2. Create main persistent notification document in DB
       const mainNotification = await Notification.create({
+        eventId: `PREBOOK_APPROVED_${preBooking._id}`,
         companyId: preBooking.companyId || 'FIC001',
         branchId: preBooking.branchLocation || 'Head Office(KRISHNAGIRI)',
+        recipients: uniqueRecipientIds.map(id => ({
+          userId: String(id),
+          user: id
+        })),
+        visitorId: preBooking.visitorId,
+        visitorType: 'PRE_BOOKING',
+        preBookingId: preBooking._id,
         type: "PREBOOKING_APPROVED",
+        module: "PreBooking",
         title: "Pre-Booking Approved",
         message: notificationMessage,
-        preBookingId: preBooking._id,
-        createdBy: approverName,
-        recipients: dashboardUsers.map(u => String(u._id))
-      });
-
-      // Also insert per-user notifications so user queries match both ways
-      const dashboardNotifications = dashboardUsers.map((u) => ({
-        companyId: preBooking.companyId || 'FIC001',
-        branchId: preBooking.branchLocation,
-        recipient: String(u._id),
-        type: "PREBOOKING_APPROVED",
-        title: "Pre-Booking Approved",
-        message: notificationMessage,
-        preBookingId: preBooking._id,
         createdBy: approverName
-      }));
-
-      if (dashboardNotifications.length > 0) {
-        await Notification.insertMany(dashboardNotifications);
-      }
+      });
 
       // 3. Emit real saved DB notification over socket.io
       const io = req.app.get('io');
@@ -452,9 +424,9 @@ const rejectPreBooking = async (req, res) => {
     preBooking.status = "REJECTED";
     preBooking.rejectedAt = new Date();
     preBooking.qrToken = undefined;
-    preBooking.activeBookingKey = null;
-    preBooking.activeEmailLock = null;
-    preBooking.activeMobileLock = null;
+    preBooking.activeBookingKey = undefined;
+    preBooking.activeEmailLock = undefined;
+    preBooking.activeMobileLock = undefined;
 
     await preBooking.save();
 
@@ -472,36 +444,32 @@ const rejectPreBooking = async (req, res) => {
       const rejectorName = req.userName || req.userRole || "Authorized Personnel";
       const notificationMessage = `Visitor pre-booking for ${preBooking.fullName} has been rejected by ${rejectorName}.`;
 
-      // 2. Create notification for each dashboard user
-      const dashboardNotifications = dashboardUsers.map((u) => ({
+      const recipientIds = dashboardUsers.map(u => String(u._id));
+      const uniqueRecipientIds = [...new Set(recipientIds)];
+
+      // 2. Create main persistent notification document in DB
+      const mainNotification = await Notification.create({
+        eventId: `PREBOOK_REJECTED_${preBooking._id}`,
         companyId: preBooking.companyId || 'FIC001',
         branchId: preBooking.branchLocation,
-        recipient: u._id,
+        recipients: uniqueRecipientIds.map(id => ({
+          userId: String(id),
+          user: id
+        })),
+        visitorId: preBooking.visitorId,
+        visitorType: 'PRE_BOOKING',
+        preBookingId: preBooking._id,
         type: "PREBOOKING_REJECTED",
+        module: "PreBooking",
         title: "Pre-Booking Rejected",
         message: notificationMessage,
-        preBookingId: preBooking._id,
-        createdBy: "System Rejection"
-      }));
-
-      if (dashboardNotifications.length > 0) {
-        await Notification.insertMany(dashboardNotifications);
-      }
+        createdBy: rejectorName || "System Rejection"
+      });
 
       // 3. Emit live socket alert to all dashboard users
       const io = req.app.get('io');
       if (io) {
-        io.emit('new_notification', {
-          _id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-          createdAt: new Date().toISOString(),
-          type: 'PREBOOKING_REJECTED',
-          title: 'Pre-Booking Rejected',
-          message: notificationMessage,
-          preBookingId: preBooking._id,
-          companyId: preBooking.companyId || 'FIC001',
-          branchId: preBooking.branchLocation,
-          recipients: dashboardUsers.map(u => u._id.toString())
-        });
+        io.emit('new_notification', mainNotification);
       }
     } catch (notifErr) {
       console.error("Error creating rejection notifications:", notifErr);
@@ -1005,9 +973,9 @@ const checkOutPreBooking = async (req, res) => {
     preBooking.checkOutBy = req.user?.fullName || req.user?.name || "Self Check-Out";
     preBooking.checkOutNotes = notes;
     preBooking.exitNotes = notes;
-    preBooking.activeBookingKey = null;
-    preBooking.activeEmailLock = null;
-    preBooking.activeMobileLock = null;
+    preBooking.activeBookingKey = undefined;
+    preBooking.activeEmailLock = undefined;
+    preBooking.activeMobileLock = undefined;
 
     await preBooking.save();
 
@@ -1305,6 +1273,65 @@ const reschedulePreBooking = async (req, res) => {
   }
 };
 
+const cleanupDuplicateNotifications = async (req, res) => {
+  try {
+    const Notification = require("../models/Notification");
+
+    const duplicates = await Notification.aggregate([
+      {
+        $match: {
+          type: {
+            $in: [
+              "PREBOOKING_CHECKED_IN",
+              "PREBOOKING_CHECKED_OUT"
+            ]
+          },
+          preBookingId: { $ne: null }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            preBookingId: "$preBookingId",
+            type: "$type"
+          },
+          ids: { $push: "$_id" },
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $match: {
+          count: { $gt: 1 }
+        }
+      }
+    ]);
+
+    let deletedCount = 0;
+
+    for (const group of duplicates) {
+      const idsToDelete = group.ids.slice(1);
+
+      const result = await Notification.deleteMany({
+        _id: { $in: idsToDelete }
+      });
+
+      deletedCount += result.deletedCount;
+    }
+
+    return res.json({
+      success: true,
+      message: "Duplicate notifications cleaned successfully.",
+      deletedCount
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
 module.exports = {
   createPreBooking,
   getAllPreBookings,
@@ -1320,4 +1347,5 @@ module.exports = {
   getMyPreBookings,
   getPreBookingReports,
   reschedulePreBooking,
+  cleanupDuplicateNotifications,
 };

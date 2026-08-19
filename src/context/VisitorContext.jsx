@@ -154,18 +154,6 @@ export const VisitorProvider = ({ children }) => {
         mergedData.push(item);
       }
 
-      if (allVisitorsRef.current.length > 0) {
-        const existingIds = new Set(allVisitorsRef.current.map(v => v._id || v.id));
-        const newVisitors = mergedData.filter(v => !(existingIds.has(v._id || v.id)));
-        
-        newVisitors.forEach(nv => {
-          if (activeBranch === 'All Branches' || (nv.branch && nv.branch.includes(activeBranch))) {
-            const label = nv.isPreBooking ? 'Pre-Booking Alert' : 'Direct Visit Alert';
-            addNotification(label, `${nv.visitorName} has been registered at ${nv.branch || 'Facility'}.`, 'info');
-          }
-        });
-      }
-      
       // Filter by host name for HR / Employee roles to enforce visibility isolation
       let finalData = mergedData;
       if (currentUser && ['HR', 'Employee'].includes(currentUser.role)) {
@@ -174,6 +162,18 @@ export const VisitorProvider = ({ children }) => {
           (v.hostName || '').toLowerCase().trim() === currentUserNameLower ||
           (v.hostEmployee || '').toLowerCase().trim() === currentUserNameLower
         );
+      }
+
+      if (allVisitorsRef.current.length > 0) {
+        const existingIds = new Set(allVisitorsRef.current.map(v => v._id || v.id));
+        const newVisitors = finalData.filter(v => !(existingIds.has(v._id || v.id)));
+        
+        newVisitors.forEach(nv => {
+          if (activeBranch === 'All Branches' || (nv.branch && nv.branch.includes(activeBranch))) {
+            const label = nv.isPreBooking ? 'Pre-Booking Alert' : 'Direct Visit Alert';
+            addNotification(label, `${nv.visitorName} has been registered at ${nv.branch || 'Facility'}.`, 'info');
+          }
+        });
       }
       
       allVisitorsRef.current = finalData;

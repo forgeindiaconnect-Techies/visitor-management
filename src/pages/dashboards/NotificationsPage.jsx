@@ -39,10 +39,20 @@ const NotificationsPage = () => {
         url.searchParams.append('branch', activeBranch);
       }
       
-      const res = await fetch(url.toString(), { headers: getHeaders() });
       if (res.ok) {
         const data = await res.json();
-        setNotifications(data.notifications || []);
+        const rawList = Array.isArray(data.notifications) ? data.notifications : (Array.isArray(data) ? data : []);
+        const seen = new Set();
+        const uniqueList = rawList.filter((item) => {
+          const key =
+            item.eventId ||
+            `${item.type || ''}_${item.preBookingId || ''}_${item.message || ''}`;
+
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        setNotifications(uniqueList);
       }
     } catch (err) {
       console.error('Failed to fetch notifications', err);
@@ -91,7 +101,15 @@ const NotificationsPage = () => {
         return;
       }
 
-      setNotifications(prev => [notification, ...(Array.isArray(prev) ? prev : [])]);
+      setNotifications(prev => {
+        const list = Array.isArray(prev) ? prev : [];
+        const exists = list.some(item => 
+          String(item._id || item.id) === String(notification._id || notification.id) ||
+          (item.eventId && notification.eventId && item.eventId === notification.eventId)
+        );
+        if (exists) return list;
+        return [notification, ...list];
+      });
     });
 
     return () => socket.disconnect();
@@ -237,7 +255,7 @@ const NotificationsPage = () => {
                   <div className="divide-y divide-gray-50">
                     {items.map(notification => (
                       <div 
-                        key={notification._id} 
+                        key={notification._id || notification.id || notification.eventId} 
                         onClick={() => handleNotificationClick(notification)}
                         className={`p-5 flex gap-4 transition-colors relative group cursor-pointer ${!notification.isRead ? 'bg-indigo-50/20' : 'hover:bg-gray-50'}`}
                       >

@@ -26,19 +26,16 @@ const preBookingSchema = new mongoose.Schema(
 
     activeBookingKey: {
       type: String,
-      default: null,
       index: true
     },
 
     activeEmailLock: {
       type: String,
-      default: null,
       index: { unique: true, sparse: true }
     },
 
     activeMobileLock: {
       type: String,
-      default: null,
       index: { unique: true, sparse: true }
     },
 
