@@ -88,7 +88,7 @@ router.post('/public-prebook', async (req, res) => {
     }
 
     const companyId = req.headers['x-company-id'] || 'FIC001';
-    const targetBranch = branch || 'Chennai';
+    const targetBranch = branch || 'Head Office(KRISHNAGIRI)';
     const profileId = 'VP-' + Date.now().toString().slice(-6);
 
     // Generate Order-Wise Sequential Visitor ID (e.g. VISIT1001, VISIT1002, VISIT1003...)
@@ -332,8 +332,9 @@ router.get('/', async (req, res) => {
       query.branch = { $regex: new RegExp(`^(${searchRegexStr})$`, 'i') };
     }
 
-    // Isolate HR users to ONLY see visitors explicitly tagged to them
-    if (req.userRole === 'HR') {
+    // Isolate HR/Employee users to ONLY see visitors explicitly tagged to them
+    const normalizedRole = (req.userRole || '').toUpperCase().trim();
+    if (normalizedRole === 'HR' || normalizedRole === 'EMPLOYEE') {
       const User = require('../models/User');
       const hrUser = await User.findById(req.userId);
       if (hrUser && hrUser.name) {

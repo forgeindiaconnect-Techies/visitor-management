@@ -444,7 +444,7 @@ export default function SuperAdminPreBookings() {
               {tab.label}
             </button>
           ))}
-          {(user?.role === 'Super Admin' || user?.role === 'SaaS Super Admin') && (
+          {['Super Admin', 'SaaS Super Admin', 'Admin', 'MD', 'Company Admin'].includes(user?.role) && (
             <button
               onClick={() => {
                 setActiveTab('REPORTS');

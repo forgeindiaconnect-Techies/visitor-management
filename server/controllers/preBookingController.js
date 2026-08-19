@@ -243,10 +243,20 @@ const createPreBooking = async (req, res) => {
 const getAllPreBookings = async (req, res) => {
   try {
     const filter = {};
+    const normalizedRole = (req.userRole || '').toUpperCase().trim();
     // Return all prebooking records for Super Admin (matching Reports data)
-    // Role-based filtering: HR users only see their assigned visitors
-    if (req.userRole === 'HR' || req.userRole === 'Employee') {
-      filter.assignedHr = req.userId;
+    // Role-based filtering: HR/Employee users only see their assigned visitors or where they are the host
+    if (normalizedRole === 'HR' || normalizedRole === 'EMPLOYEE') {
+      const User = require('../models/User');
+      const hrUser = await User.findById(req.userId);
+      if (hrUser && hrUser.name) {
+        filter.$or = [
+          { assignedHr: req.userId },
+          { hostEmployee: new RegExp(`^${hrUser.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }
+        ];
+      } else {
+        filter.assignedHr = req.userId;
+      }
       filter.visitorType = { $ne: 'NEW_VISITOR' };
     }
 
@@ -870,34 +880,33 @@ const checkInPreBooking = async (req, res) => {
         recipientIds.push(preBooking.assignedHr.toString());
       }
 
-      const notificationDocs = recipientIds.map(id => ({
+      const uniqueRecipientIds = [...new Set(recipientIds)];
+
+      const mainNotification = await Notification.create({
+        eventId: `PREBOOK_CHECKIN_${preBooking._id}`,
         companyId: preBooking.companyId || 'FIC001',
         branchId: preBooking.branchLocation,
-        recipient: id,
+
+        recipients: uniqueRecipientIds.map(id => ({
+          userId: String(id),
+          user: id
+        })),
+
+        visitorId: preBooking.visitorId,
+        visitorType: 'PRE_BOOKING',
+        preBookingId: preBooking._id,
+
         type: "PREBOOKING_CHECKED_IN",
+        module: "PreBooking",
         title: "Pre-Booking Checked In",
         message: `Visitor ${preBooking.fullName} has checked in.`,
-        preBookingId: preBooking._id,
         createdBy: req.user?.fullName || "Security"
-      }));
-
-      if (notificationDocs.length > 0) {
-        await Notification.insertMany(notificationDocs);
-      }
+      });
 
       const io = req.app.get('io');
+
       if (io) {
-        io.emit('new_notification', {
-          _id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-          createdAt: new Date().toISOString(),
-          type: 'PREBOOKING_CHECKED_IN',
-          title: 'Pre-Booking Checked In',
-          message: `Visitor ${preBooking.fullName} has checked in.`,
-          preBookingId: preBooking._id,
-          companyId: preBooking.companyId || 'FIC001',
-          branchId: preBooking.branchLocation,
-          recipients: recipientIds
-        });
+        io.emit('new_notification', mainNotification);
       }
     } catch (notifErr) {
       console.error("Error creating check-in notifications:", notifErr);
@@ -1016,34 +1025,33 @@ const checkOutPreBooking = async (req, res) => {
         recipientIds.push(preBooking.assignedHr.toString());
       }
 
-      const notificationDocs = recipientIds.map(id => ({
+      const uniqueRecipientIds = [...new Set(recipientIds)];
+
+      const mainNotification = await Notification.create({
+        eventId: `PREBOOK_CHECKOUT_${preBooking._id}`,
         companyId: preBooking.companyId || 'FIC001',
         branchId: preBooking.branchLocation,
-        recipient: id,
+
+        recipients: uniqueRecipientIds.map(id => ({
+          userId: String(id),
+          user: id
+        })),
+
+        visitorId: preBooking.visitorId,
+        visitorType: 'PRE_BOOKING',
+        preBookingId: preBooking._id,
+
         type: "PREBOOKING_CHECKED_OUT",
+        module: "PreBooking",
         title: "Pre-Booking Checked Out",
         message: `Visitor ${preBooking.fullName} has checked out.`,
-        preBookingId: preBooking._id,
         createdBy: req.user?.fullName || "Security"
-      }));
-
-      if (notificationDocs.length > 0) {
-        await Notification.insertMany(notificationDocs);
-      }
+      });
 
       const io = req.app.get('io');
+
       if (io) {
-        io.emit('new_notification', {
-          _id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-          createdAt: new Date().toISOString(),
-          type: 'PREBOOKING_CHECKED_OUT',
-          title: 'Pre-Booking Checked Out',
-          message: `Visitor ${preBooking.fullName} has checked out.`,
-          preBookingId: preBooking._id,
-          companyId: preBooking.companyId || 'FIC001',
-          branchId: preBooking.branchLocation,
-          recipients: recipientIds
-        });
+        io.emit('new_notification', mainNotification);
       }
     } catch (notifErr) {
       console.error("Error creating check-out notifications:", notifErr);
@@ -1089,9 +1097,17 @@ const checkOutPreBooking = async (req, res) => {
 
 const getMyPreBookings = async (req, res) => {
   try {
-    const visitors = await PreBooking.find({
-      assignedHr: req.userId
-    })
+    const User = require('../models/User');
+    const userObj = await User.findById(req.userId);
+    const filter = { assignedHr: req.userId };
+    if (userObj && userObj.name) {
+      filter.$or = [
+        { assignedHr: req.userId },
+        { hostEmployee: new RegExp(`^${userObj.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }
+      ];
+      delete filter.assignedHr;
+    }
+    const visitors = await PreBooking.find(filter)
       .populate("assignedHr", "name email")
       .sort({
         createdAt: -1

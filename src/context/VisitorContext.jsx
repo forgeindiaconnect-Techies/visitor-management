@@ -166,8 +166,18 @@ export const VisitorProvider = ({ children }) => {
         });
       }
       
-      allVisitorsRef.current = mergedData;
-      setVisitors(mergedData);
+      // Filter by host name for HR / Employee roles to enforce visibility isolation
+      let finalData = mergedData;
+      if (currentUser && ['HR', 'Employee'].includes(currentUser.role)) {
+        const currentUserNameLower = (currentUser.name || '').toLowerCase().trim();
+        finalData = mergedData.filter(v => 
+          (v.hostName || '').toLowerCase().trim() === currentUserNameLower ||
+          (v.hostEmployee || '').toLowerCase().trim() === currentUserNameLower
+        );
+      }
+      
+      allVisitorsRef.current = finalData;
+      setVisitors(finalData);
     } catch (err) {
       console.error('API connection error:', err);
       // Fallback to local storage if API is down
@@ -191,7 +201,7 @@ export const VisitorProvider = ({ children }) => {
           purpose: 'Meeting',
           visitDate: new Date().toISOString().split('T')[0],
           status: 'Pending',
-          branch: 'Chennai',
+          branch: 'Head Office(KRISHNAGIRI)',
         }]);
       }
     } finally {
@@ -238,7 +248,7 @@ export const VisitorProvider = ({ children }) => {
     if (!userBranch) {
       userBranch = currentUser && !['Super Admin'].includes(currentUser.role) 
         ? currentUser.branch 
-        : (activeBranch === 'All Branches' ? 'Chennai' : activeBranch);
+        : (activeBranch === 'All Branches' ? 'Head Office(KRISHNAGIRI)' : activeBranch);
     }
     
     const newVisitor = {

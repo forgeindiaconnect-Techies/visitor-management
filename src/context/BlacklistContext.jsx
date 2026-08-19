@@ -42,7 +42,7 @@ export const BlacklistProvider = ({ children }) => {
   const addToBlacklist = async (data) => {
     const userBranch = currentUser && !['Super Admin'].includes(currentUser.role) 
       ? currentUser.branch 
-      : (activeBranch === 'All Branches' ? 'Chennai' : activeBranch);
+      : (activeBranch === 'All Branches' ? 'Head Office(KRISHNAGIRI)' : activeBranch);
     try {
       const response = await fetch(API_URL, {
         method: 'POST',

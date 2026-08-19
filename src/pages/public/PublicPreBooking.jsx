@@ -57,7 +57,7 @@ const PublicPreBooking = () => {
     visitDate: new Date().toISOString().split('T')[0],
     expectedArrivalTime: '10:00',
     vehicleNumber: '',
-    branch: 'Chennai',
+    branch: 'Head Office(KRISHNAGIRI)',
     idType: '',
     idProofUrl: '',
   });
@@ -84,7 +84,7 @@ const PublicPreBooking = () => {
     return hrUsers.length > 0 ? (hrUsers[0]._id || hrUsers[0].id) : '';
   };
 
-  const branchesList = ['Chennai', 'Head Office(KRISHNAGIRI)', 'Bangalore', 'Thirupattur'];
+  const branchesList = ['Head Office(KRISHNAGIRI)', 'Bangalore'];
 
   const _rawUrl = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
   const API_BASE = _rawUrl.replace(/\/api\/?$/, '');
@@ -686,7 +686,7 @@ const PublicPreBooking = () => {
                     visitDate: new Date().toISOString().split('T')[0],
                     expectedArrivalTime: '10:00 AM',
                     vehicleNumber: '',
-                    branch: 'Chennai',
+                    branch: 'Head Office(KRISHNAGIRI)',
                   });
                 }}
                 className="px-5 py-2.5 rounded-xl bg-[var(--color-brand-indigo)] hover:bg-[var(--color-brand-indigo-light)] text-white font-semibold text-xs transition-colors shadow-md"

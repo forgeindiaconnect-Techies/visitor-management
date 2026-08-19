@@ -277,7 +277,7 @@ const VisitorList = () => {
             { key: 'Rejected', label: 'Rejected', count: statusCounts.rejected },
             { key: 'Checked In', label: 'Checked In', count: statusCounts.checkedIn },
             { key: 'Checked Out', label: 'Checked Out', count: statusCounts.checkedOut },
-            ...(user?.role !== 'Security' ? [{ key: 'Reports', label: '📊 Reports', count: statusCounts.all }] : [])
+            ...((['Super Admin', 'SaaS Super Admin', 'Admin', 'MD', 'Company Admin'].includes(user?.role)) ? [{ key: 'Reports', label: '📊 Reports', count: statusCounts.all }] : [])
           ].map(tab => (
             <button
               key={tab.key}

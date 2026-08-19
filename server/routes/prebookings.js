@@ -73,7 +73,7 @@ router.post('/', async (req, res) => {
     }
 
     const companyId = req.headers['x-company-id'] || 'FIC001';
-    const targetBranch = branch || 'Chennai';
+    const targetBranch = branch || 'Head Office(KRISHNAGIRI)';
     const profileId = 'VP-' + Date.now().toString().slice(-6);
 
     // Sequential Order-Wise Visitor ID (VISIT1001, VISIT1002...)

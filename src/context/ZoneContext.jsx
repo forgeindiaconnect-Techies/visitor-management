@@ -42,7 +42,7 @@ export const ZoneProvider = ({ children }) => {
   const addZone = async (zoneData) => {
     const userBranch = currentUser && !['Super Admin'].includes(currentUser.role) 
       ? currentUser.branch 
-      : (activeBranch === 'All Branches' ? 'Chennai' : activeBranch);
+      : (activeBranch === 'All Branches' ? 'Head Office(KRISHNAGIRI)' : activeBranch);
     const newZone = { ...zoneData, branch: userBranch };
     try {
       const response = await fetch(API_URL, {

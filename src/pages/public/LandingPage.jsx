@@ -85,7 +85,7 @@ const LandingPage = () => {
     expectedArrivalTime: '10:00',
     expectedDuration: '1 Hour',
     vehicleNumber: '',
-    branch: 'Chennai',
+    branch: 'Head Office(KRISHNAGIRI)',
     notes: '',
     idType: '',
     idProofUrl: ''
@@ -103,7 +103,7 @@ const LandingPage = () => {
     return null;
   };
 
-  const branchesList = ['Chennai', 'Head Office(KRISHNAGIRI)', 'Bangalore', 'Thirupattur'];
+  const branchesList = ['Head Office(KRISHNAGIRI)', 'Bangalore'];
 
   const _rawUrl = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
   const API_BASE = _rawUrl.replace(/\/api\/?$/, '');
@@ -1243,7 +1243,7 @@ const LandingPage = () => {
                           expectedArrivalTime: '10:00 AM',
                           expectedDuration: '1 Hour',
                           vehicleNumber: '',
-                          branch: 'Chennai',
+                          branch: 'Head Office(KRISHNAGIRI)',
                           notes: ''
                         });
                       }}

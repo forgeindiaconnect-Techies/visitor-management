@@ -9,7 +9,7 @@ const ApprovalDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { allVisitors, updateVisitorStatus } = useVisitors();
-  const { user } = useAuth();
+  const { user, hasApprovalPermission } = useAuth();
   
   const visitor = allVisitors.find(v => String(v.id) === String(id));
 
@@ -60,7 +60,7 @@ const ApprovalDetails = () => {
           </div>
         </div>
 
-        {canTakeAction && (
+        {canTakeAction && hasApprovalPermission && (
           <div className="flex space-x-3">
             <button 
               onClick={() => { setModalAction('Reject'); setIsModalOpen(true); }}
