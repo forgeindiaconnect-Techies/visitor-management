@@ -68,8 +68,14 @@ const MDDashboard = () => {
   const maxTrend = Math.max(...trendsData.map(d => d.visitors), 1);
 
   // Branch Performance Data
-  const branchData = safeBranches.map(b => {
-    const branchVisitors = b === 'All Branches' ? safeVisitors.length : safeVisitors.filter(v => v.branch === b).length;
+  const chartBranches = safeBranches.filter(b => b !== 'All Branches');
+  
+  const branchData = chartBranches.map(b => {
+    const branchVisitors = safeVisitors.filter(v => {
+      if (!v.branch) return false;
+      return v.branch.toUpperCase() === b.toUpperCase();
+    }).length;
+
     return {
       name: b,
       visitors: branchVisitors

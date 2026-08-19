@@ -95,39 +95,20 @@ const SuperAdminDashboard = () => {
   const maxTrend = Math.max(...trendsData.map(d => d.visitors), 1);
 
   // Branch Performance Data
-  // Extract unique branches from visitors to ensure we show performance even if BranchSettings is empty
-  const activePhysicalBranches = new Set(safeBranches.filter(b => b !== 'All Branches'));
-  safeVisitors.forEach(v => {
-    if (v.branch) activePhysicalBranches.add(v.branch);
-  });
+  const chartBranches = safeBranches.filter(b => b !== 'All Branches');
   
-  let chartBranches = Array.from(activePhysicalBranches);
-  if (chartBranches.length === 0) chartBranches = ['Main Facility'];
-
-  const branchData = chartBranches
-    .map(b => {
-      let branchVisitors = safeVisitors.filter(v => {
-        if (!v.branch) return false;
-        
-        const branchUpper = v.branch.toUpperCase();
-        const bUpper = b.toUpperCase();
-        
-        // Exact case-insensitive match
-        if (branchUpper === bUpper) return true;
-        
-        // Map legacy test data to new branch names
-        if (bUpper.includes('THIRUPATTUR') && branchUpper === 'TIRUPATTUR') return true;
-        if (bUpper.includes('KRISHNAGIRI') && branchUpper === 'SALEM') return true;
-        
-        return false;
-      }).length;
+  const branchData = chartBranches.map(b => {
+    const branchVisitors = safeVisitors.filter(v => {
+      if (!v.branch) return false;
+      return v.branch.toUpperCase() === b.toUpperCase();
+    }).length;
 
     return {
       name: b,
       visitors: branchVisitors
     };
   });
-  
+
   const maxBranchVisitors = Math.max(...branchData.map(b => b.visitors), 1);
 
   return (
