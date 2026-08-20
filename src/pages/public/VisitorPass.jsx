@@ -303,7 +303,7 @@ const VisitorPass = () => {
               <div className="flex justify-center mb-6">
                 <div className="bg-white p-4 rounded-xl shadow-inner border border-gray-100">
                   <QRCodeSVG 
-                    value={visitor.qrToken || visitor.visitorId || visitor.visitId || ''}
+                    value={`${window.location.origin}/pass/${visitor.qrToken || visitor.visitorId || visitor.visitId || ''}`}
                     size={180} 
                     level={"H"}
                     includeMargin={true}

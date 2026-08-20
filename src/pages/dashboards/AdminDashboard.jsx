@@ -219,6 +219,9 @@ const AdminDashboard = () => {
               <tr className="bg-slate-50 text-gray-500 text-[11px] uppercase tracking-wider">
                 <th className="px-6 py-4 font-medium">Visitor Name</th>
                 <th className="px-6 py-4 font-medium text-center">Group Size</th>
+                <th className="px-6 py-4 font-medium">Host</th>
+                <th className="px-6 py-4 font-medium">Branch</th>
+                <th className="px-6 py-4 font-medium">Purpose</th>
                 <th className="px-6 py-4 font-medium">Entry Time</th>
                 <th className="px-6 py-4 font-medium">Exit Time</th>
                 <th className="px-6 py-4 font-medium">Time Spent</th>

@@ -918,7 +918,7 @@ export default function SuperAdminPreBookings() {
             </p>
 
             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 inline-block my-2">
-              <QRCodeSVG value={approvedQR.qrToken || approvedQR.visitorId} size={180} level="H" className="mx-auto" />
+              <QRCodeSVG value={`${window.location.origin}/pass/${approvedQR.qrToken || approvedQR.visitorId}`} size={180} level="H" className="mx-auto" />
             </div>
 
             <p className="text-xs text-slate-500">QR code token activated. Security can now verify and check in this visitor.</p>

@@ -208,6 +208,10 @@ const MDDashboard = () => {
             <thead>
               <tr className="bg-slate-50 text-gray-500 text-[11px] uppercase tracking-wider">
                 <th className="px-6 py-4 font-medium">Visitor Name</th>
+                <th className="px-6 py-4 font-medium text-center">Group Size</th>
+                <th className="px-6 py-4 font-medium">Host</th>
+                <th className="px-6 py-4 font-medium">Branch</th>
+                <th className="px-6 py-4 font-medium">Purpose</th>
                 <th className="px-6 py-4 font-medium">Entry Time</th>
                 <th className="px-6 py-4 font-medium">Exit Time</th>
                 <th className="px-6 py-4 font-medium">Time Spent</th>
@@ -218,25 +222,43 @@ const MDDashboard = () => {
               {[...visitors].reverse().slice(0, 50).map((visitor) => (
                 <tr key={visitor.id} className="hover:bg-slate-50/50 transition-colors">
                   <td className="px-6 py-4 font-medium text-gray-900">{visitor.visitorName}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{visitor.entryTime || '-'}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{visitor.exitTime || '-'}</td>
+                  <td className="px-6 py-4 font-bold text-gray-700 text-center">{visitor.visitorCount || 1}</td>
+                  <td className="px-6 py-4 text-sm text-gray-600">{visitor.hostName}</td>
+                  <td className="px-6 py-4 text-sm text-gray-600">{visitor.branch}</td>
+                  <td className="px-6 py-4 text-sm text-gray-600">{visitor.purpose}</td>
+                  <td className="px-6 py-4">
+                    <div className="text-sm font-semibold text-gray-900">
+                      {visitor.checkInTime 
+                        ? new Date(visitor.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })
+                        : (visitor.entryTime && visitor.entryTime !== '-' ? visitor.entryTime : 'Not Checked In')}
+                    </div>
+                    <div className="text-xs text-gray-500 font-mono">
+                      {visitor.checkInTime 
+                        ? new Date(visitor.checkInTime).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                        : (visitor.visitDate ? (visitor.visitDate.includes('T') ? visitor.visitDate.split('T')[0] : visitor.visitDate) : '-')}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-600 font-mono">{visitor.exitTime || '-'}</td>
                   <td className="px-6 py-4 text-sm font-medium text-gray-800">{calculateTimeSpent(visitor.visitDate, visitor.entryTime, visitor.exitTime, visitor.status)}</td>
                   <td className="px-6 py-4">
                     <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
                       visitor.status === 'Approved' ? 'bg-blue-100 text-blue-700' :
                       visitor.status?.toUpperCase() === 'PENDING' ? 'bg-orange-100 text-orange-700' :
                       visitor.status === 'Rejected' ? 'bg-red-100 text-red-700' :
-                      visitor.status === 'Inside' ? 'bg-indigo-100 text-[var(--color-brand-indigo)]' :
+                      visitor.status === 'Inside' ? 'bg-yellow-100 text-yellow-700' :
+                      visitor.status === 'Exited' ? 'bg-green-100 text-green-700' :
                       'bg-gray-100 text-gray-700'
                     }`}>
-                      {visitor.status}
+                      {visitor.status === 'Inside' ? '🟡 In Progress' : 
+                       visitor.status === 'Exited' ? '🟢 Completed' : 
+                       visitor.status}
                     </span>
                   </td>
                 </tr>
               ))}
               {[...visitors].length === 0 && (
                 <tr>
-                  <td colSpan="4" className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan="9" className="px-6 py-12 text-center text-gray-500">
                     No recent visitors found.
                   </td>
                 </tr>
