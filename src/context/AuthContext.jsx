@@ -16,9 +16,8 @@ export const AuthProvider = ({ children }) => {
   // Set current user's approval permissions locally
   useEffect(() => {
     if (user) {
-      const allowed = ['sandeep', 'avinash', 'jeo', 'agila'];
-      const userNameLower = user.name ? user.name.toLowerCase().trim() : '';
-      const isAllowed = allowed.includes(userNameLower) || user.role === 'SaaS Super Admin';
+      const allowedRoles = ['Super Admin', 'SaaS Super Admin', 'MD', 'Admin'];
+      const isAllowed = allowedRoles.includes(user.role);
       setHasApprovalPermission(isAllowed);
     } else {
       setHasApprovalPermission(false);
