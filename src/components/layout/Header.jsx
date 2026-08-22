@@ -22,9 +22,10 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
   const dropdownRef = useRef(null);
 
   const getHeaders = () => ({
-    'X-Company-Id': user?.companyId || 'SYSTEM',
-    'X-User-Id': user?.id || 'bootstrap',
+    'X-Company-Id': user?.companyId || 'FIC001',
+    'X-User-Id': user?._id || user?.id || 'bootstrap',
     'X-User-Role': user?.role || 'User',
+    'X-Branch-Id': user?.branch || 'All Branches',
     'Authorization': `Bearer ${localStorage.getItem('token')}`
   });
 
@@ -36,7 +37,7 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
       }
       
       let fetchUrl = new URL(API_URL);
-      if (queryBranch) {
+      if (queryBranch && queryBranch !== 'All Branches') {
         fetchUrl.searchParams.append('branch', queryBranch);
       }
       
@@ -79,7 +80,7 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
       }
       
       // Basic role/branch filtering on socket client
-      if (queryBranch && queryBranch !== 'All Branches' && notification.branchId && notification.branchId !== queryBranch) {
+      if (queryBranch && queryBranch !== 'All Branches' && notification.branchId && notification.branchId !== queryBranch && notification.branchId !== 'All Branches') {
         return;
       }
 
@@ -88,7 +89,7 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
         if (!saasTypes.includes(notification.type) && notification.createdBy !== 'SaaS Super Admin') {
           return;
         }
-      } else if (user?.role !== 'SaaS Super Admin' && notification.companyId !== 'SYSTEM' && notification.companyId !== user?.companyId) {
+      } else if (user?.role !== 'SaaS Super Admin' && notification.companyId && notification.companyId !== 'SYSTEM' && notification.companyId.toUpperCase() !== (user?.companyId || 'FIC001').toUpperCase()) {
         return;
       }
 
@@ -98,16 +99,27 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
       }
 
       // If notification has a recipient or recipients list, verify match
-      const currentUserId = String(user?.id || user?._id || '');
+      const currentUserId = String(user?._id || user?.id || '');
       const currentUserRole = user?.role || '';
       
       if (notification.recipients && Array.isArray(notification.recipients) && notification.recipients.length > 0) {
-        const matchesUser = notification.recipients.some(r => String(r) === currentUserId || String(r) === currentUserRole);
+        const matchesUser = notification.recipients.some(r => {
+          if (!r) return false;
+          if (typeof r === 'string') {
+            return (currentUserId && r === currentUserId) || (currentUserRole && r.toLowerCase() === currentUserRole.toLowerCase());
+          }
+          const rUserId = String(r.userId || r.user || r._id || '');
+          const rRole = String(r.role || '');
+          return (currentUserId && rUserId === currentUserId) || (currentUserRole && rRole.toLowerCase() === currentUserRole.toLowerCase());
+        });
         if (!matchesUser) {
           return;
         }
-      } else if (notification.recipient && String(notification.recipient) !== currentUserId && String(notification.recipient) !== currentUserRole) {
-        return;
+      } else if (notification.recipient) {
+        const rStr = typeof notification.recipient === 'object' ? String(notification.recipient._id || notification.recipient.id || '') : String(notification.recipient);
+        if (rStr !== currentUserId && rStr.toLowerCase() !== currentUserRole.toLowerCase()) {
+          return;
+        }
       }
 
       setNotifications(prev => {

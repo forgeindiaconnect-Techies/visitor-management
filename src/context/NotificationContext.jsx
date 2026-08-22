@@ -79,7 +79,7 @@ export const NotificationProvider = ({ children }) => {
     const socket = io(socketUrl, { transports: ['websocket', 'polling'] });
 
     try {
-      const userStored = localStorage.getItem('user');
+      const userStored = localStorage.getItem('zmvms_user') || sessionStorage.getItem('zmvms_user') || localStorage.getItem('user');
       const parsedUser = userStored ? JSON.parse(userStored) : null;
       if (parsedUser && parsedUser.role) {
         socket.emit('join-notification-room', {
@@ -94,7 +94,8 @@ export const NotificationProvider = ({ children }) => {
       setPersistentNotifications((prev) => {
         const safePrev = Array.isArray(prev) ? prev : [];
         const exists = safePrev.some(
-          (item) => newNotif?.eventId && item?.eventId === newNotif.eventId
+          (item) => (newNotif?.eventId && item?.eventId === newNotif.eventId) ||
+                    (newNotif?._id && String(item?._id || item?.id) === String(newNotif._id))
         );
         if (exists) return safePrev;
         return [newNotif, ...safePrev];
@@ -109,10 +110,12 @@ export const NotificationProvider = ({ children }) => {
       );
     };
 
+    socket.on('new_notification', handleNewNotif);
     socket.on('notification-created', handleNewNotif);
     socket.on('notification:new', handleNewNotif);
 
     return () => {
+      socket.off('new_notification', handleNewNotif);
       socket.off('notification-created', handleNewNotif);
       socket.off('notification:new', handleNewNotif);
       socket.disconnect();

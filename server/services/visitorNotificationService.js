@@ -43,7 +43,7 @@ const notifyVisitorEvent = async ({
       const permissions = await ApprovalPermission.find({ canApprove: true });
       let eligibleRoles = permissions.map(p => mapPermissionRoleToUserRole(p.role));
       
-      const defaultRoles = ['Super Admin', 'MD', 'HR', 'Admin', 'Branch Admin', 'Senior HR', 'Receptionist', 'Security'];
+      const defaultRoles = ['Super Admin', 'SaaS Super Admin', 'MD', 'HR', 'Admin', 'Branch Admin', 'Senior HR', 'Receptionist', 'Security'];
       for (const role of defaultRoles) {
         const rawRole = role.toUpperCase().replace(/\s+/g, '_');
         const explicitPerm = await ApprovalPermission.findOne({ role: rawRole });
@@ -51,7 +51,11 @@ const notifyVisitorEvent = async ({
           eligibleRoles.push(role);
         }
       }
-      const users = await User.find({ role: { $in: eligibleRoles }, companyId: visitor.companyId });
+      const companyRegex = new RegExp(`^${visitor.companyId || 'FIC001'}$`, 'i');
+      const users = await User.find({
+        role: { $in: eligibleRoles },
+        $or: [{ companyId: companyRegex }, { companyId: 'SYSTEM' }, { companyId: null }]
+      });
       return users.map(u => u._id.toString());
     };
 
@@ -255,9 +259,10 @@ const notifyVisitorEvent = async ({
         {
           $setOnInsert: {
             eventId: notificationEventId,
-            companyId: visitor.companyId,
+            companyId: visitor.companyId || 'FIC001',
             branchId: visitor.branch || visitor.branchLocation,
             recipients: formattedRecipients,
+            roles: ['Super Admin', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'MD', 'Senior HR', 'HR', 'Security', 'Receptionist'],
             type: 'Visitor',
             module: 'PreBooking',
             title: notificationTitle,

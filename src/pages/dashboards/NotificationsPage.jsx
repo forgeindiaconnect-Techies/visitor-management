@@ -25,9 +25,10 @@ const NotificationsPage = () => {
   const dates = ['All', 'Today', 'Yesterday', 'Last Week', 'Last Month'];
 
   const getHeaders = () => ({
-    'X-Company-Id': user?.companyId || 'SYSTEM',
-    'X-User-Id': user?.id || 'bootstrap',
+    'X-Company-Id': user?.companyId || 'FIC001',
+    'X-User-Id': user?._id || user?.id || 'bootstrap',
     'X-User-Role': user?.role || 'User',
+    'X-Branch-Id': user?.branch || 'All Branches',
     'Authorization': `Bearer ${localStorage.getItem('token')}`
   });
 
@@ -39,6 +40,11 @@ const NotificationsPage = () => {
         url.searchParams.append('branch', activeBranch);
       }
       
+      const res = await fetch(url.toString(), {
+        cache: 'no-store',
+        headers: getHeaders()
+      });
+
       if (res.ok) {
         const data = await res.json();
         const rawList = Array.isArray(data.notifications) ? data.notifications : (Array.isArray(data) ? data : []);
@@ -75,11 +81,11 @@ const NotificationsPage = () => {
       if (['Super Admin', 'MD', 'Senior HR', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'HR'].includes(user?.role)) {
         queryBranch = activeBranch === 'All Branches' ? null : activeBranch;
       }
-      if (queryBranch && queryBranch !== 'All Branches' && notification.branchId && notification.branchId !== queryBranch) return;
+      if (queryBranch && queryBranch !== 'All Branches' && notification.branchId && notification.branchId !== queryBranch && notification.branchId !== 'All Branches') return;
       
       if (user?.role === 'SaaS Super Admin') {
         if (!['Company', 'Subscription', 'System', 'Branch', 'Admin', 'Announcement'].includes(notification.module || notification.type)) return;
-      } else if (user?.role !== 'SaaS Super Admin' && notification.companyId !== 'SYSTEM' && notification.companyId !== user?.companyId) {
+      } else if (user?.role !== 'SaaS Super Admin' && notification.companyId && notification.companyId !== 'SYSTEM' && notification.companyId.toUpperCase() !== (user?.companyId || 'FIC001').toUpperCase()) {
         return;
       }
 
@@ -89,16 +95,27 @@ const NotificationsPage = () => {
       }
 
       // If notification has a recipient or recipients list, verify match
-      const currentUserId = String(user?.id || user?._id || '');
+      const currentUserId = String(user?._id || user?.id || '');
       const currentUserRole = user?.role || '';
       
       if (notification.recipients && Array.isArray(notification.recipients) && notification.recipients.length > 0) {
-        const matchesUser = notification.recipients.some(r => String(r) === currentUserId || String(r) === currentUserRole);
+        const matchesUser = notification.recipients.some(r => {
+          if (!r) return false;
+          if (typeof r === 'string') {
+            return (currentUserId && r === currentUserId) || (currentUserRole && r.toLowerCase() === currentUserRole.toLowerCase());
+          }
+          const rUserId = String(r.userId || r.user || r._id || '');
+          const rRole = String(r.role || '');
+          return (currentUserId && rUserId === currentUserId) || (currentUserRole && rRole.toLowerCase() === currentUserRole.toLowerCase());
+        });
         if (!matchesUser) {
           return;
         }
-      } else if (notification.recipient && String(notification.recipient) !== currentUserId && String(notification.recipient) !== currentUserRole) {
-        return;
+      } else if (notification.recipient) {
+        const rStr = typeof notification.recipient === 'object' ? String(notification.recipient._id || notification.recipient.id || '') : String(notification.recipient);
+        if (rStr !== currentUserId && rStr.toLowerCase() !== currentUserRole.toLowerCase()) {
+          return;
+        }
       }
 
       setNotifications(prev => {

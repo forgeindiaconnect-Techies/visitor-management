@@ -9,19 +9,35 @@ exports.getNotifications = async (req, res) => {
     let orConditions = [
       { recipient: null },
       { recipients: { $size: 0 } },
-      { 'recipients.role': role },
-      { recipientRole: role },
-      { targetRole: role }
+      { recipients: { $exists: false } },
+      { recipients: null },
+      { 'recipients.role': new RegExp(`^${role}$`, 'i') },
+      { recipientRole: new RegExp(`^${role}$`, 'i') },
+      { targetRole: new RegExp(`^${role}$`, 'i') },
+      { roles: new RegExp(`^${role}$`, 'i') },
+      { roles: { $in: [role] } }
     ];
 
     if (userId) {
       orConditions.push({ 'recipients.userId': String(userId) });
+      orConditions.push({ 'recipients.user': userId });
       orConditions.push({ recipient: String(userId) });
+      orConditions.push({ userId: String(userId) });
     }
 
+    const companyRegex = new RegExp(`^${userCompanyId}$`, 'i');
     const query = {
-      companyId: { $in: [userCompanyId, 'SYSTEM', null] },
-      $or: orConditions
+      $and: [
+        {
+          $or: [
+            { companyId: companyRegex },
+            { companyId: 'SYSTEM' },
+            { companyId: null },
+            { companyId: { $exists: false } }
+          ]
+        },
+        { $or: orConditions }
+      ]
     };
 
     const notifications = await Notification.find(query)

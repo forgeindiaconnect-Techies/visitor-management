@@ -342,9 +342,10 @@ const approvePreBooking = async (req, res) => {
       const Notification = require("../models/Notification");
 
       // 1. Find all dashboard users
+      const companyRegex = new RegExp(`^${preBooking.companyId || 'FIC001'}$`, 'i');
       const dashboardUsers = await User.find({
-        companyId: preBooking.companyId || 'FIC001',
-        role: { $in: ['Super Admin', 'Security', 'HR', 'Senior HR', 'MD', 'IT', 'Admin', 'Branch Admin', 'Receptionist'] }
+        role: { $in: ['Super Admin', 'SaaS Super Admin', 'Security', 'HR', 'Senior HR', 'MD', 'IT', 'Admin', 'Branch Admin', 'Receptionist'] },
+        $or: [{ companyId: companyRegex }, { companyId: 'SYSTEM' }, { companyId: null }]
       });
 
       const approverName = req.userName || req.userRole || "Authorized Personnel";
@@ -362,6 +363,7 @@ const approvePreBooking = async (req, res) => {
           userId: String(id),
           user: id
         })),
+        roles: ['Super Admin', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'MD', 'Senior HR', 'HR', 'Security', 'Receptionist'],
         visitorId: preBooking.visitorId,
         visitorType: 'PRE_BOOKING',
         preBookingId: preBooking._id,
@@ -463,9 +465,10 @@ const rejectPreBooking = async (req, res) => {
       const Notification = require("../models/Notification");
 
       // 1. Find all dashboard users
+      const companyRegex = new RegExp(`^${preBooking.companyId || 'FIC001'}$`, 'i');
       const dashboardUsers = await User.find({
-        companyId: preBooking.companyId || 'FIC001',
-        role: { $in: ['Super Admin', 'Security', 'HR', 'Senior HR', 'MD', 'IT', 'Admin', 'Branch Admin', 'Receptionist'] }
+        role: { $in: ['Super Admin', 'SaaS Super Admin', 'Security', 'HR', 'Senior HR', 'MD', 'IT', 'Admin', 'Branch Admin', 'Receptionist'] },
+        $or: [{ companyId: companyRegex }, { companyId: 'SYSTEM' }, { companyId: null }]
       });
 
       const rejectorName = req.userName || req.userRole || "Authorized Personnel";
@@ -483,6 +486,7 @@ const rejectPreBooking = async (req, res) => {
           userId: String(id),
           user: id
         })),
+        roles: ['Super Admin', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'MD', 'Senior HR', 'HR', 'Security', 'Receptionist'],
         visitorId: preBooking.visitorId,
         visitorType: 'PRE_BOOKING',
         preBookingId: preBooking._id,

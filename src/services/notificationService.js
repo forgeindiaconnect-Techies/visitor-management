@@ -5,10 +5,17 @@ const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'l
 export const getNotifications = async () => {
   try {
     const token = localStorage.getItem('token');
+    const userStored = localStorage.getItem('zmvms_user') || sessionStorage.getItem('zmvms_user') || localStorage.getItem('user');
+    const user = userStored ? JSON.parse(userStored) : null;
+
     const response = await fetch(`${API_URL}/api/notifications`, {
       headers: {
         'Content-Type': 'application/json',
-        ...(token && { 'Authorization': `Bearer ${token}` })
+        ...(token && { 'Authorization': `Bearer ${token}` }),
+        'X-Company-Id': user?.companyId || 'FIC001',
+        'X-User-Id': user?._id || user?.id || 'bootstrap',
+        'X-User-Role': user?.role || 'User',
+        'X-Branch-Id': user?.branch || 'All Branches'
       }
     });
 
