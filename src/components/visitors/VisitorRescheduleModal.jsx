@@ -1,7 +1,14 @@
 import React, { useState } from 'react';
 import { X, Calendar, Clock, AlertCircle } from 'lucide-react';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 import { useAuth } from '../../context/AuthContext';
 import { formatAppointmentDate, formatAppointmentTime } from '../../utils/dateUtils';
+
+const isAllowedDay = (date) => {
+  const day = date.getDay();
+  return [1, 3, 6].includes(day);
+};
 
 const VisitorRescheduleModal = ({ visitor, onClose, onSuccess }) => {
   const { user } = useAuth();
@@ -58,6 +65,12 @@ const VisitorRescheduleModal = ({ visitor, onClose, onSuccess }) => {
     e.preventDefault();
     if (!date || !startTime) {
       setError('Date and Start Time are required.');
+      return;
+    }
+
+    const chosenDate = new Date(`${date}T00:00:00`);
+    if (!isAllowedDay(chosenDate)) {
+      setError('Pre-booking is allowed only on Monday, Wednesday, and Saturday.');
       return;
     }
 
@@ -177,19 +190,26 @@ const VisitorRescheduleModal = ({ visitor, onClose, onSuccess }) => {
           {/* Inputs */}
           <div>
             <label className="block text-sm font-bold text-gray-700 mb-1.5">New Date <span className="text-red-500">*</span></label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Calendar size={16} className="text-gray-400" />
-              </div>
-              <input
-                type="date"
-                required
-                min={todayStr}
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="block w-full pl-10 pr-3 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-600 focus:border-transparent outline-none text-sm font-medium transition-shadow"
-              />
-            </div>
+            <DatePicker
+              selected={date ? new Date(`${date}T00:00:00`) : null}
+              onChange={(selectedDate) => {
+                if (!selectedDate) {
+                  setDate('');
+                  return;
+                }
+
+                const year = selectedDate.getFullYear();
+                const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+                const day = String(selectedDate.getDate()).padStart(2, '0');
+
+                setDate(`${year}-${month}-${day}`);
+              }}
+              filterDate={isAllowedDay}
+              minDate={new Date()}
+              dateFormat="dd/MM/yyyy"
+              placeholderText="Select visit date"
+              className="block w-full px-3 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-600 focus:border-transparent outline-none text-sm font-medium transition-shadow cursor-pointer"
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-4">

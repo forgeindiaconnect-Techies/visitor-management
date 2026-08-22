@@ -33,16 +33,32 @@ const formatTimeTo12Hour = (timeStr) => {
 
 const hostOptions = [
   { label: "Priyadharshini (HR)", name: "Priyadharshini", dbName: "PRIYADHARSHINI" },
-  { label: "Sandhiya (HR)", name: "Sandhiya", dbName: "SANDHIYA" },
   { label: "Ganesh Kumar (HR)", name: "Ganesh Kumar", dbName: "GANESH KUMAR" },
-  { label: "R. Sandhiya (HR)", name: "R. Sandhiya", dbName: "R.SANDHIYA" },
   { label: "Sandeep (CEO Sir)", name: "Sandeep", dbName: "SANDEEP" },
   { label: "Avinash (MD Sir)", name: "Avinash", dbName: "AVINASH" },
   { label: "Sabari (Admin)", name: "Sabari", dbName: "SABARI" },
   { label: "Agila (IT)", name: "Agila", dbName: "AGILA" },
   { label: "Joe Christo (Senior HR)", name: "Joe Christo", dbName: "JOE CHRISTO" },
   { label: "Direct Visits", name: "Direct Visits", dbName: "DIRECT VISITS" }
+  
 ];
+
+const isAllowedDay = (date) => {
+  const day = date.getDay();
+  // Monday = 1, Wednesday = 3, Saturday = 6
+  return [1, 3, 6].includes(day);
+};
+
+const getNextAllowedVisitDate = () => {
+  const d = new Date();
+  while (![1, 3, 6].includes(d.getDay())) {
+    d.setDate(d.getDate() + 1);
+  }
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
 
 const LandingPage = () => {
   const navigate = useNavigate();
@@ -81,7 +97,7 @@ const LandingPage = () => {
     assignedHr: '',
     selectedHostLabel: '',
     purpose: 'Business Meeting',
-    visitDate: new Date().toISOString().split('T')[0],
+    visitDate: getNextAllowedVisitDate(),
     expectedArrivalTime: '10:00',
     expectedDuration: '1 Hour',
     vehicleNumber: '',
@@ -294,8 +310,13 @@ const LandingPage = () => {
       setErrorMsg('Please select a host to meet.');
       return;
     }
-    if (!formData.purpose) {
-      setErrorMsg('Please select your visit purpose.');
+    if (!formData.visitDate) {
+      setErrorMsg('Please select a visit date.');
+      return;
+    }
+    const chosenDate = new Date(`${formData.visitDate}T00:00:00`);
+    if (!isAllowedDay(chosenDate)) {
+      setErrorMsg('Visits can only be booked on Monday, Wednesday, or Saturday.');
       return;
     }
 

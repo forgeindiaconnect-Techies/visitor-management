@@ -22,9 +22,7 @@ const VisitorForm = () => {
   
   const [hosts, setHosts] = useState([
     'Priyadharshini (HR)',
-    'Sandhiya (HR)',
     'Ganesh Kumar (HR)',
-    'R. Sandhiya (HR)',
     'Sandeep (CEO Sir)',
     'Avinash (MD Sir)',
     'Sabari (Admin)',

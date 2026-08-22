@@ -81,9 +81,7 @@ const VisitorList = () => {
 
   const [hosts, setHosts] = useState([
     'PRIYADHARSHINI(HR)',
-    'SANDHIYA(HR)',
     'GANESH KUMAR(HR)',
-    'R.SANDHIYA(HR)',
     'SANDEEP(CEO SIR)',
     'AVINASH(MD SIR)',
     'SABARI(ADMIN)',

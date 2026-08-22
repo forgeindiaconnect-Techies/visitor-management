@@ -59,6 +59,26 @@ const createPreBooking = async (req, res) => {
       });
     }
 
+    // Weekday validation: only Monday (1), Wednesday (3), Saturday (6) allowed
+    const cleanDateStr = String(visitDate).split('T')[0];
+    const selectedDate = new Date(`${cleanDateStr}T00:00:00`);
+
+    if (isNaN(selectedDate.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid visit date."
+      });
+    }
+
+    const allowedDays = [1, 3, 6]; // Monday, Wednesday, Saturday
+
+    if (!allowedDays.includes(selectedDate.getDay())) {
+      return res.status(400).json({
+        success: false,
+        message: "Pre-booking is allowed only on Monday, Wednesday, and Saturday."
+      });
+    }
+
     // Strict Indian Mobile Number Validation (10 digits starting with 6, 7, 8, or 9)
     const mobileRegex = /^[6-9]\d{9}$/;
     const cleanMobile = String(mobileNumber || "").trim().replace(/\D/g, "");
@@ -1205,11 +1225,21 @@ const reschedulePreBooking = async (req, res) => {
     const oldExpectedTime = preBooking.expectedTime;
     const oldEndTime = preBooking.appointmentEndTime;
 
-    const newDateObj = new Date(visitDate);
+    const cleanRescheduleDateStr = String(visitDate).split('T')[0];
+    const newDateObj = new Date(`${cleanRescheduleDateStr}T00:00:00`);
     if (isNaN(newDateObj.getTime())) {
       return res.status(400).json({
         success: false,
-        message: "Invalid new appointment date."
+        message: "Invalid visit date."
+      });
+    }
+
+    const allowedDays = [1, 3, 6]; // Monday, Wednesday, Saturday
+
+    if (!allowedDays.includes(newDateObj.getDay())) {
+      return res.status(400).json({
+        success: false,
+        message: "Pre-booking is allowed only on Monday, Wednesday, and Saturday."
       });
     }
 

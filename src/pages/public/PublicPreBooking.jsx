@@ -29,9 +29,7 @@ const formatTimeTo12Hour = (timeStr) => {
 
 const hostOptions = [
   { label: "Priyadharshini (HR)", name: "Priyadharshini", dbName: "PRIYADHARSHINI" },
-  { label: "Sandhiya (HR)", name: "Sandhiya", dbName: "SANDHIYA" },
   { label: "Ganesh Kumar (HR)", name: "Ganesh Kumar", dbName: "GANESH KUMAR" },
-  { label: "R. Sandhiya (HR)", name: "R. Sandhiya", dbName: "R.SANDHIYA" },
   { label: "Sandeep (CEO Sir)", name: "Sandeep", dbName: "SANDEEP" },
   { label: "Avinash (MD Sir)", name: "Avinash", dbName: "AVINASH" },
   { label: "Sabari (Admin)", name: "Sabari", dbName: "SABARI" },
@@ -39,6 +37,23 @@ const hostOptions = [
   { label: "Joe Christo (Senior HR)", name: "Joe Christo", dbName: "JOE CHRISTO" },
   { label: "Direct Visits", name: "Direct Visits", dbName: "DIRECT VISITS" }
 ];
+
+const isAllowedDay = (date) => {
+  const day = date.getDay();
+  // Monday = 1, Wednesday = 3, Saturday = 6
+  return [1, 3, 6].includes(day);
+};
+
+const getNextAllowedVisitDate = () => {
+  const d = new Date();
+  while (![1, 3, 6].includes(d.getDay())) {
+    d.setDate(d.getDate() + 1);
+  }
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
 
 const PublicPreBooking = () => {
   const navigate = useNavigate();
@@ -54,7 +69,7 @@ const PublicPreBooking = () => {
     assignedHr: '',
     selectedHostLabel: '',
     purpose: 'Business Meeting',
-    visitDate: new Date().toISOString().split('T')[0],
+    visitDate: getNextAllowedVisitDate(),
     expectedArrivalTime: '10:00',
     vehicleNumber: '',
     branch: 'Head Office(KRISHNAGIRI)',
@@ -179,6 +194,15 @@ const PublicPreBooking = () => {
       return;
     } else {
       setMobileError('');
+    }
+    if (!formData.visitDate) {
+      setErrorMsg('Please select a visit date.');
+      return;
+    }
+    const chosenDate = new Date(`${formData.visitDate}T00:00:00`);
+    if (!isAllowedDay(chosenDate)) {
+      setErrorMsg('Visits can only be booked on Monday, Wednesday, or Saturday.');
+      return;
     }
     if (!capturedPhoto) {
       setErrorMsg('Face photo capture is mandatory to pre-book a visit pass.');
@@ -500,7 +524,7 @@ const PublicPreBooking = () => {
                   className={selectClassName}
                 >
                   <option value="Business Meeting">Business Meeting</option>
-                  <option value="Job Interview">Job Interview</option>
+                  <option value="Interview">Interview</option>
                   <option value="Vendor / Client visit">Vendor / Client visit</option>
                   <option value="Delivery / Courier">Delivery / Courier</option>
                   <option value="Personal Visit">Personal Visit</option>
@@ -512,14 +536,21 @@ const PublicPreBooking = () => {
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wider">Date of Visit *</label>
                 <DatePicker
-                  selected={formData.visitDate ? new Date(formData.visitDate) : null}
+                  selected={formData.visitDate ? new Date(`${formData.visitDate}T00:00:00`) : null}
                   onChange={(date) => {
-                    if (date) {
-                      handleChange({ target: { name: 'visitDate', value: date.toISOString().split('T')[0] }});
+                    if (!date) {
+                      handleChange({ target: { name: 'visitDate', value: '' } });
+                      return;
                     }
+                    const year = date.getFullYear();
+                    const month = String(date.getMonth() + 1).padStart(2, "0");
+                    const day = String(date.getDate()).padStart(2, "0");
+                    handleChange({ target: { name: 'visitDate', value: `${year}-${month}-${day}` } });
                   }}
+                  filterDate={isAllowedDay}
                   minDate={new Date()}
-                  dateFormat="yyyy-MM-dd"
+                  dateFormat="dd/MM/yyyy"
+                  placeholderText="Select visit date"
                   className="block w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[var(--color-brand-yellow)]/60 focus:border-[var(--color-brand-indigo)] outline-none bg-gray-50/50 text-gray-800 transition-shadow font-semibold cursor-pointer"
                 />
               </div>

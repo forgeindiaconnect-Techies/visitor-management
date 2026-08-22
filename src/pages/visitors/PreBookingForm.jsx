@@ -21,9 +21,7 @@ const PreBookingForm = () => {
 
   const [hosts, setHosts] = useState([
     'Priyadharshini (HR)',
-    'Sandhiya (HR)',
     'Ganesh Kumar (HR)',
-    'R. Sandhiya (HR)',
     'Sandeep (CEO Sir)',
     'Avinash (MD Sir)',
     'Sabari (Admin)',
@@ -39,6 +37,23 @@ const PreBookingForm = () => {
   const [blacklistedVisitor, setBlacklistedVisitor] = useState(null);
   const [mobileError, setMobileError] = useState('');
 
+  const isAllowedDay = (date) => {
+    const day = date.getDay();
+    // Monday = 1, Wednesday = 3, Saturday = 6
+    return [1, 3, 6].includes(day);
+  };
+
+  const getNextAllowedVisitDate = () => {
+    const d = new Date();
+    while (![1, 3, 6].includes(d.getDay())) {
+      d.setDate(d.getDate() + 1);
+    }
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
   const [formData, setFormData] = useState({
     visitorName: '',
     mobileNumber: '',
@@ -48,7 +63,7 @@ const PreBookingForm = () => {
     vehicleNumber: '',
     hostName: '',
     purpose: '',
-    visitDate: new Date().toISOString().split('T')[0],
+    visitDate: getNextAllowedVisitDate(),
     expectedArrivalTime: '10:00',
     expectedDuration: '1 Hour',
     notes: '',
@@ -403,14 +418,21 @@ const PreBookingForm = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-2">Expected Visit Date *</label>
                 <DatePicker
                   required
-                  selected={formData.visitDate ? new Date(formData.visitDate) : null}
+                  selected={formData.visitDate ? new Date(`${formData.visitDate}T00:00:00`) : null}
                   onChange={(date) => {
-                    if (date) {
-                      handleChange({ target: { name: 'visitDate', value: date.toISOString().split('T')[0] }});
+                    if (!date) {
+                      handleChange({ target: { name: 'visitDate', value: '' } });
+                      return;
                     }
+                    const year = date.getFullYear();
+                    const month = String(date.getMonth() + 1).padStart(2, "0");
+                    const day = String(date.getDate()).padStart(2, "0");
+                    handleChange({ target: { name: 'visitDate', value: `${year}-${month}-${day}` } });
                   }}
+                  filterDate={isAllowedDay}
                   minDate={new Date()}
-                  dateFormat="yyyy-MM-dd"
+                  dateFormat="dd/MM/yyyy"
+                  placeholderText="Select visit date"
                   className={inputClassName}
                 />
               </div>
