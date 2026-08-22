@@ -21,28 +21,42 @@ export const BranchProvider = ({ children }) => {
       try {
         setLoadingBranches(true);
         const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+        const token = localStorage.getItem('token') || user.token;
         const response = await fetch(`${API_URL}/api/branch-settings`, {
           headers: {
-            ...(user.token && { 'Authorization': `Bearer ${user.token}` })
+            'Content-Type': 'application/json',
+            'X-Company-Id': user?.companyId || 'FIC001',
+            'X-User-Id': user?._id || user?.id || 'bootstrap',
+            'X-User-Role': user?.role || 'User',
+            ...(token && { 'Authorization': `Bearer ${token}` })
           }
         });
         
+        let dynamicBranches = [];
         if (response.ok) {
           const data = await response.json();
           const list = Array.isArray(data) ? data : (data && Array.isArray(data.branches) ? data.branches : []);
-          const dynamicBranches = list.map(b => b.branchName).filter(Boolean);
-          const allB = ['All Branches', ...dynamicBranches];
-          setBranches(allB);
-          
-          // Roles that can view All Branches. Everyone else is locked to their assigned branch.
-          if (!['Super Admin', 'MD', 'Senior HR', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'HR'].includes(user.role)) {
-            setActiveBranch(user.branch || dynamicBranches[0] || 'All Branches');
-          } else {
-            setActiveBranch('All Branches');
-          }
+          dynamicBranches = list.map(b => b.branchName).filter(Boolean);
+        }
+
+        // Include default branches if not already in list
+        const branchSet = new Set(['Krishnagiri', 'Bangalore']);
+        dynamicBranches.forEach(b => {
+          if (b && b !== 'All Branches') branchSet.add(b);
+        });
+
+        const allB = ['All Branches', ...Array.from(branchSet)];
+        setBranches(allB);
+        
+        // Roles that can view All Branches. Everyone else is locked to their assigned branch.
+        if (!['Super Admin', 'MD', 'Senior HR', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'HR'].includes(user.role)) {
+          setActiveBranch(user.branch || Array.from(branchSet)[0] || 'All Branches');
+        } else {
+          setActiveBranch('All Branches');
         }
       } catch (err) {
         console.error('Error fetching branches:', err);
+        setBranches(['All Branches', 'Krishnagiri', 'Bangalore']);
       } finally {
         setLoadingBranches(false);
       }

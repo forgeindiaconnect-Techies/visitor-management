@@ -1,66 +1,53 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { UserCheck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useBranch } from '../../context/BranchContext';
-
-const API_URL = `${import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com')}/api/visitors`;
+import { useVisitors } from '../../context/VisitorContext';
+import { isBranchMatch } from '../../utils/branchUtils';
 
 const TodaysVisitorsCard = () => {
-  const { user: currentUser } = useAuth();
+  const { visitors, loading } = useVisitors();
   const { activeBranch } = useBranch();
+  const { user: currentUser } = useAuth();
   
-  const [data, setData] = useState({ totalVisitorsToday: 0, teamBreakdown: [] });
-  const [loading, setLoading] = useState(true);
-
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
-  const queryBranch = currentUser && !['Super Admin'].includes(currentUser.role) 
-    ? currentUser.branch 
-    : activeBranch;
+  const queryBranch = activeBranch || 'All Branches';
 
-  const fetchData = async () => {
-    try {
-      let fetchUrl = `${API_URL}/todays-summary?date=${selectedDate}`;
-      if (queryBranch && queryBranch !== 'All Branches') {
-        fetchUrl += `&branchId=${encodeURIComponent(queryBranch)}`;
-      }
-      
-      const response = await fetch(fetchUrl);
-      if (response.ok) {
-        const result = await response.json();
-        
-        // Aggregate to prevent duplicate names due to spacing/case differences (e.g. 'Name (HR)' vs 'Name(HR)')
-        const aggregatedBreakdown = {};
-        (result.teamBreakdown || []).forEach(item => {
-          const rawName = item.hostName || item.team || 'Unknown';
-          const displayKey = rawName.split('(')[0].trim();
-          const key = displayKey.toLowerCase();
-          
-          if (!aggregatedBreakdown[key]) {
-             aggregatedBreakdown[key] = { displayKey, count: 0 };
-          }
-          aggregatedBreakdown[key].count += (item.count || 1);
-        });
-        
-        result.teamBreakdown = Object.values(aggregatedBreakdown).map(v => ({
-           hostName: v.displayKey,
-           count: v.count
-        })).sort((a, b) => b.count - a.count);
+  const safeVisitors = Array.isArray(visitors) ? visitors : [];
 
-        setData(result);
-      }
-    } catch (err) {
-      console.error('Error fetching todays visitors:', err);
-    } finally {
-      setLoading(false);
+  // Filter visitors for the selected date and branch
+  const filteredVisitors = safeVisitors.filter(v => {
+    // Branch filter
+    if (!isBranchMatch(v.branch || v.branchLocation, queryBranch)) {
+      return false;
     }
-  };
 
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 5000);
-    return () => clearInterval(interval);
-  }, [queryBranch, selectedDate]);
+    // Date filter: check visitDate, date, or createdAt
+    const rawDate = v.visitDate || v.date || v.createdAt;
+    if (!rawDate) return false;
+    const vDateStr = typeof rawDate === 'string' && rawDate.includes('T') 
+      ? rawDate.split('T')[0] 
+      : (rawDate instanceof Date ? rawDate.toISOString().split('T')[0] : String(rawDate));
+
+    return vDateStr === selectedDate;
+  });
+
+  // Aggregate host breakdown
+  const aggregatedBreakdown = {};
+  filteredVisitors.forEach(v => {
+    const rawName = v.hostName || v.hostEmployee || v.team || 'Staff';
+    const displayKey = rawName.split('(')[0].trim() || 'Staff';
+    const key = displayKey.toLowerCase();
+    
+    if (!aggregatedBreakdown[key]) {
+      aggregatedBreakdown[key] = { hostName: displayKey, count: 0 };
+    }
+    aggregatedBreakdown[key].count += (parseInt(v.visitorCount, 10) || 1);
+  });
+
+  const teamBreakdown = Object.values(aggregatedBreakdown).sort((a, b) => b.count - a.count);
+  const totalVisitorsToday = teamBreakdown.reduce((sum, item) => sum + item.count, 0);
 
   const isToday = selectedDate === new Date().toISOString().split('T')[0];
 
@@ -80,20 +67,20 @@ const TodaysVisitorsCard = () => {
       </div>
 
       <div className="px-6 py-4">
-        {loading && data.teamBreakdown.length === 0 ? (
+        {loading && teamBreakdown.length === 0 ? (
           <div className="text-center text-gray-400 py-6">Loading live data...</div>
-        ) : data.teamBreakdown.length === 0 ? (
-          <div className="text-center text-gray-500 py-6 font-medium">No visitors registered today.</div>
+        ) : teamBreakdown.length === 0 ? (
+          <div className="text-center text-gray-500 py-6 font-medium">No visitors registered for this date.</div>
         ) : (
           <div className="space-y-4">
-            {data.teamBreakdown.map((item, index) => (
+            {teamBreakdown.map((item, index) => (
               <div key={index} className="flex items-center justify-between group">
                 <div className="flex items-center space-x-3">
                   <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center text-[var(--color-brand-indigo)] group-hover:bg-indigo-100 transition-colors">
                     <UserCheck size={14} />
                   </div>
                   <span className="text-gray-800 font-semibold text-sm">
-                    {(item.hostName || item.team || 'Unknown').split('(')[0].trim()}
+                    {item.hostName}
                   </span>
                 </div>
                 <div className="text-gray-600 font-medium text-sm">
@@ -109,7 +96,7 @@ const TodaysVisitorsCard = () => {
       <div className="px-6 py-4 bg-[var(--color-brand-indigo)] text-white">
         <div className="flex items-center justify-between">
           <span className="text-sm font-bold text-indigo-100">Total Visitors:</span>
-          <span className="text-xl font-black">{loading ? '...' : data.totalVisitorsToday}</span>
+          <span className="text-xl font-black">{totalVisitorsToday}</span>
         </div>
       </div>
     </div>

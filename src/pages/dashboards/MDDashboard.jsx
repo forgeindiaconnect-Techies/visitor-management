@@ -6,6 +6,8 @@ import { useAuth } from '../../context/AuthContext';
 import { Users, Clock, Building, ShieldAlert, AlertTriangle } from 'lucide-react';
 import { calculateTimeSpent } from '../../utils/timeUtils';
 
+import { getDistinctBranches, isBranchMatch } from '../../utils/branchUtils';
+
 const DashboardCard = ({ title, value, icon: Icon, colorClass }) => (
   <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6 flex items-center space-x-4 transition-transform hover:-translate-y-1 hover:shadow-lg duration-300">
     <div className={`w-14 h-14 rounded-full flex items-center justify-center ${colorClass}`}>
@@ -34,10 +36,13 @@ const MDDashboard = () => {
   
   const totalWalkIns = walkInVisitors.length;
   const totalPreBookings = preBookedVisitors.length;
-  const pendingApprovals = safeVisitors.filter(v => v.status?.toUpperCase() === 'PENDING').length;
-  const insideVisitors = safeVisitors.filter(v => v.status === 'Inside');
-  const blockedVisitors = safeVisitors.filter(v => v.status === 'Rejected').length;
-  const totalBranches = safeBranches.length;
+  const insideVisitors = safeVisitors.filter(v => ['Inside', 'Checked In', 'CHECKED_IN'].includes(v.status));
+  const pendingApprovals = safeVisitors.filter(v => ['PENDING', 'PENDING APPROVAL', 'Pending', 'Pending Approval'].includes(v.status)).length;
+  const blockedVisitors = safeVisitors.filter(v => ['Rejected', 'REJECTED', 'Blocked'].includes(v.status)).length;
+
+  // Distinct branches discovered from settings and visitor data
+  const chartBranches = getDistinctBranches(safeBranches, safeVisitors);
+  const totalBranches = chartBranches.length;
 
   // Visitor Trends Data
   const trendsDataMap = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
@@ -46,9 +51,10 @@ const MDDashboard = () => {
   sevenDaysAgo.setHours(0, 0, 0, 0);
 
   safeVisitors.forEach(v => {
-    if (!v.visitDate) return;
-    const visitDate = new Date(v.visitDate);
-    if (visitDate >= sevenDaysAgo) {
+    const rawDate = v.visitDate || v.date || v.createdAt;
+    if (!rawDate) return;
+    const visitDate = new Date(rawDate);
+    if (!isNaN(visitDate.getTime()) && visitDate >= sevenDaysAgo) {
       const dayName = visitDate.toLocaleDateString('en-US', { weekday: 'short' });
       if (trendsDataMap[dayName] !== undefined) {
         trendsDataMap[dayName]++;
@@ -68,13 +74,8 @@ const MDDashboard = () => {
   const maxTrend = Math.max(...trendsData.map(d => d.visitors), 1);
 
   // Branch Performance Data
-  const chartBranches = safeBranches.filter(b => b !== 'All Branches');
-  
   const branchData = chartBranches.map(b => {
-    const branchVisitors = safeVisitors.filter(v => {
-      if (!v.branch) return false;
-      return v.branch.toUpperCase() === b.toUpperCase();
-    }).length;
+    const branchVisitors = safeVisitors.filter(v => isBranchMatch(v.branch || v.branchLocation, b)).length;
 
     return {
       name: b,

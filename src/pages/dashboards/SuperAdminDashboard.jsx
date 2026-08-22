@@ -24,6 +24,8 @@ const DashboardCard = ({ title, value, icon: Icon, colorClass, onClick }) => (
   </div>
 );
 
+import { getDistinctBranches, isBranchMatch } from '../../utils/branchUtils';
+
 const SuperAdminDashboard = () => {
   const { visitors, updateVisitorStatus } = useVisitors();
   const { branches, activeBranch } = useBranch();
@@ -52,10 +54,13 @@ const SuperAdminDashboard = () => {
   
   const totalWalkIns = walkInVisitors.length;
   const totalPreBookings = preBookedVisitors.length;
-  const insideVisitors = safeVisitors.filter(v => v.status === 'Inside');
-  const pendingApprovals = safeVisitors.filter(v => v.status?.toUpperCase() === 'PENDING').length;
-  const blockedVisitors = safeVisitors.filter(v => v.status === 'Rejected').length;
-  const totalBranches = safeBranches.length;
+  const insideVisitors = safeVisitors.filter(v => ['Inside', 'Checked In', 'CHECKED_IN'].includes(v.status));
+  const pendingApprovals = safeVisitors.filter(v => ['PENDING', 'PENDING APPROVAL', 'Pending', 'Pending Approval'].includes(v.status)).length;
+  const blockedVisitors = safeVisitors.filter(v => ['Rejected', 'REJECTED', 'Blocked'].includes(v.status)).length;
+
+  // Distinct branches discovered from settings and visitor data
+  const chartBranches = getDistinctBranches(safeBranches, safeVisitors);
+  const totalBranches = chartBranches.length;
 
   // Check if a zone is restricted
   const isRestricted = (zoneName) => {
@@ -73,9 +78,10 @@ const SuperAdminDashboard = () => {
   sevenDaysAgo.setHours(0, 0, 0, 0);
 
   visitors.forEach(v => {
-    if (!v.visitDate) return;
-    const visitDate = new Date(v.visitDate);
-    if (visitDate >= sevenDaysAgo) {
+    const rawDate = v.visitDate || v.date || v.createdAt;
+    if (!rawDate) return;
+    const visitDate = new Date(rawDate);
+    if (!isNaN(visitDate.getTime()) && visitDate >= sevenDaysAgo) {
       const dayName = visitDate.toLocaleDateString('en-US', { weekday: 'short' });
       if (trendsDataMap[dayName] !== undefined) {
         trendsDataMap[dayName]++;
@@ -95,13 +101,8 @@ const SuperAdminDashboard = () => {
   const maxTrend = Math.max(...trendsData.map(d => d.visitors), 1);
 
   // Branch Performance Data
-  const chartBranches = safeBranches.filter(b => b !== 'All Branches');
-  
   const branchData = chartBranches.map(b => {
-    const branchVisitors = safeVisitors.filter(v => {
-      if (!v.branch) return false;
-      return v.branch.toUpperCase() === b.toUpperCase();
-    }).length;
+    const branchVisitors = safeVisitors.filter(v => isBranchMatch(v.branch || v.branchLocation, b)).length;
 
     return {
       name: b,

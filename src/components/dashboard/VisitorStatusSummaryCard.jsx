@@ -3,6 +3,7 @@ import { useVisitors } from '../../context/VisitorContext';
 import { useBranch } from '../../context/BranchContext';
 import { useAuth } from '../../context/AuthContext';
 import { Users, CheckCircle, Clock } from 'lucide-react';
+import { isBranchMatch } from '../../utils/branchUtils';
 
 const VisitorStatusSummaryCard = () => {
   const { visitors } = useVisitors();
@@ -11,24 +12,34 @@ const VisitorStatusSummaryCard = () => {
   
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
-  const queryBranch = currentUser && !['Super Admin'].includes(currentUser.role) 
-    ? currentUser.branch 
-    : activeBranch;
+  const queryBranch = activeBranch || 'All Branches';
+
+  const safeVisitors = Array.isArray(visitors) ? visitors : [];
 
   // Filter visitors by branch and selected date
-  const filteredVisitors = visitors.filter(v => {
-    const matchesBranch = queryBranch === 'All Branches' || v.branch === queryBranch;
-    const matchesDate = v.visitDate === selectedDate;
-    return matchesBranch && matchesDate;
+  const filteredVisitors = safeVisitors.filter(v => {
+    // Branch filter
+    if (!isBranchMatch(v.branch || v.branchLocation, queryBranch)) {
+      return false;
+    }
+
+    // Date filter: check visitDate, date, or createdAt
+    const rawDate = v.visitDate || v.date || v.createdAt;
+    if (!rawDate) return false;
+    const vDateStr = typeof rawDate === 'string' && rawDate.includes('T') 
+      ? rawDate.split('T')[0] 
+      : (rawDate instanceof Date ? rawDate.toISOString().split('T')[0] : String(rawDate));
+
+    return vDateStr === selectedDate;
   });
 
   // Exclude rejected visitors from the metrics
-  const validVisitors = filteredVisitors.filter(v => v.status !== 'Rejected');
+  const validVisitors = filteredVisitors.filter(v => v.status !== 'Rejected' && v.status !== 'REJECTED');
   
   const totalVisitors = validVisitors.length;
   // Exited maps to Completed
-  const completedVisits = validVisitors.filter(v => v.status === 'Exited').length;
-  // Everything else (Pending, Approved, Inside) maps to In Progress
+  const completedVisits = validVisitors.filter(v => ['Exited', 'Checked Out', 'CHECKED_OUT', 'Completed'].includes(v.status)).length;
+  // Everything else (Pending, Approved, Inside, Checked In) maps to In Progress
   const inProgressVisits = totalVisitors - completedVisits;
 
   const isToday = selectedDate === new Date().toISOString().split('T')[0];
