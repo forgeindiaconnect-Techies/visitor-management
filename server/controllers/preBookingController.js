@@ -1335,11 +1335,233 @@ const reschedulePreBooking = async (req, res) => {
   }
 };
 
+// Re-Approve rejected Pre-Booking
+const reApprovePreBooking = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Strict Super Admin role check
+    const rawRole = (req.user && req.user.role) ? req.user.role : req.userRole;
+    const isSuperAdmin = rawRole === 'Super Admin' || rawRole === 'SaaS Super Admin' || (req.userId && String(req.userId).startsWith('bootstrap-'));
+    
+    if (!isSuperAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: "Only Super Admin can re-approve rejected pre-bookings."
+      });
+    }
+
+    const mongoose = require("mongoose");
+    const crypto = require("crypto");
+
+    const query = {
+      $and: [
+        mongoose.isValidObjectId(id)
+          ? { $or: [{ _id: id }, { visitorId: id }, { visitId: id }] }
+          : { $or: [{ visitorId: id }, { visitId: id }] },
+        { status: { $in: ["REJECTED", "Rejected"] } }
+      ]
+    };
+
+    const updatedPreBooking = await PreBooking.findOneAndUpdate(
+      query,
+      {
+        $set: {
+          status: "APPROVED",
+          approvalStatus: "APPROVED",
+          rejectedAt: null,
+          rejectionReason: null,
+          approvedAt: new Date(),
+          qrToken: crypto.randomBytes(32).toString("hex"),
+          trackingToken: crypto.randomBytes(32).toString("hex"),
+          trackingTokenExpiresAt: new Date(
+            Date.now() + 30 * 24 * 60 * 60 * 1000
+          ),
+          approvalDetails: {
+            approvedBy: req.userId,
+            approvedByRole: req.userRole || rawRole || "Super Admin",
+            approvedAt: new Date(),
+            method: "Super Admin Re-Approval"
+          }
+        },
+        $push: {
+          statusHistory: {
+            status: "APPROVED",
+            changedBy: req.userId,
+            changedByRole: req.userRole || rawRole || "Super Admin",
+            changedAt: new Date(),
+            reason: "Re-approved by Super Admin"
+          }
+        }
+      },
+      {
+        new: true
+      }
+    );
+
+    if (!updatedPreBooking) {
+      return res.status(400).json({
+        success: false,
+        message: "This visitor is not rejected or has already been re-approved."
+      });
+    }
+
+    // Send notifications and email only after atomic update succeeds
+    try {
+      const User = require("../models/User");
+      const Notification = require("../models/Notification");
+      const { sendEmail } = require("../utils/emailService");
+
+      const dashboardUsers = await User.find({
+        companyId: updatedPreBooking.companyId || "FIC001",
+        role: {
+          $in: [
+            "Super Admin",
+            "Admin",
+            "MD",
+            "HR",
+            "Security",
+            "Receptionist"
+          ]
+        }
+      });
+
+      const recipientIds = [
+        ...new Set(dashboardUsers.map(u => String(u._id)))
+      ];
+
+      const notification = await Notification.findOneAndUpdate(
+        {
+          eventId: `PREBOOK_REAPPROVED_${updatedPreBooking._id}`
+        },
+        {
+          $setOnInsert: {
+            eventId: `PREBOOK_REAPPROVED_${updatedPreBooking._id}`,
+            companyId: updatedPreBooking.companyId || "FIC001",
+            branchId: updatedPreBooking.branchLocation,
+
+            recipients: recipientIds.map(id => ({
+              userId: id,
+              user: id
+            })),
+
+            visitorId: updatedPreBooking.visitorId,
+            visitorType: "PRE_BOOKING",
+            preBookingId: updatedPreBooking._id,
+
+            type: "PREBOOKING_REAPPROVED",
+            module: "PreBooking",
+            title: "Pre-Booking Re-Approved",
+            message: `${updatedPreBooking.fullName || updatedPreBooking.visitorName} has been re-approved by Super Admin.`,
+            createdBy: req.userName || req.userRole || "Super Admin",
+            isRead: false
+          }
+        },
+        {
+          new: true,
+          upsert: true
+        }
+      );
+
+      const io = req.app.get("io");
+
+      if (io) {
+        io.emit("new_notification", notification);
+
+        io.emit("visitor-status-updated", {
+          visitorId: updatedPreBooking._id.toString(),
+          visitorType: "PRE_BOOKING",
+          status: "APPROVED",
+          visitor: {
+            _id: updatedPreBooking._id,
+            visitorId: updatedPreBooking.visitorId,
+            status: "APPROVED"
+          }
+        });
+      }
+
+      if (updatedPreBooking.email) {
+        const frontendUrl =
+          process.env.FRONTEND_URL ||
+          "https://zone-monitor.vercel.app";
+
+        const passUrl =
+          `${frontendUrl}/pass/${updatedPreBooking.trackingToken}`;
+
+        await sendEmail(
+          updatedPreBooking.email,
+          "Your Visitor Appointment Has Been Re-Approved",
+          `
+            <div style="font-family:Arial,sans-serif;">
+              <h2>Visitor Appointment Re-Approved</h2>
+
+              <p>
+                Hello <strong>${updatedPreBooking.fullName || updatedPreBooking.visitorName}</strong>,
+              </p>
+
+              <p>
+                Your visitor appointment has been re-approved.
+              </p>
+
+              <p>
+                <strong>Date:</strong>
+                ${new Date(updatedPreBooking.visitDate).toLocaleDateString()}
+              </p>
+
+              <p>
+                <strong>Time:</strong>
+                ${updatedPreBooking.expectedTime || updatedPreBooking.expectedArrivalTime || "10:00 AM"}
+              </p>
+
+              <div style="margin-top:20px;">
+                <a
+                  href="${passUrl}"
+                  style="
+                    display:inline-block;
+                    background:#312e81;
+                    color:#ffffff;
+                    padding:12px 24px;
+                    text-decoration:none;
+                    border-radius:8px;
+                    font-weight:bold;
+                  "
+                >
+                  VIEW VISITOR PASS
+                </a>
+              </div>
+            </div>
+          `
+        );
+      }
+
+    } catch (err) {
+      console.error(
+        "Re-Approve notification/email error:",
+        err
+      );
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Visitor re-approved successfully.",
+      data: updatedPreBooking
+    });
+  } catch (error) {
+    console.error("Re-Approve Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to re-approve visitor."
+    });
+  }
+};
+
 module.exports = {
   createPreBooking,
   getAllPreBookings,
   approvePreBooking,
   rejectPreBooking,
+  reApprovePreBooking,
   getPreBookingByVisitId,
   getPreBookingByQR,
   deletePreBooking,
@@ -1350,5 +1572,4 @@ module.exports = {
   getMyPreBookings,
   getPreBookingReports,
   reschedulePreBooking,
-
 };

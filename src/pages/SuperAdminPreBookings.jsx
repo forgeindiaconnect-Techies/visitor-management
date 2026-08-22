@@ -26,6 +26,7 @@ export default function SuperAdminPreBookings() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [activeActionMenuId, setActiveActionMenuId] = useState(null);
+  const [reApprovingId, setReApprovingId] = useState(null);
 
   // Reports State
   const [activeTab, setActiveTab] = useState("ALL");
@@ -372,6 +373,58 @@ export default function SuperAdminPreBookings() {
     } catch (error) {
       console.error("Reject error:", error);
       alert(error.message);
+    }
+  };
+
+  const handleReApprove = async (id) => {
+    if (reApprovingId) return;
+
+    const confirmed = window.confirm(
+      "Are you sure you want to re-approve this rejected visitor?"
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setReApprovingId(id);
+      const token = localStorage.getItem("token");
+
+      const res = await fetch(
+        `${API_URL}/api/prebookings/${id}/reapprove`,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+            ...getHeaders()
+          }
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.message || "Failed to re-approve visitor.");
+        return;
+      }
+
+      // Optimistically update local state immediately
+      setPreBookings((prev) =>
+        prev.map((item) =>
+          (item._id === id || item.id === id || item.visitorId === id)
+            ? { ...item, status: "APPROVED", approvalStatus: "APPROVED" }
+            : item
+        )
+      );
+
+      alert("Visitor re-approved successfully.");
+
+      await fetchPreBookings();
+    } catch (error) {
+      console.error("Re-Approve Error:", error);
+      alert("Something went wrong while re-approving.");
+    } finally {
+      setReApprovingId(null);
     }
   };
 
@@ -867,6 +920,23 @@ export default function SuperAdminPreBookings() {
                                 <Eye size={14} className="text-slate-500" /> View Details
                               </button>
 
+                              {(user?.role === "Super Admin" || user?.role === "SaaS Super Admin") &&
+                                (visitor.status === "REJECTED" || visitor.status === "Rejected") && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveActionMenuId(null);
+                                      handleReApprove(visitor._id || id);
+                                    }}
+                                    disabled={reApprovingId === (visitor._id || id)}
+                                    className="w-full text-left px-4 py-2 text-sm text-green-700 hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+                                  >
+                                    {reApprovingId === (visitor._id || id)
+                                      ? "Re-Approving..."
+                                      : "Re-Approve"}
+                                  </button>
+                                )}
+
                               {/* The Approve/Reject buttons have been moved outside the menu */}
 
                               <button
@@ -1098,6 +1168,33 @@ export default function SuperAdminPreBookings() {
                   >
                     <X size={18} />
                     <span>Reject Pre-Booking</span>
+                  </button>
+                </div>
+              )}
+
+              {['REJECTED', 'Rejected'].includes(selectedVisitor.status) && (user?.role === 'Super Admin' || user?.role === 'SaaS Super Admin') && (
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    disabled={Boolean(reApprovingId)}
+                    onClick={() => {
+                      const id = selectedVisitor._id || selectedVisitor.id;
+                      setSelectedVisitor(null);
+                      handleReApprove(id);
+                    }}
+                    className="w-full py-3 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-bold rounded-xl transition-colors shadow-md flex items-center justify-center gap-2 text-sm"
+                  >
+                    {reApprovingId ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        <span>Re-Approving...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check size={18} />
+                        <span>Re-Approve Pre-Booking</span>
+                      </>
+                    )}
                   </button>
                 </div>
               )}

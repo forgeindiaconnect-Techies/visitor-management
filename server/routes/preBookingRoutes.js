@@ -6,6 +6,7 @@ const {
   getAllPreBookings,
   approvePreBooking,
   rejectPreBooking,
+  reApprovePreBooking,
   getPreBookingByVisitId,
   getPreBookingByQR,
   deletePreBooking,
@@ -51,6 +52,10 @@ router.post("/:id/check-out", authMiddleware, checkOutPreBooking);
 
 // Approve Pre-Booking
 router.put("/:id/approve", authMiddleware, approvePreBooking);
+
+// Re-Approve rejected Pre-Booking
+router.put("/:id/reapprove", authMiddleware, reApprovePreBooking);
+router.patch("/:id/reapprove", authMiddleware, reApprovePreBooking);
 
 // Reject Pre-Booking
 router.put("/:id/reject", authMiddleware, rejectPreBooking);
