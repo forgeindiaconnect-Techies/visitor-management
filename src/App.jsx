@@ -122,7 +122,8 @@ const AppRoutes = () => {
         
         {/* Tracking & Zones */}
         <Route path="zones" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin']}><ZoneList /></ProtectedRoute>} />
-        <Route path="live-monitoring" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin', 'Security']}><LiveMonitoring /></ProtectedRoute>} />
+        <Route path="tracking" element={<ProtectedRoute allowedRoles={['Super Admin', 'SaaS Super Admin', 'Company Admin', 'MD', 'Admin', 'Branch Admin', 'Security', 'HR', 'Receptionist']}><LiveMonitoring /></ProtectedRoute>} />
+        <Route path="live-monitoring" element={<ProtectedRoute allowedRoles={['Super Admin', 'SaaS Super Admin', 'Company Admin', 'MD', 'Admin', 'Branch Admin', 'Security', 'HR', 'Receptionist']}><LiveMonitoring /></ProtectedRoute>} />
         <Route path="attendance" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin']}><AttendanceLog /></ProtectedRoute>} />
         <Route path="logs" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin']}><EntryExitLogs /></ProtectedRoute>} />
         <Route path="audit-logs" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin']}><AuditLogs /></ProtectedRoute>} />

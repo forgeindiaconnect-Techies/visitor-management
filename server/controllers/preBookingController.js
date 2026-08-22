@@ -245,8 +245,12 @@ const getAllPreBookings = async (req, res) => {
     // Return all prebooking records for Super Admin (matching Reports data)
     // Role-based filtering: HR/Employee users only see their assigned visitors or where they are the host
     if (normalizedRole === 'HR' || normalizedRole === 'EMPLOYEE') {
-      const User = require('../models/User');
-      const hrUser = await User.findById(req.userId);
+      const mongoose = require('mongoose');
+      let hrUser = null;
+      if (req.userId && mongoose.isValidObjectId(req.userId)) {
+        const User = require('../models/User');
+        hrUser = await User.findById(req.userId);
+      }
       if (hrUser && hrUser.name) {
         filter.$or = [
           { assignedHr: req.userId },
@@ -1116,8 +1120,12 @@ const checkOutPreBooking = async (req, res) => {
 
 const getMyPreBookings = async (req, res) => {
   try {
-    const User = require('../models/User');
-    const userObj = await User.findById(req.userId);
+    const mongoose = require('mongoose');
+    let userObj = null;
+    if (req.userId && mongoose.isValidObjectId(req.userId)) {
+      const User = require('../models/User');
+      userObj = await User.findById(req.userId);
+    }
     const filter = { assignedHr: req.userId };
     if (userObj && userObj.name) {
       filter.$or = [

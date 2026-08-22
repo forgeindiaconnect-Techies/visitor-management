@@ -7,8 +7,31 @@ module.exports = async (req, res, next) => {
     let userRole = req.headers['x-user-role'];
     let branchId = req.headers['x-branch-id'] || 'All Branches';
 
-    // 1. Force database truth for authenticated real users
-    if (userId && !userId.startsWith('bootstrap-')) {
+    // 1. Check for bootstrap administrator accounts (e.g., "bootstrap", "bootstrap-admin", etc.)
+    const isBootstrap = userId && (
+      String(userId).startsWith('bootstrap') ||
+      String(userId).toLowerCase() === 'bootstrap' ||
+      String(userRole) === 'SaaS Super Admin'
+    );
+
+    if (isBootstrap && (!userId || !require('mongoose').isValidObjectId(userId))) {
+      req.userId = userId || 'bootstrap-admin';
+      req.userRole = userRole || 'SaaS Super Admin';
+      req.userName = req.userName || 'Bootstrap Admin';
+      req.companyId = companyId || 'SYSTEM';
+      req.branchId = branchId;
+      req.user = {
+        _id: req.userId,
+        id: req.userId,
+        name: req.userName,
+        role: req.userRole,
+        companyId: req.companyId
+      };
+      return next();
+    }
+
+    // 2. Force database truth for authenticated real users (with ObjectId validation guard)
+    if (userId && require('mongoose').isValidObjectId(userId)) {
       const User = require('../models/User');
       const userObj = await User.findById(userId);
       if (userObj) {
@@ -23,6 +46,7 @@ module.exports = async (req, res, next) => {
         userRole = userObj.role;
         branchId = userObj.branch;
         req.userName = userObj.name;
+        req.user = userObj;
       }
     }
 

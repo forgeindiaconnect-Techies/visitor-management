@@ -16,7 +16,7 @@ const checkApprovalPermission = async (req, res, next) => {
     const role = rawRole.toUpperCase().replace(/\s+/g, '_');
 
     // SaaS Super Admin automatically bypasses
-    const isSaaSAdmin = rawRole === 'SaaS Super Admin' || role === 'SAAS_SUPER_ADMIN' || (req.userId && String(req.userId).startsWith('bootstrap-'));
+    const isSaaSAdmin = rawRole === 'SaaS Super Admin' || role === 'SAAS_SUPER_ADMIN' || (req.userId && (String(req.userId).startsWith('bootstrap') || String(req.userId).toLowerCase() === 'bootstrap'));
     if (isSaaSAdmin) {
       return next();
     }
@@ -28,7 +28,7 @@ const checkApprovalPermission = async (req, res, next) => {
     // Named approver fallback list
     const allowedApprovers = ['sandeep', 'avinash', 'agila', 'jeo', 'joe christo', 'vaideeswari'];
     let nameToCheck = req.userName;
-    if (!nameToCheck && req.userId) {
+    if (!nameToCheck && req.userId && require('mongoose').isValidObjectId(req.userId)) {
       const User = require('../models/User');
       const userObj = await User.findById(req.userId);
       if (userObj) {

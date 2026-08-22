@@ -255,7 +255,6 @@ const SuperAdminDashboard = () => {
               <thead>
                 <tr className="bg-slate-50 text-gray-500 text-[11px] uppercase tracking-wider">
                   <th className="px-6 py-4 font-medium">Visitor Name</th>
-                  <th className="px-6 py-4 font-medium text-center">Group Size</th>
                   <th className="px-6 py-4 font-medium">Host</th>
                   <th className="px-6 py-4 font-medium">Branch</th>
                   <th className="px-6 py-4 font-medium">Purpose</th>
@@ -270,7 +269,6 @@ const SuperAdminDashboard = () => {
                   return (
                     <tr key={visitor.id} className={`transition-colors ${restricted ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-slate-50/50'}`}>
                       <td className="px-6 py-4 font-medium text-gray-900">{visitor.visitorName}</td>
-                      <td className="px-6 py-4 font-bold text-gray-700 text-center">{visitor.visitorCount || 1}</td>
                       <td className="px-6 py-4 text-sm text-gray-600">{visitor.hostName}</td>
                       <td className="px-6 py-4 text-sm text-gray-600">{visitor.branch}</td>
                       <td className="px-6 py-4 text-sm text-gray-600">{visitor.purpose}</td>

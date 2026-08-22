@@ -38,24 +38,24 @@ const notifyVisitorEvent = async ({
     let sendEmailToVisitor = false;
     let notifyRecipients = []; // Array of User IDs to receive the in-app notification
 
-    // Helper to get all dashboard user IDs for broadcasting
+    // Helper to get all dashboard user IDs for broadcasting (optimized single DB query)
     const getDashboardUserIds = async () => {
-      const permissions = await ApprovalPermission.find({ canApprove: true });
-      let eligibleRoles = permissions.map(p => mapPermissionRoleToUserRole(p.role));
+      const allPermissions = await ApprovalPermission.find({});
+      const disabledRoles = new Set(
+        allPermissions
+          .filter(p => p.canApprove === false)
+          .map(p => mapPermissionRoleToUserRole(p.role))
+      );
       
       const defaultRoles = ['Super Admin', 'SaaS Super Admin', 'MD', 'HR', 'Admin', 'Branch Admin', 'Senior HR', 'Receptionist', 'Security'];
-      for (const role of defaultRoles) {
-        const rawRole = role.toUpperCase().replace(/\s+/g, '_');
-        const explicitPerm = await ApprovalPermission.findOne({ role: rawRole });
-        if ((!explicitPerm || explicitPerm.canApprove !== false) && !eligibleRoles.includes(role)) {
-          eligibleRoles.push(role);
-        }
-      }
+      const eligibleRoles = defaultRoles.filter(role => !disabledRoles.has(role));
+
       const companyRegex = new RegExp(`^${visitor.companyId || 'FIC001'}$`, 'i');
       const users = await User.find({
         role: { $in: eligibleRoles },
         $or: [{ companyId: companyRegex }, { companyId: 'SYSTEM' }, { companyId: null }]
-      });
+      }).select('_id');
+      
       return users.map(u => u._id.toString());
     };
 

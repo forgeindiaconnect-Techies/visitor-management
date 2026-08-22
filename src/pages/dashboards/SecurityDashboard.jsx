@@ -1035,7 +1035,6 @@ const SecurityDashboard = () => {
                 <tr className="bg-white text-gray-500 text-[11px] uppercase tracking-wider border-b border-gray-200">
                   <th className="px-6 py-4 font-medium">Visitor</th>
                   <th className="px-6 py-4 font-medium">Host / Purpose</th>
-                  <th className="px-6 py-4 font-medium text-center">Group Size</th>
                   <th className="px-6 py-4 font-medium">Entry Time</th>
                   <th className="px-6 py-4 font-medium">Exit Time</th>
                   <th className="px-6 py-4 font-medium">Time Spent</th>
@@ -1052,9 +1051,6 @@ const SecurityDashboard = () => {
                     <td className="px-6 py-4">
                       <div className="font-medium text-gray-900">{visitor.hostName || '-'}</div>
                       <div className="text-xs text-gray-500">{visitor.purpose || '-'}</div>
-                    </td>
-                    <td className="px-6 py-4 text-center font-bold text-gray-700">
-                      {visitor.visitorCount || 1}
                     </td>
                     <td className="px-6 py-4">
                       <div className="text-sm font-semibold text-gray-900">

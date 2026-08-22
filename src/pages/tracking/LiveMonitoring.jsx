@@ -10,12 +10,15 @@ const LiveMonitoring = () => {
 
   // Filter visitors who are actively Inside
   const safeAll = Array.isArray(allVisitors) ? allVisitors : [];
-  const activeVisitors = safeAll.filter(v => v.status === 'Inside');
+  const activeVisitors = safeAll.filter(v => {
+    const st = (v.status || '').toUpperCase();
+    return st === 'INSIDE' || st === 'CHECKED_IN' || st === 'CHECKED IN';
+  });
 
   // Filter by search term
   const filteredVisitors = activeVisitors.filter(v => 
-    (v.visitorName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (v.companyName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (v.visitorName || v.fullName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (v.companyName || v.visitingCompany || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (v.currentZone || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (v.branch || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -83,11 +86,11 @@ const LiveMonitoring = () => {
                   <td className="px-6 py-4">
                     <div className="flex items-center">
                       <div className="w-10 h-10 rounded-full bg-indigo-100 text-[var(--color-brand-indigo)] flex items-center justify-center font-bold mr-3 shadow-inner">
-                        {visitor.visitorName.charAt(0)}
+                        {(visitor.visitorName || visitor.fullName || '?').charAt(0).toUpperCase()}
                       </div>
                       <div>
-                        <p className="font-bold text-gray-900">{visitor.visitorName}</p>
-                        <p className="text-xs text-gray-500 font-medium">{visitor.companyName}</p>
+                        <p className="font-bold text-gray-900">{visitor.visitorName || visitor.fullName || 'Visitor'}</p>
+                        <p className="text-xs text-gray-500 font-medium">{visitor.companyName || visitor.visitingCompany || 'Visitor'}</p>
                       </div>
                     </div>
                   </td>

@@ -6,42 +6,62 @@ const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587', 10);
 const SMTP_USER = process.env.SMTP_USER || 'forgeindiaconnectfic@gmail.com';
 const SMTP_PASS = process.env.SMTP_PASS || 'nuyy dzpp ysfp tcdl';
 
+// High-performance pooled transporter with fast connection timeout
 const transporter = nodemailer.createTransport({
+  pool: true,
+  maxConnections: 5,
+  maxMessages: 100,
   host: SMTP_HOST,
   port: SMTP_PORT,
-  secure: SMTP_PORT === 465, // true for 465, false for other ports
+  secure: SMTP_PORT === 465,
   auth: {
     user: SMTP_USER,
     pass: SMTP_PASS
   },
   tls: {
     rejectUnauthorized: false
-  }
+  },
+  connectionTimeout: 4000,
+  greetingTimeout: 4000,
+  socketTimeout: 8000
 });
 
-const syncToGmailSentFolder = (to, subject, htmlBody) => {
+// Singleton Brevo client for instant API calls without re-initialization overhead
+let brevoClient = null;
+if (process.env.BREVO_API_KEY) {
   try {
-    const senderEmail = process.env.BREVO_SENDER_EMAIL || SMTP_USER || 'forgeindiaconnectfic@gmail.com';
-    transporter.sendMail({
-      from: `"${process.env.BREVO_SENDER_NAME || 'FIC VMS'}" <${senderEmail}>`,
-      to: to,
-      subject: subject,
-      html: htmlBody
-    }).then(() => {
-      console.log(`📥 Synced copy to Gmail Sent folder for ${to}`);
-    }).catch((err) => {
-      console.warn(`⚠️ Gmail Sent folder sync notice: ${err.message}`);
-    });
-  } catch (err) {
-    // Non-critical background sync catch
+    brevoClient = new BrevoClient({ apiKey: process.env.BREVO_API_KEY });
+  } catch (initErr) {
+    console.warn("⚠️ Failed to initialize BrevoClient singleton:", initErr.message);
   }
-};
+}
 
 const sendEmail = async (to, subject, htmlBody) => {
   const senderEmail = process.env.BREVO_SENDER_EMAIL || SMTP_USER || 'forgeindiaconnectfic@gmail.com';
   const senderName = process.env.BREVO_SENDER_NAME || 'ForgeIndiaConnect';
 
-  // 1. Primary Attempt: Send via Gmail SMTP for clean From address (no @brevosend.com) & automatic Gmail Sent folder logging
+  // 1. Primary Attempt: High-speed Brevo REST API (< 300ms execution)
+  if (brevoClient || process.env.BREVO_API_KEY) {
+    try {
+      const client = brevoClient || new BrevoClient({ apiKey: process.env.BREVO_API_KEY });
+      await client.transactionalEmails.sendTransacEmail({
+        subject: subject,
+        htmlContent: htmlBody,
+        sender: {
+          name: senderName,
+          email: senderEmail,
+        },
+        to: [{ email: to }],
+        replyTo: { email: senderEmail, name: senderName }
+      });
+      console.log(`⚡ Instant Brevo API email dispatched to ${to} (${subject})`);
+      return true;
+    } catch (brevoErr) {
+      console.warn(`⚠️ Brevo API delivery notice (${brevoErr.message}). Falling back to Gmail SMTP...`);
+    }
+  }
+
+  // 2. Fallback Attempt: Gmail SMTP (with connection pool & fast timeouts)
   try {
     const info = await transporter.sendMail({
       from: `"${senderName}" <${senderEmail}>`,
@@ -50,37 +70,10 @@ const sendEmail = async (to, subject, htmlBody) => {
       subject: subject,
       html: htmlBody
     });
-    console.log(`📧 Gmail SMTP email sent successfully to ${to}. MessageId: ${info.messageId}`);
+    console.log(`📧 Gmail SMTP email sent to ${to}. MessageId: ${info.messageId}`);
     return true;
   } catch (gmailErr) {
-    console.warn(`⚠️ Gmail SMTP failed (${gmailErr.message}). Falling back to Brevo API...`);
-  }
-
-  // 2. Fallback Attempt: Send via Brevo API
-  try {
-    if (!process.env.BREVO_API_KEY) {
-       console.warn("⚠️ BREVO_API_KEY is not set. Email will not be sent.");
-       return false;
-    }
-
-    const brevo = new BrevoClient({ apiKey: process.env.BREVO_API_KEY });
-
-    await brevo.transactionalEmails.sendTransacEmail({
-      subject: subject,
-      htmlContent: htmlBody,
-      sender: {
-        name: senderName,
-        email: senderEmail,
-      },
-      to: [{ email: to }],
-      replyTo: { email: senderEmail, name: senderName },
-      bcc: [{ email: senderEmail, name: senderName }]
-    });
-    console.log(`📧 Brevo API email sent successfully to ${to}. Subject: ${subject}`);
-
-    return true;
-  } catch (err) {
-    console.warn(`⚠️ Brevo email error (${err.message}). Logging email to console:`);
+    console.warn(`⚠️ Gmail SMTP failed (${gmailErr.message}). Logging email to console:`);
     console.log('\n' + '='.repeat(60));
     console.log('📧 EMAIL DISPATCH LOG');
     console.log('='.repeat(60));
