@@ -100,8 +100,12 @@ mongoose.connect(process.env.MONGO_URI)
     try {
       const defaultRoles = [
         { role: 'SUPER_ADMIN', canApprove: true },
+        { role: 'SAAS_SUPER_ADMIN', canApprove: true },
         { role: 'MD', canApprove: true },
         { role: 'SENIOR_HR', canApprove: true },
+        { role: 'ADMIN', canApprove: true },
+        { role: 'BRANCH_ADMIN', canApprove: true },
+        { role: 'HR', canApprove: true },
         { role: 'IT', canApprove: false }
       ];
       for (const roleDef of defaultRoles) {

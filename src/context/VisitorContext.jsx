@@ -294,6 +294,7 @@ export const VisitorProvider = ({ children }) => {
 
   const updateVisitorStatus = async (id, newStatus, approvalData = {}) => {
     const visitor = allVisitorsRef.current.find(v => String(v._id || v.id) === String(id));
+    const targetId = visitor?._id || visitor?.id || id;
     
     // Check if this is a Pre-Booking and route to the correct API endpoint
     if (visitor?.isPreBooking) {
@@ -301,8 +302,8 @@ export const VisitorProvider = ({ children }) => {
       
       try {
         let endpointUrl = '';
-        if (newStatus === 'Approved') endpointUrl = `${PREBOOKINGS_API_URL}/${id}/approve`;
-        else if (newStatus === 'Rejected') endpointUrl = `${PREBOOKINGS_API_URL}/${id}/reject`;
+        if (newStatus === 'Approved') endpointUrl = `${PREBOOKINGS_API_URL}/${targetId}/approve`;
+        else if (newStatus === 'Rejected') endpointUrl = `${PREBOOKINGS_API_URL}/${targetId}/reject`;
         
         if (endpointUrl) {
           const response = await fetch(endpointUrl, {
@@ -317,23 +318,32 @@ export const VisitorProvider = ({ children }) => {
           if (response.ok) {
             const updatedVisitor = await response.json();
             // Re-normalize it before saving to state
+            const rawData = updatedVisitor.data || updatedVisitor;
             const normalized = {
-              ...(updatedVisitor.data || updatedVisitor),
-              id: (updatedVisitor.data || updatedVisitor)._id,
+              ...rawData,
+              id: rawData._id || targetId,
               isPreBooking: true,
-              visitorName: (updatedVisitor.data || updatedVisitor).fullName || (updatedVisitor.data || updatedVisitor).visitorName,
-              purpose: (updatedVisitor.data || updatedVisitor).visitPurpose || (updatedVisitor.data || updatedVisitor).purpose,
-              branch: (updatedVisitor.data || updatedVisitor).branchLocation || (updatedVisitor.data || updatedVisitor).branch,
-              hostName: (updatedVisitor.data || updatedVisitor).hostEmployee || (updatedVisitor.data || updatedVisitor).hostName,
+              status: newStatus,
+              approvalStatus: newStatus === 'Approved' ? 'APPROVED' : 'REJECTED',
+              visitorName: rawData.fullName || rawData.visitorName,
+              purpose: rawData.visitPurpose || rawData.purpose,
+              branch: rawData.branchLocation || rawData.branch,
+              hostName: rawData.hostEmployee || rawData.hostName,
             };
-            setVisitors(prev => prev.map(v => String(v._id || v.id) === String(id) ? normalized : v));
+            setVisitors(prev => prev.map(v => String(v._id || v.id) === String(id) || String(v._id || v.id) === String(targetId) ? normalized : v));
             addNotification(`Pre-Booking ${newStatus}`, `Access ${newStatus === 'Approved' ? 'granted' : 'denied'} for ${normalized.visitorName}`, newStatus === 'Approved' ? 'success' : 'error');
+            return true;
+          } else {
+            const errData = await response.json().catch(() => ({}));
+            addNotification('Approval Failed', errData.message || `Failed to ${newStatus.toLowerCase()} booking`, 'error');
+            return false;
           }
         }
       } catch (err) {
         console.error("Error updating pre-booking:", err);
+        addNotification('Error', 'Failed to connect to server', 'error');
+        return false;
       }
-      return;
     }
 
     const updates = { 
@@ -343,7 +353,7 @@ export const VisitorProvider = ({ children }) => {
     };
 
     try {
-      const response = await fetch(`${API_URL}/${id}`, {
+      const response = await fetch(`${API_URL}/${targetId}`, {
         method: 'PATCH',
         headers: getHeaders(),
         body: JSON.stringify(updates)
@@ -351,55 +361,31 @@ export const VisitorProvider = ({ children }) => {
       
       if (response.ok) {
         const updatedVisitor = await response.json();
-        setVisitors(prev => prev.map(v => String(v._id || v.id) === String(id) ? updatedVisitor : v));
+        setVisitors(prev => prev.map(v => String(v._id || v.id) === String(id) || String(v._id || v.id) === String(targetId) ? updatedVisitor : v));
+        if (newStatus === 'Approved') {
+          addNotification('Visitor Approved', `Access granted for visitor ID: ${id}`, 'success');
+        } else if (newStatus === 'Rejected') {
+          addNotification('Visitor Rejected', `Access denied for visitor ID: ${id}`, 'error');
+        }
+        return true;
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        addNotification('Approval Failed', errData.message || 'Failed to update status', 'error');
+        return false;
       }
     } catch (err) {
       console.error(err);
-      setVisitors(prev => prev.map(v => String(v._id || v.id) === String(id) ? { ...v, ...updates } : v));
-    }
-    
-    if (newStatus === 'Approved') {
-      addNotification('Visitor Approved', `Access granted for visitor ID: ${id}`, 'success');
-    } else if (newStatus === 'Rejected') {
-      addNotification('Visitor Rejected', `Access denied for visitor ID: ${id}`, 'error');
+      addNotification('Error', 'Failed to connect to server', 'error');
+      return false;
     }
   };
 
   const approveVisitor = async (id) => {
-    try {
-      const response = await fetch(`${API_URL}/${id}/approve`, {
-        method: 'PATCH',
-        headers: getHeaders()
-      });
-      if (response.ok) {
-        const updated = await response.json();
-        setVisitors(prev => prev.map(v => String(v._id || v.id) === String(id) ? updated : v));
-        addNotification('Visitor Approved', `QR Pass generated for ${updated.visitorName} (Booking ID: ${updated.bookingId || id})`, 'success');
-        return true;
-      }
-    } catch (err) {
-      console.error(err);
-    }
-    return false;
+    return updateVisitorStatus(id, 'Approved');
   };
 
   const rejectVisitor = async (id, rejectionReason = 'Meeting Cancelled') => {
-    try {
-      const response = await fetch(`${API_URL}/${id}/reject`, {
-        method: 'PATCH',
-        headers: getHeaders(),
-        body: JSON.stringify({ rejectionReason })
-      });
-      if (response.ok) {
-        const updated = await response.json();
-        setVisitors(prev => prev.map(v => String(v._id || v.id) === String(id) ? updated : v));
-        addNotification('Visitor Rejected', `Pre-booking request for ${updated.visitorName} rejected.`, 'info');
-        return true;
-      }
-    } catch (err) {
-      console.error(err);
-    }
-    return false;
+    return updateVisitorStatus(id, 'Rejected', { remarks: rejectionReason });
   };
 
   const updateVisitor = async (id, updates) => {

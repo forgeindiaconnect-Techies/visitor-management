@@ -11,7 +11,7 @@ const ApprovalDetails = () => {
   const { allVisitors, updateVisitorStatus } = useVisitors();
   const { user, hasApprovalPermission } = useAuth();
   
-  const visitor = allVisitors.find(v => String(v.id) === String(id));
+  const visitor = allVisitors.find(v => String(v._id || v.id) === String(id));
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -33,7 +33,7 @@ const ApprovalDetails = () => {
 
   const handleConfirmAction = async (remarks) => {
     try {
-      await updateVisitorStatus(visitor.id, modalAction, remarks);
+      await updateVisitorStatus(visitor._id || visitor.id, modalAction, { remarks, approvedBy: user?.name });
     } catch (err) {
       alert("Error updating status: " + err.message);
     }

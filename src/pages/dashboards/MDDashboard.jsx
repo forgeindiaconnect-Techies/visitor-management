@@ -110,14 +110,14 @@ const MDDashboard = () => {
               </thead>
               <tbody className="divide-y divide-orange-100">
                 {safeVisitors.filter(v => v.status?.toUpperCase() === 'PENDING').map(v => (
-                  <tr key={v.id}>
+                  <tr key={v._id || v.id}>
                     <td className="px-4 py-3 font-medium text-gray-900">{v.visitorName}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{v.hostName}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{v.branch}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{v.purpose}</td>
                     <td className="px-4 py-3 text-right">
                       <button 
-                        onClick={() => updateVisitorStatus(v.id, 'Approved', { approvedBy: currentUser?.name, remarks: 'Final Approval by MD' })}
+                        onClick={() => updateVisitorStatus(v._id || v.id, 'Approved', { approvedBy: currentUser?.name, remarks: 'Final Approval by MD' })}
                         className="px-3 py-1.5 bg-green-600 text-white text-xs font-bold rounded-lg hover:bg-green-700 mr-2"
                       >
                         Approve
@@ -126,7 +126,7 @@ const MDDashboard = () => {
                         onClick={() => {
                           const reason = window.prompt("Reason for rejection:");
                           if (reason !== null) {
-                            updateVisitorStatus(v.id, 'Rejected', { approvedBy: currentUser?.name, remarks: reason });
+                            updateVisitorStatus(v._id || v.id, 'Rejected', { approvedBy: currentUser?.name, remarks: reason });
                           }
                         }}
                         className="px-3 py-1.5 bg-red-600 text-white text-xs font-bold rounded-lg hover:bg-red-700"

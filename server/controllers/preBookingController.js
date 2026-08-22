@@ -273,17 +273,30 @@ const approvePreBooking = async (req, res) => {
     }
 
     const company = await require('../models/Company').findOne({ code: req.companyId || 'FIC001' });
-    const allowedApprovers = ['sandeep', 'avinash', 'agila', 'jeo', 'joe christo'];
     
-    // Check if the user is one of the designated approvers (or a SaaS Super Admin / bootstrap user for fallback)
-    const isSaaSAdmin = req.userRole === 'SaaS Super Admin' || (req.userId && req.userId.startsWith('bootstrap-'));
+    // Check if the user is authorized to approve
+    const rawRole = (req.user && req.user.role) ? req.user.role : req.userRole;
+    const role = rawRole ? rawRole.toUpperCase().replace(/\s+/g, '_') : '';
+    const isSaaSAdmin = rawRole === 'SaaS Super Admin' || role === 'SAAS_SUPER_ADMIN' || (req.userId && String(req.userId).startsWith('bootstrap-'));
     
+    const allowedRoles = ['SUPER_ADMIN', 'SAAS_SUPER_ADMIN', 'MD', 'SENIOR_HR', 'ADMIN', 'BRANCH_ADMIN', 'HR'];
+    const isRoleAllowed = allowedRoles.includes(role);
+    
+    const allowedApprovers = ['sandeep', 'avinash', 'agila', 'jeo', 'joe christo', 'vaideeswari'];
     const userNameLower = req.userName ? req.userName.toLowerCase().trim() : '';
-    const isAllowed = allowedApprovers.some(allowed => userNameLower.includes(allowed));
-    if (!isSaaSAdmin && (!userNameLower || !isAllowed)) {
+    const isNamedAllowed = allowedApprovers.some(allowed => userNameLower.includes(allowed));
+
+    let hasDbPerm = false;
+    if (role) {
+      const ApprovalPermission = require('../models/ApprovalPermission');
+      const perm = await ApprovalPermission.findOne({ role });
+      if (perm && perm.canApprove) hasDbPerm = true;
+    }
+
+    if (!isSaaSAdmin && !isRoleAllowed && !isNamedAllowed && !hasDbPerm) {
       return res.status(403).json({
         success: false,
-        message: "You do not have permission to approve pre-bookings. Only Sandeep, Avinash, Agila, and Jeo are authorized."
+        message: "You do not have permission to approve pre-bookings."
       });
     }
 
@@ -402,15 +415,29 @@ const rejectPreBooking = async (req, res) => {
       });
     }
 
-    const allowedApprovers = ['sandeep', 'avinash', 'agila', 'jeo', 'joe christo'];
-    const isSaaSAdmin = req.userRole === 'SaaS Super Admin' || (req.userId && req.userId.startsWith('bootstrap-'));
+    // Check if the user is authorized to reject
+    const rawRoleReject = (req.user && req.user.role) ? req.user.role : req.userRole;
+    const roleReject = rawRoleReject ? rawRoleReject.toUpperCase().replace(/\s+/g, '_') : '';
+    const isSaaSAdminReject = rawRoleReject === 'SaaS Super Admin' || roleReject === 'SAAS_SUPER_ADMIN' || (req.userId && String(req.userId).startsWith('bootstrap-'));
     
-    const userNameLower = req.userName ? req.userName.toLowerCase().trim() : '';
-    const isAllowed = allowedApprovers.some(allowed => userNameLower.includes(allowed));
-    if (!isSaaSAdmin && (!userNameLower || !isAllowed)) {
+    const allowedRolesReject = ['SUPER_ADMIN', 'SAAS_SUPER_ADMIN', 'MD', 'SENIOR_HR', 'ADMIN', 'BRANCH_ADMIN', 'HR'];
+    const isRoleAllowedReject = allowedRolesReject.includes(roleReject);
+    
+    const allowedApproversReject = ['sandeep', 'avinash', 'agila', 'jeo', 'joe christo', 'vaideeswari'];
+    const userNameLowerReject = req.userName ? req.userName.toLowerCase().trim() : '';
+    const isNamedAllowedReject = allowedApproversReject.some(allowed => userNameLowerReject.includes(allowed));
+
+    let hasDbPermReject = false;
+    if (roleReject) {
+      const ApprovalPermission = require('../models/ApprovalPermission');
+      const perm = await ApprovalPermission.findOne({ role: roleReject });
+      if (perm && perm.canApprove) hasDbPermReject = true;
+    }
+
+    if (!isSaaSAdminReject && !isRoleAllowedReject && !isNamedAllowedReject && !hasDbPermReject) {
       return res.status(403).json({
         success: false,
-        message: "You do not have permission to reject pre-bookings. Only Sandeep, Avinash, Agila, and Jeo are authorized."
+        message: "You do not have permission to reject pre-bookings."
       });
     }
 

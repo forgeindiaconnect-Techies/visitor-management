@@ -20,7 +20,7 @@ exports.updatePermission = async (req, res) => {
     const { role } = req.params;
     const { canApprove } = req.body;
 
-    const allowedRoles = ["SUPER_ADMIN", "MD", "SENIOR_HR", "IT", "HR", "ADMIN", "BRANCH_ADMIN"];
+    const allowedRoles = ["SUPER_ADMIN", "SAAS_SUPER_ADMIN", "MD", "SENIOR_HR", "IT", "HR", "ADMIN", "BRANCH_ADMIN"];
     
     if (!allowedRoles.includes(role)) {
       return res.status(400).json({
@@ -35,7 +35,7 @@ exports.updatePermission = async (req, res) => {
         canApprove,
         updatedBy: req.user ? req.user._id : null
       },
-      { new: true, runValidators: true }
+      { new: true, upsert: true, runValidators: true }
     );
 
     if (!permission) {
@@ -64,7 +64,7 @@ exports.getMyPermission = async (req, res) => {
     let permission = await ApprovalPermission.findOne({ role: rawRole });
     
     if (!permission) {
-      const defaultRoles = ['SUPER_ADMIN', 'MD', 'SENIOR_HR', 'IT', 'HR', 'ADMIN', 'BRANCH_ADMIN'];
+      const defaultRoles = ['SUPER_ADMIN', 'SAAS_SUPER_ADMIN', 'MD', 'SENIOR_HR', 'HR', 'ADMIN', 'BRANCH_ADMIN'];
       if (defaultRoles.includes(rawRole)) {
         permission = { canApprove: true };
       }

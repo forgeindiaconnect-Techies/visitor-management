@@ -4,7 +4,7 @@ const approvalPermissionSchema = new mongoose.Schema(
   {
     role: {
       type: String,
-      enum: ["SUPER_ADMIN", "MD", "SENIOR_HR", "IT"],
+      enum: ["SUPER_ADMIN", "SAAS_SUPER_ADMIN", "MD", "SENIOR_HR", "IT", "HR", "ADMIN", "BRANCH_ADMIN"],
       required: true,
       unique: true,
     },
