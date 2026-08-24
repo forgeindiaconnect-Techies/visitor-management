@@ -9,6 +9,7 @@ import { Html5Qrcode } from 'html5-qrcode';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { calculateTimeSpent } from '../../utils/timeUtils';
+import { formatDisplayTime, formatDisplayDateTime, formatDisplayDate } from '../../utils/dateUtils';
 import { useAttendance } from '../../context/AttendanceContext';
 import TodaysVisitorsCard from '../../components/dashboard/TodaysVisitorsCard';
 import VisitorStatusSummaryCard from '../../components/dashboard/VisitorStatusSummaryCard';
@@ -753,7 +754,7 @@ const SecurityDashboard = () => {
                     {pbVisitor.checkInTime && (
                       <div className="bg-emerald-50 p-3.5 rounded-xl border border-emerald-200">
                         <span className="text-xs text-emerald-700 block font-bold uppercase">Check-In Time</span>
-                        <span className="font-bold text-emerald-900">{new Date(pbVisitor.checkInTime).toLocaleString()}</span>
+                        <span className="font-bold text-emerald-900">{formatDisplayDateTime(pbVisitor.checkInTime)}</span>
                         <span className="text-xs text-emerald-700 block mt-0.5">By: {pbVisitor.checkInBy || 'Security'}</span>
                       </div>
                     )}
@@ -761,10 +762,11 @@ const SecurityDashboard = () => {
                     {pbVisitor.checkOutTime && (
                       <div className="bg-red-50 p-3.5 rounded-xl border border-red-200">
                         <span className="text-xs text-red-700 block font-bold uppercase">Check-Out Time</span>
-                        <span className="font-bold text-red-900">{new Date(pbVisitor.checkOutTime).toLocaleString()}</span>
+                        <span className="font-bold text-red-900">{formatDisplayDateTime(pbVisitor.checkOutTime)}</span>
                         <span className="text-xs text-red-700 block mt-0.5">Notes: {pbVisitor.checkOutNotes || 'Completed'}</span>
                       </div>
                     )}
+
                   </div>
                 </div>
 
@@ -1055,21 +1057,31 @@ const SecurityDashboard = () => {
                     <td className="px-6 py-4">
                       <div className="text-sm font-semibold text-gray-900">
                         {visitor.checkInTime 
-                          ? new Date(visitor.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })
-                          : (visitor.entryTime && visitor.entryTime !== '-' ? visitor.entryTime : 'Not Checked In')}
+                          ? formatDisplayTime(visitor.checkInTime)
+                          : (visitor.entryTime && visitor.entryTime !== '-' ? formatDisplayTime(visitor.entryTime) : 'Not Checked In')}
                       </div>
                       <div className="text-xs text-gray-500 font-mono">
                         {visitor.checkInTime 
-                          ? new Date(visitor.checkInTime).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-                          : (visitor.visitDate ? (visitor.visitDate.includes('T') ? visitor.visitDate.split('T')[0] : visitor.visitDate) : '-')}
+                          ? formatDisplayDate(visitor.checkInTime)
+                          : (visitor.visitDate ? formatDisplayDate(visitor.visitDate) : '-')}
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {visitor.exitTime || '-'}
+                    <td className="px-6 py-4">
+                      <div className="text-sm font-semibold text-gray-800 font-mono">
+                        {visitor.checkOutTime 
+                          ? formatDisplayTime(visitor.checkOutTime)
+                          : (visitor.exitTime && visitor.exitTime !== '-' ? formatDisplayTime(visitor.exitTime) : '-')}
+                      </div>
+                      {visitor.checkOutTime && (
+                        <div className="text-xs text-gray-500 font-mono">
+                          {formatDisplayDate(visitor.checkOutTime)}
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-sm font-medium text-gray-800">
                       {calculateTimeSpent(visitor.visitDate, visitor.entryTime, visitor.exitTime, visitor.status)}
                     </td>
+
                     <td className="px-6 py-4 text-right">
                       <span className={`px-2 py-1 rounded text-xs font-medium flex items-center justify-end gap-1 ${
                         visitor.status === 'Approved' ? 'bg-green-50 text-green-600' :

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAttendance } from '../../context/AttendanceContext';
 import { Clock, Search, Camera, MapPin } from 'lucide-react';
 import { useBranch } from '../../context/BranchContext';
+import { formatDisplayTime } from '../../utils/dateUtils';
 
 const AttendanceLog = () => {
   const { allAttendance, fetchAttendance, attendance } = useAttendance();
@@ -95,7 +96,7 @@ const AttendanceLog = () => {
                   <td className="px-6 py-4 font-medium text-gray-900">{log.securityName}</td>
                   <td className="px-6 py-4 text-sm text-gray-600">{log.branch}</td>
                   <td className="px-6 py-4 text-sm text-gray-600">{log.date.split('-').reverse().join('-')}</td>
-                  <td className="px-6 py-4 text-sm font-mono text-gray-600">{log.checkInTime || '-'}</td>
+                  <td className="px-6 py-4 text-sm font-mono text-gray-600">{formatDisplayTime(log.checkInTime)}</td>
                   <td className="px-6 py-4">
                     {log.checkInPhoto ? (
                       <div className="w-12 h-12 rounded-lg overflow-hidden border border-gray-200">
@@ -105,7 +106,8 @@ const AttendanceLog = () => {
                       <span className="text-gray-400"><Camera size={16} /></span>
                     )}
                   </td>
-                  <td className="px-6 py-4 text-sm font-mono text-gray-600">{log.checkOutTime || '-'}</td>
+                  <td className="px-6 py-4 text-sm font-mono text-gray-600">{formatDisplayTime(log.checkOutTime)}</td>
+
                   <td className="px-6 py-4">
                     {log.checkOutPhoto ? (
                       <div className="w-12 h-12 rounded-lg overflow-hidden border border-gray-200">

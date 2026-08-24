@@ -5,6 +5,7 @@ import { useBlacklist } from '../../context/BlacklistContext';
 import { Download, FileText, FileSpreadsheet, ShieldCheck, Map, Building2, Users, Clock, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { calculateTimeSpent } from '../../utils/timeUtils';
+import { formatDisplayTime } from '../../utils/dateUtils';
 
 const ReportsDashboard = () => {
   const { allVisitors } = useVisitors();
@@ -69,18 +70,20 @@ const ReportsDashboard = () => {
   // 1. Visitor Report Data
   const visitorReportData = filteredVisitors.map(v => {
     const isCheckedOut = ['Exited', 'Completed'].includes(v.status);
-    const displayExitTime = isCheckedOut ? (v.exitTime || 'N/A') : 'N/A';
+    const rawExit = v.exitTime || v.checkOutTime;
+    const displayExitTime = isCheckedOut ? (rawExit ? formatDisplayTime(rawExit) : 'N/A') : 'N/A';
+    const rawEntry = v.entryTime || v.checkInTime;
 
     return {
       "Visitor": v.visitorName,
       "Host": v.hostName || 'N/A',
       "Branch": v.branch,
       "Purpose": v.purpose,
-      "Entry": v.entryTime || 'N/A',
+      "Entry": rawEntry ? formatDisplayTime(rawEntry) : 'N/A',
       "Exit": displayExitTime,
       "Time Spent": calculateTimeSpent(v.visitDate, v.entryTime, v.exitTime, v.status),
       "Status": v.status,
-      "Notes": [v.hostNotes, v.remarks].filter(Boolean).join(' | ') || '-'
+      "Notes": [v.hostNotes, v.remarks, v.exitNotes, v.checkOutNotes, v.notes].filter(Boolean).join(' | ') || '-'
     };
   });
 
@@ -108,7 +111,7 @@ const ReportsDashboard = () => {
     
     const getColumnClass = (header) => {
       if (['Entry', 'Exit', 'Time Spent', 'Status'].includes(header)) return 'whitespace-nowrap';
-      if (['Notes'].includes(header)) return 'min-w-[250px]';
+      if (['Notes'].includes(header)) return 'min-w-[250px] max-w-[380px]';
       if (['Host', 'Branch', 'Purpose'].includes(header)) return 'min-w-[150px]';
       return 'whitespace-nowrap';
     };
@@ -124,7 +127,26 @@ const ReportsDashboard = () => {
           <tbody className="divide-y divide-gray-100">
             {data.map((row, i) => (
               <tr key={i} className="hover:bg-slate-50/50 transition-colors">
-                {headers.map(h => <td key={`${i}-${h}`} className={`px-6 py-4 text-sm text-gray-700 align-top ${getColumnClass(h)} print:text-[11px] print:px-2 print:py-2 print:whitespace-normal`}>{row[h]}</td>)}
+                {headers.map(h => {
+                  if (h === 'Notes') {
+                    return (
+                      <td key={`${i}-${h}`} className="px-6 py-4 text-xs text-gray-800 align-top min-w-[250px] max-w-[380px]">
+                        {row[h] && row[h] !== '-' ? (
+                          <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200/80 leading-relaxed whitespace-normal break-words shadow-2xs">
+                            {row[h]}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400 italic">-</span>
+                        )}
+                      </td>
+                    );
+                  }
+                  return (
+                    <td key={`${i}-${h}`} className={`px-6 py-4 text-sm text-gray-700 align-top ${getColumnClass(h)} print:text-[11px] print:px-2 print:py-2 print:whitespace-normal`}>
+                      {row[h]}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>

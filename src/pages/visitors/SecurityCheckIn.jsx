@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { Search, QrCode, LogIn, LogOut, User, Camera, ShieldCheck, Clock, Building, Calendar, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 import Webcam from 'react-webcam';
 import { io } from "socket.io-client";
+import { formatDisplayDateTime, formatDisplayTime } from '../../utils/dateUtils';
 
 const SecurityCheckIn = () => {
   const location = useLocation();
@@ -551,7 +552,7 @@ const SecurityCheckIn = () => {
                   <>
                     <div className="bg-emerald-50 p-3.5 rounded-xl border border-emerald-200">
                       <span className="text-xs text-emerald-700 block font-bold uppercase tracking-wider">Check-In Time</span>
-                      <span className="font-bold text-emerald-900">{visitor.checkInTime ? new Date(visitor.checkInTime).toLocaleString() : visitor.entryTime || 'Just now'}</span>
+                      <span className="font-bold text-emerald-900">{visitor.checkInTime ? formatDisplayDateTime(visitor.checkInTime) : (visitor.entryTime ? formatDisplayTime(visitor.entryTime) : 'Just now')}</span>
                     </div>
 
                     <div className="bg-emerald-50 p-3.5 rounded-xl border border-emerald-200">
@@ -565,7 +566,7 @@ const SecurityCheckIn = () => {
                   <>
                     <div className="bg-red-50 p-3.5 rounded-xl border border-red-200">
                       <span className="text-xs text-red-700 block font-bold uppercase tracking-wider">Check-Out Time</span>
-                      <span className="font-bold text-red-900">{visitor.checkOutTime ? new Date(visitor.checkOutTime).toLocaleString() : visitor.exitTime || 'Today'}</span>
+                      <span className="font-bold text-red-900">{visitor.checkOutTime ? formatDisplayDateTime(visitor.checkOutTime) : (visitor.exitTime ? formatDisplayTime(visitor.exitTime) : 'Today')}</span>
                     </div>
 
                     <div className="bg-red-50 p-3.5 rounded-xl border border-red-200">
@@ -574,6 +575,7 @@ const SecurityCheckIn = () => {
                     </div>
                   </>
                 )}
+
               </div>
             </div>
 

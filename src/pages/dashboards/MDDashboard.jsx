@@ -5,6 +5,7 @@ import { useZones } from '../../context/ZoneContext';
 import { useAuth } from '../../context/AuthContext';
 import { Users, Clock, Building, ShieldAlert, AlertTriangle } from 'lucide-react';
 import { calculateTimeSpent } from '../../utils/timeUtils';
+import { formatDisplayTime, formatDisplayDate } from '../../utils/dateUtils';
 
 import { getDistinctBranches, isBranchMatch } from '../../utils/branchUtils';
 
@@ -228,17 +229,29 @@ const MDDashboard = () => {
                   <td className="px-6 py-4">
                     <div className="text-sm font-semibold text-gray-900">
                       {visitor.checkInTime 
-                        ? new Date(visitor.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })
-                        : (visitor.entryTime && visitor.entryTime !== '-' ? visitor.entryTime : 'Not Checked In')}
+                        ? formatDisplayTime(visitor.checkInTime)
+                        : (visitor.entryTime && visitor.entryTime !== '-' ? formatDisplayTime(visitor.entryTime) : 'Not Checked In')}
                     </div>
                     <div className="text-xs text-gray-500 font-mono">
                       {visitor.checkInTime 
-                        ? new Date(visitor.checkInTime).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-                        : (visitor.visitDate ? (visitor.visitDate.includes('T') ? visitor.visitDate.split('T')[0] : visitor.visitDate) : '-')}
+                        ? formatDisplayDate(visitor.checkInTime)
+                        : (visitor.visitDate ? formatDisplayDate(visitor.visitDate) : '-')}
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-600 font-mono">{visitor.exitTime || '-'}</td>
+                  <td className="px-6 py-4">
+                    <div className="text-sm font-semibold text-gray-800 font-mono">
+                      {visitor.checkOutTime 
+                        ? formatDisplayTime(visitor.checkOutTime)
+                        : (visitor.exitTime && visitor.exitTime !== '-' ? formatDisplayTime(visitor.exitTime) : '-')}
+                    </div>
+                    {visitor.checkOutTime && (
+                      <div className="text-xs text-gray-500 font-mono">
+                        {formatDisplayDate(visitor.checkOutTime)}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-6 py-4 text-sm font-medium text-gray-800">{calculateTimeSpent(visitor.visitDate, visitor.entryTime, visitor.exitTime, visitor.status)}</td>
+
                   <td className="px-6 py-4">
                     <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
                       visitor.status === 'Approved' ? 'bg-blue-100 text-blue-700' :

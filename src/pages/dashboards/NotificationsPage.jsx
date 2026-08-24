@@ -90,9 +90,10 @@ const NotificationsPage = () => {
       }
 
       // Filter out Security Attendance notifications for non-super users
-      if (notification.type === 'Attendance' && user?.role !== 'Super Admin' && user?.role !== 'SaaS Super Admin') {
+      if (notification.type === 'Attendance' && user?.role !== 'Super Admin' && user?.role !== 'SaaS Super Admin' && user?.role !== 'MD') {
         return;
       }
+
 
       // If notification has a recipient or recipients list, verify match
       const currentUserId = String(user?._id || user?.id || '');

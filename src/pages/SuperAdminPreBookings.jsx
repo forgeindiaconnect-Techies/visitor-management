@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { io } from "socket.io-client";
 import VisitorHistoryModal from '../components/visitors/VisitorHistoryModal';
 import VisitorRescheduleModal from '../components/visitors/VisitorRescheduleModal';
+import { formatDisplayTime, formatDisplayDateTime, formatDisplayDate } from '../utils/dateUtils';
 
 const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
 
@@ -231,17 +232,17 @@ export default function SuperAdminPreBookings() {
       r.hostEmployee || '',
       r.assignedHr?.name || '',
       r.visitPurpose || '',
-      r.visitDate ? new Date(r.visitDate).toLocaleDateString() : '',
-      r.expectedTime || '',
+      r.visitDate ? formatDisplayDate(r.visitDate) : '',
+      r.expectedTime ? formatDisplayTime(r.expectedTime) : '',
       r.branchLocation || '',
       r.qrToken || '',
       r.status || '',
-      r.createdAt ? new Date(r.createdAt).toLocaleString() : '',
-      r.approvedAt ? new Date(r.approvedAt).toLocaleString() : '',
-      r.checkInTime ? new Date(r.checkInTime).toLocaleString() : '',
-      r.checkOutTime ? new Date(r.checkOutTime).toLocaleString() : '',
+      r.createdAt ? formatDisplayDateTime(r.createdAt) : '',
+      r.approvedAt ? formatDisplayDateTime(r.approvedAt) : '',
+      r.checkInTime ? formatDisplayTime(r.checkInTime) : '',
+      r.checkOutTime ? formatDisplayTime(r.checkOutTime) : '',
       calculateDuration(r.checkInTime, r.checkOutTime),
-      r.exitNotes || r.checkOutNotes || ''
+      r.exitNotes || r.checkOutNotes || r.remarks || r.notes || ''
     ]);
     const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
       + [headers.join(","), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))].join("\n");
@@ -257,7 +258,7 @@ export default function SuperAdminPreBookings() {
   const exportToPDF = () => {
     if (filteredReports.length === 0) return;
     const printWindow = window.open('', '_blank');
-    const headers = ["Visitor No", "Name", "Company", "Host Employee", "Status", "Visit Date", "Check-In", "Check-Out", "Duration"];
+    const headers = ["Visitor No", "Name", "Company", "Host Employee", "Status", "Visit Date", "Check-In", "Check-Out", "Duration", "Checkout Notes"];
     const htmlContent = `
       <html>
         <head>
@@ -267,14 +268,14 @@ export default function SuperAdminPreBookings() {
             h1 { text-align: center; color: #333; font-size: 24px; margin-bottom: 5px; }
             .date { text-align: center; font-size: 12px; color: #666; margin-bottom: 20px; }
             table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 11px; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; }
             th { background-color: #f4f4f4; color: #333; font-weight: bold; }
             tr:nth-child(even) { background-color: #fafafa; }
           </style>
         </head>
         <body>
           <h1>Pre-Booking Report</h1>
-          <div class="date">Generated on: ${new Date().toLocaleString()}</div>
+          <div class="date">Generated on: ${formatDisplayDateTime(new Date())}</div>
           <table>
             <thead>
               <tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>
@@ -287,10 +288,11 @@ export default function SuperAdminPreBookings() {
                   <td>${r.visitingCompany || ''}</td>
                   <td>${r.hostEmployee || ''} ${r.assignedHr ? `(HR: ${r.assignedHr.name})` : ''}</td>
                   <td>${r.status || ''}</td>
-                  <td>${r.visitDate ? new Date(r.visitDate).toLocaleDateString() : ''}</td>
-                  <td>${r.checkInTime ? new Date(r.checkInTime).toLocaleTimeString() : ''}</td>
-                  <td>${r.checkOutTime ? new Date(r.checkOutTime).toLocaleTimeString() : ''}</td>
+                  <td>${r.visitDate ? formatDisplayDate(r.visitDate) : ''}</td>
+                  <td>${r.checkInTime ? formatDisplayTime(r.checkInTime) : '-'}</td>
+                  <td>${r.checkOutTime ? formatDisplayTime(r.checkOutTime) : '-'}</td>
                   <td>${calculateDuration(r.checkInTime, r.checkOutTime)}</td>
+                  <td>${r.exitNotes || r.checkOutNotes || r.remarks || r.notes || '-'}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -302,6 +304,7 @@ export default function SuperAdminPreBookings() {
       </html>
     `;
     printWindow.document.write(htmlContent);
+
     printWindow.document.close();
   };
 
@@ -497,7 +500,7 @@ export default function SuperAdminPreBookings() {
               {tab.label}
             </button>
           ))}
-          {['Super Admin', 'SaaS Super Admin', 'Admin', 'MD', 'Company Admin'].includes(user?.role) && (
+          {['Super Admin', 'SaaS Super Admin', 'MD'].includes(user?.role) && (
             <button
               onClick={() => {
                 setActiveTab('REPORTS');
@@ -514,7 +517,8 @@ export default function SuperAdminPreBookings() {
           )}
         </div>
 
-        {activeTab === 'REPORTS' ? (
+        {(activeTab === 'REPORTS' && ['Super Admin', 'SaaS Super Admin', 'MD'].includes(user?.role)) ? (
+
           // REPORTS VIEW
           <div className="p-4 space-y-6">
              {/* Stats Overview */}
@@ -673,31 +677,45 @@ export default function SuperAdminPreBookings() {
                         </td>
                         <td className="px-4 py-3 text-gray-600">{r.visitPurpose}</td>
                         <td className="px-4 py-3 text-gray-600">
-                          {r.visitDate ? new Date(r.visitDate).toLocaleDateString() : 'N/A'}
+                          {r.visitDate ? formatDisplayDate(r.visitDate) : 'N/A'}
                         </td>
-                        <td className="px-4 py-3 text-gray-600">{r.expectedTime}</td>
+                        <td className="px-4 py-3 text-gray-600 font-medium">{formatDisplayTime(r.expectedTime)}</td>
                         <td className="px-4 py-3 text-gray-600">{r.branchLocation}</td>
                         <td className="px-4 py-3">{getStatusBadge(r.status)}</td>
-                        <td className="px-4 py-3 text-gray-500">
-                          {r.approvedAt 
-                            ? `${new Date(r.approvedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}, ${new Date(r.approvedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}`
-                            : 'N/A'}
+                        <td className="px-4 py-3 text-gray-600 text-xs whitespace-nowrap">
+                          {r.approvedAt ? formatDisplayDateTime(r.approvedAt) : 'N/A'}
                         </td>
-                        <td className="px-4 py-3 text-gray-500 font-mono text-xs">
-                          {r.checkInTime 
-                            ? new Date(r.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) 
-                            : 'N/A'}
+                        <td className="px-4 py-3 text-gray-700 font-mono text-xs whitespace-nowrap">
+                          {r.checkInTime ? (
+                            <span className="bg-emerald-50 text-emerald-800 px-2.5 py-1 rounded-md border border-emerald-200 font-semibold inline-flex items-center gap-1 shadow-2xs">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                              {formatDisplayTime(r.checkInTime)}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">N/A</span>
+                          )}
                         </td>
-                        <td className="px-4 py-3 text-gray-500 font-mono text-xs">
-                          {r.checkOutTime 
-                            ? new Date(r.checkOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) 
-                            : 'N/A'}
+                        <td className="px-4 py-3 text-gray-700 font-mono text-xs whitespace-nowrap">
+                          {r.checkOutTime ? (
+                            <span className="bg-purple-50 text-purple-800 px-2.5 py-1 rounded-md border border-purple-200 font-semibold inline-flex items-center gap-1 shadow-2xs">
+                              <span className="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
+                              {formatDisplayTime(r.checkOutTime)}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">N/A</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 font-semibold font-mono text-xs whitespace-nowrap">
                           <span className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded-md border border-indigo-100 font-bold">{calculateDuration(r.checkInTime, r.checkOutTime)}</span>
                         </td>
-                        <td className="px-4 py-3 text-gray-500 max-w-[200px] truncate" title={r.exitNotes || r.checkOutNotes}>
-                          {r.exitNotes || r.checkOutNotes || 'N/A'}
+                        <td className="px-4 py-3 text-gray-700 min-w-[220px] max-w-[360px]">
+                          {(r.exitNotes || r.checkOutNotes || r.remarks || r.notes) ? (
+                            <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200/80 text-xs leading-relaxed whitespace-normal break-words shadow-2xs">
+                              <span className="font-medium text-slate-800">{r.exitNotes || r.checkOutNotes || r.remarks || r.notes}</span>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400 italic text-xs">No notes</span>
+                          )}
                         </td>
                       </tr>
                     ))
@@ -1071,13 +1089,55 @@ export default function SuperAdminPreBookings() {
                 </div>
                 <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
                   <span className="text-xs text-gray-400 font-semibold uppercase block">Visit Date</span>
-                  <span className="font-semibold text-gray-800">{selectedVisitor.visitDate ? new Date(selectedVisitor.visitDate).toLocaleDateString() : '-'}</span>
+                  <span className="font-semibold text-gray-800">{selectedVisitor.visitDate ? formatDisplayDate(selectedVisitor.visitDate) : '-'}</span>
                 </div>
                 <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
                   <span className="text-xs text-gray-400 font-semibold uppercase block">Expected Time</span>
-                  <span className="font-semibold text-gray-800">{selectedVisitor.expectedTime || '10:00 AM'}</span>
+                  <span className="font-semibold text-gray-800">{formatDisplayTime(selectedVisitor.expectedTime)}</span>
                 </div>
               </div>
+
+              {/* Check-In & Check-Out Times */}
+              {(selectedVisitor.checkInTime || selectedVisitor.checkOutTime) && (
+                <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                  <div>
+                    <span className="text-emerald-700 font-bold uppercase text-[10px] block">Check-In Time</span>
+                    <span className="font-mono font-bold text-emerald-950 text-sm">
+                      {formatDisplayTime(selectedVisitor.checkInTime)}
+                    </span>
+                    {selectedVisitor.checkInBy && (
+                      <span className="text-[10px] text-gray-400 block mt-0.5">By: {selectedVisitor.checkInBy}</span>
+                    )}
+                  </div>
+                  <div>
+                    <span className="text-purple-700 font-bold uppercase text-[10px] block">Check-Out Time</span>
+                    <span className="font-mono font-bold text-purple-950 text-sm">
+                      {formatDisplayTime(selectedVisitor.checkOutTime)}
+                    </span>
+                    {selectedVisitor.checkOutBy && (
+                      <span className="text-[10px] text-gray-400 block mt-0.5">By: {selectedVisitor.checkOutBy}</span>
+                    )}
+                  </div>
+                  {selectedVisitor.checkInTime && selectedVisitor.checkOutTime && (
+                    <div className="col-span-2 pt-2 border-t border-slate-200 flex justify-between items-center">
+                      <span className="text-gray-500 font-medium">Total Duration:</span>
+                      <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">{calculateDuration(selectedVisitor.checkInTime, selectedVisitor.checkOutTime)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Checkout / Exit Notes */}
+              {(selectedVisitor.exitNotes || selectedVisitor.checkOutNotes || selectedVisitor.remarks || selectedVisitor.notes) && (
+                <div className="bg-amber-50 p-4 rounded-2xl border border-amber-200">
+                  <span className="text-xs font-bold text-amber-900 uppercase tracking-wider block mb-1 flex items-center gap-1.5">
+                    📝 Visitor Checkout Notes
+                  </span>
+                  <p className="text-sm font-medium text-amber-950 bg-white p-3 rounded-xl border border-amber-200/60 whitespace-pre-wrap shadow-2xs">
+                    {selectedVisitor.exitNotes || selectedVisitor.checkOutNotes || selectedVisitor.remarks || selectedVisitor.notes}
+                  </p>
+                </div>
+              )}
 
               {selectedVisitor.idType && (
                 <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl space-y-3">
@@ -1129,7 +1189,7 @@ export default function SuperAdminPreBookings() {
                         <div className="flex justify-between border-b border-gray-100 pb-2">
                           <span className="font-semibold text-gray-500">Approved On</span>
                           <span className="font-medium">
-                            {new Date(selectedVisitor.approvedAt).toLocaleDateString()} at {new Date(selectedVisitor.approvedAt).toLocaleTimeString()}
+                            {formatDisplayDateTime(selectedVisitor.approvedAt)}
                           </span>
                         </div>
                       )}

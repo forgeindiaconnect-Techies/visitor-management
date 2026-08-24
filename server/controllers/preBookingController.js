@@ -1155,13 +1155,14 @@ const getMyPreBookings = async (req, res) => {
 
 const getPreBookingReports = async (req, res) => {
   try {
-    const allowedRoles = ["Super Admin", "SaaS Super Admin", "Admin", "MD", "Company Admin"];
+    const allowedRoles = ["Super Admin", "SaaS Super Admin", "MD"];
     if (!allowedRoles.includes(req.userRole)) {
       return res.status(403).json({
         success: false,
-        message: "Only authorized roles can access pre-booking reports"
+        message: "Only Super Admin and MD can access pre-booking reports"
       });
     }
+
 
     const reports = await PreBooking.find({})
       .populate("assignedHr", "name email")

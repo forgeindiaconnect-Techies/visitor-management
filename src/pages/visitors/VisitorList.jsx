@@ -9,6 +9,7 @@ import { Plus, Search, Filter, MoreVertical, QrCode, X, FileText, Edit, Save, Ca
 import { QRCodeSVG } from 'qrcode.react';
 import VisitorHistoryModal from '../../components/visitors/VisitorHistoryModal';
 import VisitorRescheduleModal from '../../components/visitors/VisitorRescheduleModal';
+import { formatDisplayTime, formatDisplayDateTime, formatDisplayDate } from '../../utils/dateUtils';
 
 const VisitorList = () => {
   const { visitors, allVisitors, updateVisitorStatus, updateVisitorTracking, updateVisitor, networkIp } = useVisitors();
@@ -203,12 +204,12 @@ const VisitorList = () => {
       r.companyName || r.visitingCompany || '',
       r.hostName || r.hostEmployee || '',
       r.purpose || r.visitPurpose || '',
-      r.visitDate ? new Date(r.visitDate).toLocaleDateString() : '',
-      r.expectedArrivalTime || r.expectedTime || '10:00 AM',
+      r.visitDate ? formatDisplayDate(r.visitDate) : '',
+      formatDisplayTime(r.expectedArrivalTime || r.expectedTime),
       r.branch || r.branchLocation || 'Head Office',
       r.status || '',
-      r.checkInTime ? new Date(r.checkInTime).toLocaleString() : '',
-      r.checkOutTime ? new Date(r.checkOutTime).toLocaleString() : '',
+      r.checkInTime ? formatDisplayTime(r.checkInTime) : '',
+      r.checkOutTime ? formatDisplayTime(r.checkOutTime) : '',
       calculateDuration(r.checkInTime, r.checkOutTime),
       r.remarks || r.exitNotes || r.notes || r.checkoutNotes || ''
     ]);
@@ -275,7 +276,7 @@ const VisitorList = () => {
             { key: 'Rejected', label: 'Rejected', count: statusCounts.rejected },
             { key: 'Checked In', label: 'Checked In', count: statusCounts.checkedIn },
             { key: 'Checked Out', label: 'Checked Out', count: statusCounts.checkedOut },
-            ...((['Super Admin', 'SaaS Super Admin', 'Admin', 'MD', 'Company Admin'].includes(user?.role)) ? [{ key: 'Reports', label: '📊 Reports', count: statusCounts.all }] : [])
+            ...((['Super Admin', 'SaaS Super Admin', 'MD'].includes(user?.role)) ? [{ key: 'Reports', label: '📊 Reports', count: statusCounts.all }] : [])
           ].map(tab => (
             <button
               key={tab.key}
@@ -290,7 +291,8 @@ const VisitorList = () => {
             </button>
           ))}
         </div>
-        {statusFilter === 'Reports' ? (
+        {(statusFilter === 'Reports' && ['Super Admin', 'SaaS Super Admin', 'MD'].includes(user?.role)) ? (
+
           /* REPORTS DASHBOARD VIEW MATCHING SCREENSHOT 2 */
           <div className="p-4 space-y-6">
             {/* Stats Overview */}
@@ -425,27 +427,43 @@ const VisitorList = () => {
                         <td className="px-4 py-3 font-semibold text-gray-900">{r.hostName || r.hostEmployee || 'Direct Visits'}</td>
                         <td className="px-4 py-3 text-gray-600">{r.purpose || r.visitPurpose || 'Meeting'}</td>
                         <td className="px-4 py-3 text-gray-600">{formatDisplayDate(r.visitDate)}</td>
-                        <td className="px-4 py-3 text-gray-600">{r.expectedArrivalTime || r.expectedTime || '10:00 AM'}</td>
+                        <td className="px-4 py-3 text-gray-600 font-medium">{formatDisplayTime(r.expectedArrivalTime || r.expectedTime)}</td>
                         <td className="px-4 py-3">
                           <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(r.status)}`}>
                             {r.status}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-gray-500 font-mono text-xs">
-                          {r.checkInTime 
-                            ? new Date(r.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) 
-                            : 'N/A'}
+                        <td className="px-4 py-3 text-gray-700 font-mono text-xs whitespace-nowrap">
+                          {r.checkInTime ? (
+                            <span className="bg-emerald-50 text-emerald-800 px-2.5 py-1 rounded-md border border-emerald-200 font-semibold inline-flex items-center gap-1 shadow-2xs">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                              {formatDisplayTime(r.checkInTime)}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">N/A</span>
+                          )}
                         </td>
-                        <td className="px-4 py-3 text-gray-500 font-mono text-xs">
-                          {r.checkOutTime 
-                            ? new Date(r.checkOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) 
-                            : 'N/A'}
+                        <td className="px-4 py-3 text-gray-700 font-mono text-xs whitespace-nowrap">
+                          {r.checkOutTime ? (
+                            <span className="bg-purple-50 text-purple-800 px-2.5 py-1 rounded-md border border-purple-200 font-semibold inline-flex items-center gap-1 shadow-2xs">
+                              <span className="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
+                              {formatDisplayTime(r.checkOutTime)}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">N/A</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 font-semibold font-mono text-xs whitespace-nowrap">
                           <span className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded-md border border-indigo-100 font-bold">{calculateDuration(r.checkInTime, r.checkOutTime)}</span>
                         </td>
-                        <td className="px-4 py-3 text-gray-500 max-w-[200px] truncate" title={r.remarks || r.exitNotes || r.notes || r.checkoutNotes}>
-                          {r.remarks || r.exitNotes || r.notes || r.checkoutNotes || 'N/A'}
+                        <td className="px-4 py-3 text-gray-700 min-w-[220px] max-w-[360px]">
+                          {(r.remarks || r.exitNotes || r.notes || r.checkoutNotes) ? (
+                            <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200/80 text-xs leading-relaxed whitespace-normal break-words shadow-2xs">
+                              <span className="font-medium text-slate-800">{r.remarks || r.exitNotes || r.notes || r.checkoutNotes}</span>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400 italic text-xs">No notes</span>
+                          )}
                         </td>
                       </tr>
                     ))
@@ -905,13 +923,43 @@ const VisitorList = () => {
               </div>
               <div>
                 <span className="text-slate-400 font-semibold uppercase text-[10px] block">Date & Time</span>
-                <span className="font-semibold text-slate-800">{formatDisplayDate(selectedVisitorDetails.visitDate)} @ {selectedVisitorDetails.expectedArrivalTime || '10:00 AM'}</span>
+                <span className="font-semibold text-slate-800">{formatDisplayDate(selectedVisitorDetails.visitDate)} @ {formatDisplayTime(selectedVisitorDetails.expectedArrivalTime || selectedVisitorDetails.expectedTime)}</span>
               </div>
               <div>
                 <span className="text-slate-400 font-semibold uppercase text-[10px] block">Branch</span>
                 <span className="font-semibold text-slate-800">{selectedVisitorDetails.branch || 'Chennai'}</span>
               </div>
             </div>
+
+            {/* Check-In & Check-Out Times */}
+            {(selectedVisitorDetails.checkInTime || selectedVisitorDetails.checkOutTime) && (
+              <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                <div>
+                  <span className="text-emerald-700 font-bold uppercase text-[10px] block">Check-In Time</span>
+                  <span className="font-mono font-bold text-emerald-950 text-sm">
+                    {formatDisplayTime(selectedVisitorDetails.checkInTime)}
+                  </span>
+                  {selectedVisitorDetails.checkInBy && (
+                    <span className="text-[10px] text-gray-400 block mt-0.5">By: {selectedVisitorDetails.checkInBy}</span>
+                  )}
+                </div>
+                <div>
+                  <span className="text-purple-700 font-bold uppercase text-[10px] block">Check-Out Time</span>
+                  <span className="font-mono font-bold text-purple-950 text-sm">
+                    {formatDisplayTime(selectedVisitorDetails.checkOutTime)}
+                  </span>
+                  {selectedVisitorDetails.checkOutBy && (
+                    <span className="text-[10px] text-gray-400 block mt-0.5">By: {selectedVisitorDetails.checkOutBy}</span>
+                  )}
+                </div>
+                {selectedVisitorDetails.checkInTime && selectedVisitorDetails.checkOutTime && (
+                  <div className="col-span-2 pt-2 border-t border-slate-200 flex justify-between items-center">
+                    <span className="text-gray-500 font-medium">Total Duration:</span>
+                    <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">{calculateDuration(selectedVisitorDetails.checkInTime, selectedVisitorDetails.checkOutTime)}</span>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Current Approval Information */}
             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
@@ -933,7 +981,7 @@ const VisitorList = () => {
                       <div className="flex justify-between border-b border-gray-100 pb-2">
                         <span className="font-semibold text-gray-500">Approved On</span>
                         <span className="font-medium">
-                          {new Date(selectedVisitorDetails.approvedAt).toLocaleDateString()} at {new Date(selectedVisitorDetails.approvedAt).toLocaleTimeString()}
+                          {formatDisplayDateTime(selectedVisitorDetails.approvedAt)}
                         </span>
                       </div>
                     )}
