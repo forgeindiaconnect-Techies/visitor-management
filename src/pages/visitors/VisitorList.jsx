@@ -128,14 +128,17 @@ const VisitorList = () => {
   };
 
   const directVisitors = (Array.isArray(visitors) ? visitors : []).filter(v => {
+    // Exclude scheduled pre-bookings
+    if (v.isPreBooking || v.bookingType === 'PRE_BOOKING' || v.visitType === 'PRE_BOOKING' || v.registrationType === 'Pre-Booking') {
+      return false;
+    }
+
     const host = String(v.hostEmployee || v.hostName || '').trim().toLowerCase();
-    const isDirect = host === 'direct visits' || host === 'direct visit' || host.includes('direct visit') ||
-                     v.registrationType === 'Direct Visit' || v.visitType === 'DIRECT_VISIT' || v.visitorType === 'NEW_VISITOR';
+    const isDirect = host === 'direct visits' || host === 'direct visit' || host.includes('direct') ||
+                     v.registrationType === 'Direct Visit' || v.registrationType === 'Walk-in' ||
+                     v.visitType === 'DIRECT_VISIT' || v.visitorType === 'NEW_VISITOR' || v.bookingType === 'DIRECT_VISIT';
     
     if (isDirect) return true;
-
-    // If it came from the visitor collection (not a scheduled pre-booking)
-    if (!v.isPreBooking && v.registrationType !== 'Pre-Booking') return true;
 
     return false;
   });
