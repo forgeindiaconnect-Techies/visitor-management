@@ -4,7 +4,9 @@ import { useNotification } from './NotificationContext';
 import { useAuth } from './AuthContext';
 
 const VisitorContext = createContext(null);
-const API_URL = `${import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com')}/api/visitors`;
+const rawBase = (import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com')).replace(/\/api\/?$/, '');
+const API_URL = `${rawBase}/api/visitors`;
+const PREBOOKINGS_API_URL = `${rawBase}/api/prebookings`;
 
 export const VisitorProvider = ({ children }) => {
   const { activeBranch } = useBranch();
@@ -74,8 +76,6 @@ export const VisitorProvider = ({ children }) => {
         : API_URL;
       
       const headers = getHeaders(false);
-      
-      const PREBOOKINGS_API_URL = `${import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com')}/api/prebookings`;
       
       const prebookingFetchUrl = queryBranch && queryBranch !== 'All Branches' 
         ? `${PREBOOKINGS_API_URL}?branch=${encodeURIComponent(queryBranch)}` 

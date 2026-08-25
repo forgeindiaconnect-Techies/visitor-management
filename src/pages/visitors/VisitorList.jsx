@@ -128,19 +128,15 @@ const VisitorList = () => {
   };
 
   const directVisitors = (Array.isArray(visitors) ? visitors : []).filter(v => {
-    // Exclude scheduled pre-bookings
-    if (v.isPreBooking || v.bookingType === 'PRE_BOOKING' || v.visitType === 'PRE_BOOKING' || v.registrationType === 'Pre-Booking') {
+    // If it's a scheduled pre-booking assigned to an HR/Staff host, exclude from Direct Visits
+    const host = String(v.hostEmployee || v.hostName || '').trim().toLowerCase();
+    const isDirectHost = host === 'direct visits' || host === 'direct visit' || host.includes('direct');
+
+    if (v.isPreBooking && !isDirectHost) {
       return false;
     }
 
-    const host = String(v.hostEmployee || v.hostName || '').trim().toLowerCase();
-    const isDirect = host === 'direct visits' || host === 'direct visit' || host.includes('direct') ||
-                     v.registrationType === 'Direct Visit' || v.registrationType === 'Walk-in' ||
-                     v.visitType === 'DIRECT_VISIT' || v.visitorType === 'NEW_VISITOR' || v.bookingType === 'DIRECT_VISIT';
-    
-    if (isDirect) return true;
-
-    return false;
+    return true;
   });
 
   const statusCounts = {

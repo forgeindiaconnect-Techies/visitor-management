@@ -286,11 +286,6 @@ const getAllPreBookings = async (req, res) => {
       filter.visitorType = { $ne: 'NEW_VISITOR' };
     }
 
-    filter.hostEmployee = { $not: /direct\s*visit/i };
-    filter.visitPurpose = { $not: /direct\s*visit/i };
-    filter.registrationType = { $not: /direct/i };
-    filter.visitType = { $not: /direct/i };
-
     const preBookings = await PreBooking.find(filter)
       .populate('assignedHr', 'name email')
       .sort({ createdAt: -1 });

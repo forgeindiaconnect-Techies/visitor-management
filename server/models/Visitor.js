@@ -40,7 +40,7 @@ const visitorSchema = new mongoose.Schema({
   visitDate: { type: String, required: true },
   expectedArrivalTime: { type: String },
   appointmentEndTime: { type: String },
-  visitType: { type: String, enum: ["PRE_BOOKING", "DIRECT_VISIT"], default: "PRE_BOOKING" },
+  visitType: { type: String, enum: ["PRE_BOOKING", "DIRECT_VISIT"], default: "DIRECT_VISIT" },
   hostNotes: { type: String },
   bookingId: { type: String },
   registrationType: { type: String, enum: ['Walk-in', 'Pre-Booking'], default: 'Walk-in' },
