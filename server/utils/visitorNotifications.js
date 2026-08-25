@@ -71,11 +71,14 @@ const sendStatusUpdates = async (visitor, status, actorRole, historyEntry = null
       hostUser = await User.findOne({ name: visitor.hostName, companyId: visitor.companyId });
     }
 
-    const notificationMessage = status === 'APPROVED' ? `Your visitor appointment with ${visitor.visitorName} has been approved.` :
-                               status === 'REJECTED' ? `Your visitor appointment with ${visitor.visitorName} has been rejected.` :
-                               status === 'DATE_CHANGED' ? `Your appointment with ${visitor.visitorName} has been rescheduled to ${visitor.visitDate}.` :
-                               status === 'TIME_CHANGED' ? `Your appointment time with ${visitor.visitorName} has been changed to ${visitor.expectedArrivalTime}.` :
-                               `Visitor ${visitor.visitorName} status updated to ${status}.`;
+    const reschedulerName = historyEntry?.changedByName || actorRole || 'Authorized Personnel';
+    const visitorDisplayName = visitor.visitorName || visitor.fullName || 'Visitor';
+
+    const notificationMessage = status === 'APPROVED' ? `Your visitor appointment with ${visitorDisplayName} has been approved.` :
+                               status === 'REJECTED' ? `Your visitor appointment with ${visitorDisplayName} has been rejected.` :
+                               status === 'DATE_CHANGED' ? `${reschedulerName} has rescheduled appointment for visitor ${visitorDisplayName} to ${visitor.visitDate}.` :
+                               status === 'TIME_CHANGED' ? `${reschedulerName} has rescheduled appointment time for visitor ${visitorDisplayName} to ${visitor.expectedArrivalTime}.` :
+                               `Visitor ${visitorDisplayName} status updated to ${status}.`;
 
     // Note: To avoid spamming all users in the branch (because of Notification.js post-save hook), 
     // we should ideally patch Notification.js to respect recipient, but for now we create it.

@@ -20,9 +20,11 @@ exports.getNotifications = async (req, res) => {
 
     if (userId) {
       orConditions.push({ 'recipients.userId': String(userId) });
-      orConditions.push({ 'recipients.user': userId });
       orConditions.push({ recipient: String(userId) });
       orConditions.push({ userId: String(userId) });
+      if (require('mongoose').isValidObjectId(userId)) {
+        orConditions.push({ 'recipients.user': userId });
+      }
     }
 
     const companyRegex = new RegExp(`^${userCompanyId}$`, 'i');
@@ -45,9 +47,151 @@ exports.getNotifications = async (req, res) => {
       .limit(100)
       .lean();
 
+    // Check returning visitors across recent prebookings and direct visitors
+    const PreBooking = require('../models/PreBooking');
+    const Visitor = require('../models/Visitor');
+    const [allPreBookings, allVisitors] = await Promise.all([
+      PreBooking.find({}, 'fullName mobileNumber isReturning returningVisitor').lean(),
+      Visitor.find({}, 'visitorName fullName mobileNumber isReturning returningVisitor').lean()
+    ]);
+
+    const visitorNameCounts = {};
+    const returningNameSet = new Set();
+
+    for (const pb of (allPreBookings || [])) {
+      const nameKey = (pb.fullName || '').trim().toLowerCase();
+      if (nameKey) {
+        visitorNameCounts[nameKey] = (visitorNameCounts[nameKey] || 0) + 1;
+        if (pb.isReturning || pb.returningVisitor) returningNameSet.add(nameKey);
+      }
+    }
+
+    for (const v of (allVisitors || [])) {
+      const nameKey = (v.visitorName || v.fullName || '').trim().toLowerCase();
+      if (nameKey) {
+        visitorNameCounts[nameKey] = (visitorNameCounts[nameKey] || 0) + 1;
+        if (v.isReturning || v.returningVisitor) returningNameSet.add(nameKey);
+      }
+    }
+
+    for (const [name, count] of Object.entries(visitorNameCounts)) {
+      if (count > 1) {
+        returningNameSet.add(name);
+      }
+    }
+
+    // Also scan existing notification titles/messages for any marked as "Returning"
+    for (const n of (Array.isArray(notifications) ? notifications : [])) {
+      if (n) {
+        const title = (n.title || '').toLowerCase();
+        const msg = (n.message || '').toLowerCase();
+        if (title.includes('returning') || msg.includes('returning') || n.isReturning || n.returningVisitor) {
+          let vName = (n.visitorName || '').trim().toLowerCase();
+          if (!vName && n.message) {
+            const m = n.message.match(/(?:for|visitor)\s+([A-Za-z0-9\s]+?)(?:\s+waiting|\s+has\s+been|\s+has\s+arrived|\s+has\s+checked|\s+was|\s+to|\.|$)/i);
+            if (m) vName = m[1].trim().toLowerCase();
+          }
+          if (vName) returningNameSet.add(vName);
+        }
+      }
+    }
+
+    const cleanedNotifications = (Array.isArray(notifications) ? notifications : []).map(n => {
+      if (n && typeof n.message === 'string') {
+        n.message = n.message
+          .replace(/vaideeswari[\.\s]*2007/gi, 'Vaideeswari')
+          .replace(/([\w\s]+)\.\s*\d{4}(\s+has|\s+was|\s+is|\.)/gi, (match, p1, p2) => `${p1.trim()}${p2}`);
+
+        const dashMatch = n.message.match(/^([A-Za-z\s]+)\s*—\s*(\d{1,2}\s+[A-Za-z]+\s+\d{4},?\s*.*)$/);
+        if (dashMatch && (n.title?.includes('Reschedule') || n.title?.includes('Appointment'))) {
+          const visitorName = n.visitorName || n.visitorId || 'Visitor';
+          n.message = `${dashMatch[1].trim()} has rescheduled the appointment for visitor ${visitorName} to ${dashMatch[2]}.`;
+        }
+
+        // Extract visitor name from message or properties
+        let detectedVisitorName = (n.visitorName || '').trim().toLowerCase();
+        if (!detectedVisitorName) {
+          const matchFor = n.message.match(/(?:for|visitor)\s+([A-Za-z0-9\s]+?)(?:\s+waiting|\s+has\s+been|\s+has\s+arrived|\s+has\s+checked|\s+was|\s+to|\.|$)/i);
+          if (matchFor) {
+            detectedVisitorName = matchFor[1].trim().toLowerCase();
+          }
+        }
+
+        const isReturningVisitor = Boolean(
+          n.isReturning || 
+          n.returningVisitor || 
+          (detectedVisitorName && returningNameSet.has(detectedVisitorName)) ||
+          (detectedVisitorName && visitorNameCounts[detectedVisitorName] && visitorNameCounts[detectedVisitorName] > 1)
+        );
+
+        if (isReturningVisitor) {
+          // Returning Visitor lifecycle notifications (Strict Returning Format)
+          if (n.title === 'New Pre-Booking' || n.message.startsWith('New visitor')) {
+            n.title = 'Returning Pre-Booking';
+            n.message = n.message.replace(/^New visitor/i, 'Returning visitor');
+          }
+          else if (n.title === 'Pre-Booking Approved' || n.title === 'New Pre-Booking Approved' || n.title === 'Returning Pre-Booking Approved') {
+            n.title = 'Returning Pre-Booking Approved';
+            n.message = n.message
+              .replace(/^Visitor pre-booking for/i, 'Returning visitor pre-booking for')
+              .replace(/^New pre-booking for/i, 'Returning visitor pre-booking for')
+              .replace(/^New visitor pre-booking for/i, 'Returning visitor pre-booking for');
+          }
+          else if (n.title === 'Pre-Booking Rejected' || n.title === 'Returning Pre-Booking Rejected') {
+            n.title = 'Returning Pre-Booking Rejected';
+            n.message = n.message
+              .replace(/^Visitor pre-booking for/i, 'Returning visitor pre-booking for')
+              .replace(/^New pre-booking for/i, 'Returning visitor pre-booking for');
+          }
+          else if (n.title === 'Visitor Checked In' || n.title === 'Pre-Booking Checked In' || n.title === 'Returning Pre-Booking Checked In') {
+            n.title = 'Returning Pre-Booking Checked In';
+            n.message = n.message
+              .replace(/^Visitor\s+([A-Za-z0-9\s]+?)\s+has\s+arrived/i, 'Returning visitor $1 has arrived')
+              .replace(/^Visitor\s+([A-Za-z0-9\s]+?)\s+has\s+checked/i, 'Returning visitor $1 has checked')
+              .replace(/^(Visitor|New visitor)/i, 'Returning visitor');
+          }
+          else if (n.title === 'Visitor Checked Out' || n.title === 'Pre-Booking Checked Out' || n.title === 'Returning Pre-Booking Checked Out') {
+            n.title = 'Returning Pre-Booking Checked Out';
+            n.message = n.message
+              .replace(/^Visitor\s+([A-Za-z0-9\s]+?)\s+has\s+checked/i, 'Returning visitor $1 has checked')
+              .replace(/^(Visitor|New visitor)/i, 'Returning visitor');
+          }
+          else if (n.title === 'Appointment Rescheduled' || n.title === 'Returning Appointment Rescheduled') {
+            n.title = 'Returning Appointment Rescheduled';
+            n.message = n.message
+              .replace(/for visitor/i, 'for returning visitor')
+              .replace(/for new visitor/i, 'for returning visitor');
+          }
+        } else {
+          // Regular Pre-Booking lifecycle notifications (Strict New Pre-Booking Format)
+          if (n.title === 'Returning Pre-Booking') {
+            n.title = 'New Pre-Booking';
+            n.message = n.message.replace(/^Returning visitor/i, 'New visitor');
+          }
+          else if (n.title === 'Returning Pre-Booking Approved') {
+            n.title = 'Pre-Booking Approved';
+            n.message = n.message.replace(/^Returning visitor pre-booking for/i, 'Visitor pre-booking for');
+          }
+          else if (n.title === 'Returning Pre-Booking Checked In') {
+            n.title = 'Pre-Booking Checked In';
+            n.message = n.message.replace(/^Returning visitor/i, 'Visitor');
+          }
+          else if (n.title === 'Returning Pre-Booking Checked Out') {
+            n.title = 'Pre-Booking Checked Out';
+            n.message = n.message.replace(/^Returning visitor/i, 'Visitor');
+          }
+          else if (n.title === 'Returning Appointment Rescheduled') {
+            n.title = 'Appointment Rescheduled';
+            n.message = n.message.replace(/for returning visitor/i, 'for visitor');
+          }
+        }
+      }
+      return n;
+    });
+
     res.status(200).json({
       success: true,
-      notifications: Array.isArray(notifications) ? notifications : []
+      notifications: cleanedNotifications
     });
   } catch (error) {
     console.error('Error fetching notifications:', error);

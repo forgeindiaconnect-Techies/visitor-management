@@ -242,7 +242,20 @@ const preBookingSchema = new mongoose.Schema(
         role: String
       },
       rescheduledAt: { type: Date, default: Date.now }
-    }]
+    }],
+
+    isReturning: {
+      type: Boolean,
+      default: false
+    },
+    isReturningVisitor: {
+      type: Boolean,
+      default: false
+    },
+    returningVisitor: {
+      type: Boolean,
+      default: false
+    }
   },
   {
     timestamps: true,

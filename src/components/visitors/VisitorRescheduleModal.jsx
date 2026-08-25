@@ -4,6 +4,7 @@ import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { useAuth } from '../../context/AuthContext';
 import { formatAppointmentDate, formatAppointmentTime } from '../../utils/dateUtils';
+import { formatDisplayName } from '../../utils/nameFormatter';
 
 const isAllowedDay = (date) => {
   const day = date.getDay();
@@ -86,7 +87,9 @@ const VisitorRescheduleModal = ({ visitor, onClose, onSuccess }) => {
       const payload = {
         visitDate: date,
         expectedTime: formatTo12Hour(startTime),
-        reason: reason || 'Appointment Rescheduled'
+        appointmentEndTime: endTime ? formatTo12Hour(endTime) : undefined,
+        reason: reason || 'Appointment Rescheduled',
+        rescheduledByName: formatDisplayName(user?.name || user?.username || 'Authorized Personnel')
       };
 
       const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
@@ -96,22 +99,24 @@ const VisitorRescheduleModal = ({ visitor, onClose, onSuccess }) => {
       console.log('🔍 Rescheduling visitor:', visitor);
       console.log('🔍 Reschedule ID:', vId);
       
+      const reqHeaders = { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        'X-Company-Id': user?.companyId || 'FIC001',
+        'X-User-Id': user?._id || user?.id || 'bootstrap',
+        'X-User-Role': user?.role || 'Admin'
+      };
+
       let res = await fetch(`${API_URL}/api/prebookings/${vId}/reschedule`, {
         method: 'PUT',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}` 
-        },
+        headers: reqHeaders,
         body: JSON.stringify(payload)
       });
 
       if (!res.ok && res.status === 404) {
         res = await fetch(`${API_URL}/api/prebookings/${vId}/reschedule`, {
           method: 'PUT',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}` 
-          },
+          headers: reqHeaders,
           body: JSON.stringify(payload)
         });
       }
@@ -119,10 +124,7 @@ const VisitorRescheduleModal = ({ visitor, onClose, onSuccess }) => {
       if (!res.ok && res.status === 404) {
         res = await fetch(`${API_URL}/api/visitors/${vId}/reschedule`, {
           method: 'PATCH',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}` 
-          },
+          headers: reqHeaders,
           body: JSON.stringify(payload)
         });
       }

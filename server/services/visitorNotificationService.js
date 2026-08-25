@@ -2,6 +2,7 @@ const Notification = require('../models/Notification');
 const User = require('../models/User');
 const ApprovalPermission = require('../models/ApprovalPermission');
 const emailService = require('../utils/emailService');
+const { formatDisplayName } = require('../utils/nameFormatter');
 
 const VISITOR_EVENTS = {
   REGISTERED: 'VISITOR_REGISTERED',
@@ -76,17 +77,47 @@ const notifyVisitorEvent = async ({
       if (hostUser) hostUserId = hostUser._id.toString();
     }
 
+    // Detect returning visitor status across the entire lifecycle
+    let isReturningVisitor = Boolean(
+      visitor.isReturning || 
+      visitor.returningVisitor || 
+      visitor.registrationType === 'Returning'
+    );
+
+    if (!isReturningVisitor && visitor.mobileNumber) {
+      try {
+        const cleanMobile = String(visitor.mobileNumber).replace(/\D/g, '').slice(-10);
+        const PreBookingModel = require('../models/PreBooking');
+        const VisitorModel = require('../models/Visitor');
+        const pastPreBookings = await PreBookingModel.countDocuments({
+          mobileNumber: cleanMobile,
+          _id: { $ne: visitor._id }
+        });
+        const pastVisitors = await VisitorModel.countDocuments({
+          mobileNumber: cleanMobile,
+          _id: { $ne: visitor._id }
+        });
+        if (pastPreBookings + pastVisitors > 0) {
+          isReturningVisitor = true;
+        }
+      } catch (err) {
+        console.error("Error detecting returning visitor:", err);
+      }
+    }
+
     switch (event) {
       case VISITOR_EVENTS.REGISTERED:
-        emailSubject = 'Pre-Booking Submitted — Track Your Visit';
+        emailSubject = isReturningVisitor 
+          ? 'Welcome Back — New Visit Request Submitted' 
+          : 'Pre-Booking Submitted — Track Your Visit';
         emailHtml = `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
             <div style="background-color: #0f172a; color: white; padding: 16px 24px; border-radius: 8px 8px 0 0; text-align: center;">
-              <h2 style="margin: 0; font-size: 20px;">Pre-Booking Submitted</h2>
+              <h2 style="margin: 0; font-size: 20px;">${isReturningVisitor ? 'Welcome Back — Visit Request Submitted' : 'Pre-Booking Submitted'}</h2>
             </div>
             <div style="padding: 24px; background-color: #ffffff;">
               <p style="font-size: 16px; color: #1e293b;">Hello <strong>${visitor.visitorName || visitor.fullName}</strong>,</p>
-              <p style="font-size: 14px; color: #475569;">Your appointment request has been submitted.</p>
+              <p style="font-size: 14px; color: #475569;">${isReturningVisitor ? 'Welcome back! Your new appointment request has been submitted.' : 'Your appointment request has been submitted.'}</p>
               <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; padding: 16px; border-radius: 8px; margin: 20px 0;">
                 <p style="margin: 4px 0; font-size: 14px;"><strong>Status:</strong> <span style="color: #d97706; font-weight: bold;">Pending Approval</span></p>
                 <p style="margin: 4px 0; font-size: 14px;"><strong>Appointment:</strong><br/>${visitDateFormatted}<br/>${timeFormatted}</p>
@@ -97,8 +128,9 @@ const notifyVisitorEvent = async ({
             </div>
           </div>
         `;
-        notificationTitle = 'New Pre-Booking';
-        notificationMessage = `New visitor ${visitor.visitorName || visitor.fullName} waiting for approval`;
+
+        notificationTitle = isReturningVisitor ? 'Returning Pre-Booking' : 'New Pre-Booking';
+        notificationMessage = `${isReturningVisitor ? 'Returning' : 'New'} visitor ${visitorDisplayName} waiting for approval`;
         sendEmailToVisitor = true;
 
         notifyRecipients = await getDashboardUserIds();
@@ -107,30 +139,33 @@ const notifyVisitorEvent = async ({
         break;
 
       case VISITOR_EVENTS.APPROVED:
-        emailSubject = 'Visitor Appointment Approved';
-        const approvedByName = actor?.name || 'Authorized Personnel';
+        emailSubject = isReturningVisitor 
+          ? 'Welcome Back — Visit Appointment Approved' 
+          : 'Visitor Appointment Approved';
+        const approvedByName = formatDisplayName(actor?.name || 'Authorized Personnel');
         const approvedByRole = actor?.role || 'Admin';
+        const approvedVisitorName = formatDisplayName(visitor.visitorName || visitor.fullName || 'Visitor');
         emailHtml = `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
             <div style="background-color: #16a34a; color: white; padding: 16px 24px; border-radius: 8px 8px 0 0; text-align: center;">
-              <h2 style="margin: 0; font-size: 20px;">&#10004; Appointment Approved</h2>
+              <h2 style="margin: 0; font-size: 20px;">&#10004; ${isReturningVisitor ? 'Welcome Back — Appointment Approved' : 'Appointment Approved'}</h2>
             </div>
             <div style="padding: 24px; background-color: #ffffff;">
-              <p style="font-size: 16px; color: #1e293b;">Hello <strong>${visitor.visitorName || visitor.fullName}</strong>,</p>
+              <p style="font-size: 16px; color: #1e293b;">Hello <strong>${approvedVisitorName}</strong>,</p>
               <div style="background-color: #f0fdf4; border: 1px solid #86efac; padding: 16px; border-radius: 8px; margin: 20px 0;">
                 <p style="margin: 4px 0; font-size: 14px;"><strong>Approved By:</strong> ${approvedByName}</p>
                 <p style="margin: 4px 0; font-size: 14px;"><strong>Role:</strong> ${approvedByRole}</p>
                 <p style="margin: 4px 0; font-size: 14px;"><strong>Appointment:</strong><br/>${visitDateFormatted}<br/>${timeFormatted}</p>
               </div>
-              <p style="font-size: 14px; color: #475569;">Your visitor pass is ready.</p>
+              <p style="font-size: 14px; color: #475569;">${isReturningVisitor ? 'Welcome back! Your visitor pass is approved and ready.' : 'Your visitor pass is ready.'}</p>
               <div style="text-align: center; margin: 24px 0;">
                 <a href="${trackingUrl}" target="_blank" style="background-color: #0f172a; color: #ffffff; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 6px; display: inline-block;">VIEW VISITOR PASS</a>
               </div>
             </div>
           </div>
         `;
-        notificationTitle = 'Visitor Approved';
-        notificationMessage = `${visitor.visitorName || visitor.fullName} was approved by ${approvedByName}`;
+        notificationTitle = isReturningVisitor ? 'Returning Pre-Booking Approved' : 'Pre-Booking Approved';
+        notificationMessage = `${isReturningVisitor ? 'Returning visitor' : 'Visitor'} pre-booking for ${approvedVisitorName} has been approved by ${approvedByName}.`;
         sendEmailToVisitor = true;
 
         notifyRecipients = await getDashboardUserIds();
@@ -139,13 +174,15 @@ const notifyVisitorEvent = async ({
 
       case VISITOR_EVENTS.REJECTED:
         emailSubject = 'Appointment Rejected';
+        const rejectedVisitorName = formatDisplayName(visitor.visitorName || visitor.fullName || 'Visitor');
+        const rejectedByName = formatDisplayName(actor?.name || 'Authorized Personnel');
         emailHtml = `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
             <div style="background-color: #dc2626; color: white; padding: 16px 24px; border-radius: 8px 8px 0 0; text-align: center;">
               <h2 style="margin: 0; font-size: 20px;">Appointment Rejected</h2>
             </div>
             <div style="padding: 24px; background-color: #ffffff;">
-              <p style="font-size: 16px; color: #1e293b;">Hello <strong>${visitor.visitorName || visitor.fullName}</strong>,</p>
+              <p style="font-size: 16px; color: #1e293b;">Hello <strong>${rejectedVisitorName}</strong>,</p>
               <p style="font-size: 14px; color: #475569;">Your appointment request was rejected.</p>
               <div style="background-color: #fef2f2; border: 1px solid #fca5a5; padding: 16px; border-radius: 8px; margin: 20px 0;">
                 <p style="margin: 4px 0; font-size: 14px;"><strong>Reason:</strong> ${reason || 'Host unavailable on the selected date.'}</p>
@@ -154,8 +191,8 @@ const notifyVisitorEvent = async ({
             </div>
           </div>
         `;
-        notificationTitle = 'Visitor Rejected';
-        notificationMessage = `${visitor.visitorName || visitor.fullName}'s appointment was rejected.`;
+        notificationTitle = isReturningVisitor ? 'Returning Pre-Booking Rejected' : 'Pre-Booking Rejected';
+        notificationMessage = `${isReturningVisitor ? 'Returning visitor' : 'Visitor'} pre-booking for ${rejectedVisitorName} has been rejected by ${rejectedByName}.`;
         sendEmailToVisitor = true;
 
         notifyRecipients = await getDashboardUserIds();
@@ -168,6 +205,17 @@ const notifyVisitorEvent = async ({
           visitor.rescheduleHistory && visitor.rescheduleHistory.length > 0
             ? visitor.rescheduleHistory[visitor.rescheduleHistory.length - 1]
             : null;
+
+        const reschedulerName = formatDisplayName(
+          actor?.name ||
+          actor?.userName ||
+          latestReschedule?.rescheduledBy?.name ||
+          'Authorized Personnel'
+        );
+
+        const visitorDisplayName = formatDisplayName(
+          visitor.visitorName || visitor.fullName || 'Visitor'
+        );
 
         const oldDateFormatted =
           latestReschedule?.oldVisitDate
@@ -190,8 +238,9 @@ const notifyVisitorEvent = async ({
               <h2 style="margin: 0; font-size: 20px;">Appointment Rescheduled</h2>
             </div>
             <div style="padding: 24px; background-color: #ffffff;">
-              <p style="font-size: 16px; color: #1e293b;">Hello <strong>${visitor.visitorName || visitor.fullName}</strong>,</p>
+              <p style="font-size: 16px; color: #1e293b;">Hello <strong>${visitorDisplayName}</strong>,</p>
               <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; padding: 16px; border-radius: 8px; margin: 20px 0;">
+                <p style="margin: 4px 0; font-size: 14px;"><strong>Rescheduled By:</strong> ${reschedulerName}</p>
                 <p style="margin: 4px 0; font-size: 14px;"><strong>Previous:</strong><br/>${oldDateFormatted}<br/>${oldTimeFormatted}</p>
                 <hr style="border: 1px solid #bfdbfe; margin: 12px 0;" />
                 <p style="margin: 4px 0; font-size: 14px;"><strong>New:</strong><br/>${visitDateFormatted}<br/>${timeFormatted}</p>
@@ -204,8 +253,8 @@ const notifyVisitorEvent = async ({
             </div>
           </div>
         `;
-        notificationTitle = 'Appointment Rescheduled';
-        notificationMessage = `${visitor.visitorName || visitor.fullName} — ${visitDateFormatted}, ${timeFormatted}`;
+        notificationTitle = isReturningVisitor ? 'Returning Appointment Rescheduled' : 'Appointment Rescheduled';
+        notificationMessage = `${reschedulerName} has rescheduled the appointment for ${isReturningVisitor ? 'returning visitor' : 'visitor'} ${visitorDisplayName} to ${visitDateFormatted}, ${timeFormatted}.`;
         sendEmailToVisitor = true;
 
         notifyRecipients = await getDashboardUserIds();
@@ -213,7 +262,7 @@ const notifyVisitorEvent = async ({
         break;
 
       case VISITOR_EVENTS.QR_AVAILABLE:
-        notificationTitle = 'Visitor Pass Available';
+        notificationTitle = isReturningVisitor ? 'Returning Visitor Pass Available' : 'Visitor Pass Available';
         notificationMessage = `Status: APPROVED. ${visitor.visitorName || visitor.fullName} can now be verified at reception.`;
         
         notifyRecipients = await getDashboardUserIds();
@@ -221,8 +270,8 @@ const notifyVisitorEvent = async ({
         break;
 
       case VISITOR_EVENTS.CHECKED_IN:
-        notificationTitle = 'Visitor Checked In';
-        notificationMessage = `${visitor.visitorName || visitor.fullName} has arrived and checked in.`;
+        notificationTitle = isReturningVisitor ? 'Returning Pre-Booking Checked In' : 'Pre-Booking Checked In';
+        notificationMessage = `${isReturningVisitor ? 'Returning visitor' : 'Visitor'} ${visitor.visitorName || visitor.fullName} has arrived and checked in.`;
         sendEmailToVisitor = false;
         
         notifyRecipients = await getDashboardUserIds();
@@ -230,8 +279,8 @@ const notifyVisitorEvent = async ({
         break;
 
       case VISITOR_EVENTS.CHECKED_OUT:
-        notificationTitle = 'Visitor Checked Out';
-        notificationMessage = `${visitor.visitorName || visitor.fullName} has checked out.`;
+        notificationTitle = isReturningVisitor ? 'Returning Pre-Booking Checked Out' : 'Pre-Booking Checked Out';
+        notificationMessage = `${isReturningVisitor ? 'Returning visitor' : 'Visitor'} ${visitor.visitorName || visitor.fullName} has checked out.`;
         sendEmailToVisitor = false;
         
         notifyRecipients = await getDashboardUserIds();
@@ -257,16 +306,24 @@ const notifyVisitorEvent = async ({
       const notificationDoc = await Notification.findOneAndUpdate(
         { eventId: notificationEventId },
         {
+          $set: {
+            title: notificationTitle,
+            message: notificationMessage,
+            isReturning: isReturningVisitor,
+            visitorType: isReturningVisitor ? 'RETURNING_PRE_BOOKING' : 'PRE_BOOKING'
+          },
           $setOnInsert: {
             eventId: notificationEventId,
             companyId: visitor.companyId || 'FIC001',
             branchId: visitor.branch || visitor.branchLocation,
             recipients: formattedRecipients,
             roles: ['Super Admin', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'MD', 'Senior HR', 'HR', 'Security', 'Receptionist'],
+            visitorId: visitor.visitorId || null,
+            visitorName: visitorDisplayName,
+            preBookingId: visitor._id,
+            createdBy: reschedulerName || 'Authorized Personnel',
             type: 'Visitor',
             module: 'PreBooking',
-            title: notificationTitle,
-            message: notificationMessage,
             isRead: false
           }
         },

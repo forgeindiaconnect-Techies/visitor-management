@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { useAuth } from './AuthContext';
+import { normalizeBranchName } from '../utils/branchUtils';
 
 const BranchContext = createContext(null);
 
@@ -39,10 +40,13 @@ export const BranchProvider = ({ children }) => {
           dynamicBranches = list.map(b => b.branchName).filter(Boolean);
         }
 
-        // Include default branches if not already in list
+        // Include normalized branches, avoiding case duplicates like 'KRISHNAGIRI' and 'Krishnagiri'
         const branchSet = new Set(['Krishnagiri', 'Bangalore']);
         dynamicBranches.forEach(b => {
-          if (b && b !== 'All Branches') branchSet.add(b);
+          if (b && b !== 'All Branches') {
+            const norm = normalizeBranchName(b);
+            if (norm && norm !== 'All Branches') branchSet.add(norm);
+          }
         });
 
         const allB = ['All Branches', ...Array.from(branchSet)];
@@ -50,7 +54,8 @@ export const BranchProvider = ({ children }) => {
         
         // Roles that can view All Branches. Everyone else is locked to their assigned branch.
         if (!['Super Admin', 'MD', 'Senior HR', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'HR'].includes(user.role)) {
-          setActiveBranch(user.branch || Array.from(branchSet)[0] || 'All Branches');
+          const userBranchNorm = user.branch ? normalizeBranchName(user.branch) : Array.from(branchSet)[0];
+          setActiveBranch(userBranchNorm || 'All Branches');
         } else {
           setActiveBranch('All Branches');
         }

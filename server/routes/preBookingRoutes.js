@@ -17,10 +17,17 @@ const {
   getMyPreBookings,
   getPreBookingReports,
   reschedulePreBooking,
-
+  getReturningVisitor,
+  updatePreBooking,
 } = require("../controllers/preBookingController");
 
 const router = express.Router();
+
+// Check returning visitor by mobile number
+router.get(
+  "/returning-visitor/:mobile",
+  getReturningVisitor
+);
 
 // Get pre-bookings assigned to logged-in user (e.g. HR)
 router.get("/my", authMiddleware, getMyPreBookings);
@@ -63,6 +70,10 @@ router.put("/:id/reject", authMiddleware, rejectPreBooking);
 // Reschedule Pre-Booking
 router.put("/:id/reschedule", authMiddleware, reschedulePreBooking);
 router.patch("/:id/reschedule", authMiddleware, reschedulePreBooking);
+
+// Update Pre-Booking details
+router.put("/:id", authMiddleware, updatePreBooking);
+router.patch("/:id", authMiddleware, updatePreBooking);
 
 // Cleanup duplicate notifications (Temporary GET route for easy one-off execution)
 

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   Calendar, User, Clock, Building, CheckCircle2, Phone, Mail, 
   Car, ShieldAlert, ArrowLeft, Printer, QrCode, Sparkles, Upload, FileText, Download
@@ -57,6 +57,7 @@ const getNextAllowedVisitDate = () => {
 
 const PublicPreBooking = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const fileInputRef = useRef(null);
 
   // Form State
@@ -87,6 +88,11 @@ const PublicPreBooking = () => {
   const [preBookResult, setPreBookResult] = useState(null);
   const [step, setStep] = useState(1); // 1: Form, 2: Success QR Pass
 
+  // Returning visitor states
+  const [checkingVisitor, setCheckingVisitor] = useState(false);
+  const [returningVisitor, setReturningVisitor] = useState(false);
+  const [activeBooking, setActiveBooking] = useState(null);
+
   const [hrUsers, setHrUsers] = useState([]);
 
   const getHrId = (dbName) => {
@@ -104,6 +110,95 @@ const PublicPreBooking = () => {
   const _rawUrl = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
   const API_BASE = _rawUrl.replace(/\/api\/?$/, '');
 
+  const checkReturningVisitor = async (mobile) => {
+    const cleanMobile = String(mobile || '').replace(/\D/g, '');
+
+    if (cleanMobile.length !== 10) {
+      setReturningVisitor(false);
+      setActiveBooking(null);
+      return;
+    }
+
+    try {
+      setCheckingVisitor(true);
+
+      const API_URL =
+        import.meta.env.VITE_API_URL ||
+        (window.location.hostname === 'localhost'
+          ? 'http://localhost:5000'
+          : 'https://zone-monitor.onrender.com');
+
+      const res = await fetch(
+        `${API_URL}/api/prebookings/returning-visitor/${cleanMobile}`
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        return;
+      }
+
+      if (data.hasActiveBooking) {
+        setActiveBooking(data.data);
+        setReturningVisitor(true);
+        return;
+      }
+
+      if (data.returningVisitor && data.data) {
+        setReturningVisitor(true);
+        setActiveBooking(null);
+
+        // KEEP OLD PERSONAL DETAILS & CLEAR APPOINTMENT DETAILS
+        setFormData(prev => ({
+          ...prev,
+          visitorName: data.data.fullName || prev.visitorName || '',
+          mobileNumber: data.data.mobileNumber || cleanMobile,
+          email: data.data.email || '',
+          vehicleNumber: data.data.vehicleNumber || '',
+          // CLEAR OLD APPOINTMENT DETAILS
+          hostName: '',
+          assignedHr: '',
+          selectedHostLabel: '',
+          purpose: '',
+          visitDate: '',
+          expectedArrivalTime: '',
+          branch: ''
+        }));
+      } else {
+        setReturningVisitor(false);
+        setActiveBooking(null);
+      }
+
+    } catch (error) {
+      console.error('Returning visitor check failed:', error);
+    } finally {
+      setCheckingVisitor(false);
+    }
+  };
+
+  const resetReturningVisitor = () => {
+    setReturningVisitor(false);
+    setActiveBooking(null);
+    setCapturedPhoto(null);
+    setIdProofPreview('');
+    setFormData({
+      visitorName: '',
+      mobileNumber: '',
+      email: '',
+      companyName: 'Forge India Connect Private Limited',
+      hostName: '',
+      assignedHr: '',
+      selectedHostLabel: '',
+      purpose: 'Business Meeting',
+      visitDate: getNextAllowedVisitDate(),
+      expectedArrivalTime: '10:00',
+      vehicleNumber: '',
+      branch: 'Head Office(KRISHNAGIRI)',
+      idType: '',
+      idProofUrl: ''
+    });
+  };
+
   useEffect(() => {
     const fetchHRUsers = async () => {
       try {
@@ -119,6 +214,18 @@ const PublicPreBooking = () => {
     fetchHRUsers();
   }, [API_BASE]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const mobileParam = params.get('mobile');
+    if (mobileParam) {
+      const clean = mobileParam.replace(/\D/g, '').slice(0, 10);
+      if (clean.length === 10) {
+        setFormData(prev => ({ ...prev, mobileNumber: clean }));
+        checkReturningVisitor(clean);
+      }
+    }
+  }, [location.search]);
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     if (name === 'mobileNumber') {
@@ -127,10 +234,20 @@ const PublicPreBooking = () => {
 
       if (cleanVal.length === 0) {
         setMobileError("");
+        setReturningVisitor(false);
+        setActiveBooking(null);
       } else if (!/^[6-9]\d{9}$/.test(cleanVal)) {
         setMobileError("Enter a valid 10-digit mobile number starting with 6, 7, 8, or 9.");
+        setReturningVisitor(false);
+        setActiveBooking(null);
       } else {
         setMobileError("");
+        if (cleanVal.length === 10) {
+          checkReturningVisitor(cleanVal);
+        } else {
+          setReturningVisitor(false);
+          setActiveBooking(null);
+        }
       }
     } else {
       setFormData(prev => ({ ...prev, [name]: value }));
@@ -195,6 +312,14 @@ const PublicPreBooking = () => {
     } else {
       setMobileError('');
     }
+    if (!formData.hostName || !formData.selectedHostLabel) {
+      setErrorMsg('Please select a host employee to meet.');
+      return;
+    }
+    if (!formData.purpose) {
+      setErrorMsg('Please select the purpose of your visit.');
+      return;
+    }
     if (!formData.visitDate) {
       setErrorMsg('Please select a visit date.');
       return;
@@ -202,6 +327,14 @@ const PublicPreBooking = () => {
     const chosenDate = new Date(`${formData.visitDate}T00:00:00`);
     if (!isAllowedDay(chosenDate)) {
       setErrorMsg('Visits can only be booked on Monday, Wednesday, or Saturday.');
+      return;
+    }
+    if (!formData.expectedArrivalTime) {
+      setErrorMsg('Please select an expected arrival time.');
+      return;
+    }
+    if (!formData.branch) {
+      setErrorMsg('Please select a branch location.');
       return;
     }
     if (!capturedPhoto) {
@@ -257,6 +390,9 @@ const PublicPreBooking = () => {
         idType: formData.idType,
         idProofUrl: formData.idProofUrl,
         assignedHr: formData.assignedHr,
+        returningVisitor: Boolean(returningVisitor),
+        isReturningVisitor: Boolean(returningVisitor),
+        isReturning: Boolean(returningVisitor),
         // Compatibility fields:
         visitorName: formData.visitorName,
         companyName: formData.companyName || 'Forge India Connect Private Limited',
@@ -283,8 +419,10 @@ const PublicPreBooking = () => {
 
       if (response.ok && (data.success || data.visitor || data.data)) {
         const savedRecord = data.data || data.visitor;
+        const newVisitorId = savedRecord.visitorId || savedRecord.visitId || "Generated Successfully";
+
         setPreBookResult({
-          visitId: savedRecord.visitorId || savedRecord.visitId,
+          visitId: newVisitorId,
           visitorName: savedRecord.fullName || savedRecord.visitorName,
           mobileNumber: savedRecord.mobileNumber,
           email: savedRecord.email,
@@ -299,6 +437,29 @@ const PublicPreBooking = () => {
           idProofUrl: savedRecord.idProofUrl || formData.idProofUrl,
           status: savedRecord.status || 'PENDING'
         });
+
+        // RESET FORM FOR NEXT REGISTRATION
+        setReturningVisitor(false);
+        setActiveBooking(null);
+        setCapturedPhoto(null);
+        setIdProofPreview('');
+        setFormData({
+          visitorName: '',
+          mobileNumber: '',
+          email: '',
+          companyName: 'Forge India Connect Private Limited',
+          hostName: '',
+          assignedHr: '',
+          selectedHostLabel: '',
+          purpose: 'Business Meeting',
+          visitDate: getNextAllowedVisitDate(),
+          expectedArrivalTime: '10:00',
+          vehicleNumber: '',
+          branch: 'Head Office(KRISHNAGIRI)',
+          idType: '',
+          idProofUrl: '',
+        });
+
         setStep(2);
       } else {
         throw new Error(data.message || 'Pre-booking registration failed.');
@@ -414,6 +575,41 @@ const PublicPreBooking = () => {
               <FaceCamera onCapture={(photo) => setCapturedPhoto(photo)} />
             </div>
 
+            {/* Returning Visitor / Active Booking Full Width Banner */}
+            {returningVisitor && !activeBooking && (
+              <div className="p-4 bg-green-50 border border-green-200 rounded-2xl shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="space-y-0.5">
+                  <p className="font-bold text-green-900 text-sm flex items-center gap-1.5">
+                    <span>✨</span> Welcome back, <span className="underline decoration-green-500 font-extrabold">{formData.visitorName || 'Visitor'}</span>!
+                  </p>
+                  <p className="text-xs text-green-700 font-medium">
+                    Your existing visitor profile has been loaded. Personal details are locked. Please select your new appointment details below.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={resetReturningVisitor}
+                  className="px-3.5 py-1.5 bg-white border border-green-300 text-green-800 hover:bg-green-100/60 rounded-xl text-xs font-bold transition-colors whitespace-nowrap shadow-xs"
+                >
+                  Search another visitor
+                </button>
+              </div>
+            )}
+
+            {activeBooking && (
+              <div className="p-4 bg-orange-50 border border-orange-200 rounded-2xl shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+                <p className="font-bold text-orange-900 text-sm flex items-center gap-1.5">
+                  <span>⚠️</span> You already have an active appointment.
+                </p>
+                <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-orange-800 bg-white/70 p-2.5 rounded-xl border border-orange-100">
+                  <div><span className="font-semibold text-gray-500">ID:</span> <span className="font-bold">{activeBooking.visitorId}</span></div>
+                  <div><span className="font-semibold text-gray-500">Date:</span> <span className="font-bold">{new Date(activeBooking.visitDate).toLocaleDateString()}</span></div>
+                  <div><span className="font-semibold text-gray-500">Time:</span> <span className="font-bold">{activeBooking.expectedTime}</span></div>
+                  <div><span className="font-semibold text-gray-500">Status:</span> <span className="font-bold">{activeBooking.status}</span></div>
+                </div>
+              </div>
+            )}
+
             {/* Form Fields Grid */}
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
@@ -425,8 +621,13 @@ const PublicPreBooking = () => {
                     name="visitorName"
                     value={formData.visitorName}
                     onChange={handleChange}
+                    readOnly={returningVisitor && !activeBooking}
                     placeholder="e.g. Rahul Verma"
-                    className={inputClassName}
+                    className={`${inputClassName} ${
+                      returningVisitor && !activeBooking
+                        ? 'bg-gray-100 text-gray-700 cursor-not-allowed'
+                        : 'bg-white'
+                    }`}
                     required
                   />
                 </div>
@@ -442,15 +643,26 @@ const PublicPreBooking = () => {
                     maxLength={10}
                     name="mobileNumber"
                     value={formData.mobileNumber}
+                    readOnly={returningVisitor && !activeBooking}
                     onChange={handleChange}
                     placeholder="Enter 10-digit mobile number"
-                    className={`${inputClassName} ${mobileError ? 'border-red-500 focus:ring-red-500' : ''}`}
+                    className={`${inputClassName} ${
+                      returningVisitor && !activeBooking
+                        ? 'bg-gray-100 text-gray-700 cursor-not-allowed'
+                        : 'bg-white'
+                    } ${mobileError ? 'border-red-500 focus:ring-red-500' : ''}`}
                     required
                   />
                 </div>
                 {mobileError && (
                   <p className="text-red-500 text-xs mt-1 font-semibold flex items-center gap-1">
                     ⚠️ {mobileError}
+                  </p>
+                )}
+
+                {checkingVisitor && (
+                  <p className="text-sm text-gray-500 mt-1">
+                    Checking visitor details...
                   </p>
                 )}
               </div>
@@ -466,8 +678,13 @@ const PublicPreBooking = () => {
                     name="email"
                     value={formData.email}
                     onChange={handleChange}
+                    readOnly={returningVisitor && !activeBooking}
                     placeholder="name@company.com"
-                    className={inputClassName}
+                    className={`${inputClassName} ${
+                      returningVisitor && !activeBooking
+                        ? 'bg-gray-100 text-gray-700 cursor-not-allowed'
+                        : 'bg-white'
+                    }`}
                   />
                 </div>
               </div>
@@ -479,10 +696,13 @@ const PublicPreBooking = () => {
                   <input
                     type="text"
                     name="companyName"
-                    value="Forge India Connect Private Limited"
+                    value={formData.companyName || "Forge India Connect Private Limited"}
                     readOnly
-                    disabled
-                    className="block w-full pl-10 pr-3 py-2.5 border border-indigo-100 rounded-xl text-sm bg-indigo-50/30 text-indigo-900 font-bold cursor-not-allowed select-none transition-shadow"
+                    className={`block w-full pl-10 pr-3 py-2.5 border rounded-xl text-sm font-semibold select-none ${
+                      returningVisitor && !activeBooking
+                        ? 'bg-gray-100 text-gray-700 cursor-not-allowed border-gray-200'
+                        : 'border-indigo-100 bg-indigo-50/30 text-indigo-900 font-bold cursor-not-allowed'
+                    }`}
                   />
                 </div>
               </div>
@@ -639,14 +859,20 @@ const PublicPreBooking = () => {
 
             <button
               type="submit"
-              disabled={loading}
-              className="w-full py-3.5 rounded-xl bg-[var(--color-brand-indigo)] hover:bg-[var(--color-brand-indigo-light)] text-white font-bold shadow-lg shadow-indigo-900/20 transition-all flex items-center justify-center gap-2 transform active:scale-[0.99] text-base"
+              disabled={loading || !!activeBooking}
+              className={`w-full py-3.5 rounded-xl text-white font-bold shadow-lg transition-all flex items-center justify-center gap-2 transform active:scale-[0.99] text-base ${
+                activeBooking 
+                  ? 'bg-gray-400 cursor-not-allowed shadow-none' 
+                  : 'bg-[var(--color-brand-indigo)] hover:bg-[var(--color-brand-indigo-light)] shadow-indigo-900/20'
+              }`}
             >
               {loading ? (
                 <>
                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   Generating Pass...
                 </>
+              ) : activeBooking ? (
+                'Active Booking Already Exists'
               ) : (
                 <>
                   Generate Pre-Booking Pass

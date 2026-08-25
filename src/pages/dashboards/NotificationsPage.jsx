@@ -5,6 +5,7 @@ import { io } from 'socket.io-client';
 import { useNavigate } from 'react-router-dom';
 import { Search, Filter, Trash2, CheckCircle, BellOff, Info, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react';
 import { formatNotificationDate } from '../../utils/dateFormatter';
+import { normalizeNotifications } from '../../utils/notificationUtils';
 
 const API_URL = `${import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com')}/api/notifications`;
 
@@ -119,14 +120,16 @@ const NotificationsPage = () => {
         }
       }
 
+      const cleanedNotif = normalizeNotifications([notification])[0] || notification;
+
       setNotifications(prev => {
         const list = Array.isArray(prev) ? prev : [];
         const exists = list.some(item => 
-          String(item._id || item.id) === String(notification._id || notification.id) ||
-          (item.eventId && notification.eventId && item.eventId === notification.eventId)
+          String(item._id || item.id) === String(cleanedNotif._id || cleanedNotif.id) ||
+          (item.eventId && cleanedNotif.eventId && item.eventId === cleanedNotif.eventId)
         );
         if (exists) return list;
-        return [notification, ...list];
+        return [cleanedNotif, ...list];
       });
     });
 

@@ -5,6 +5,7 @@ const QRCode = require('qrcode');
 const visitorNotificationService = require('../services/visitorNotificationService');
 const logAction = require('../utils/auditLogger');
 const { sendApprovalEmail } = require('../utils/emailService');
+const { formatDisplayName } = require('../utils/nameFormatter');
 
 const createVisitorId = async () => {
   try {
@@ -151,8 +152,22 @@ const createPreBooking = async (req, res) => {
     const visitorId = await createVisitorId();
 
     const isNewVisitor = hostEmployee === "New Visitors" || hostEmployee === "New Visitor" || hostEmployee === "Direct Visits" || hostEmployee === "Direct Visit";
-    const finalAssignedHr = (isNewVisitor || !assignedHr) ? null : assignedHr;
-    const visitorType = isNewVisitor ? "NEW_VISITOR" : "NORMAL";
+    const isExplicitReturning = Boolean(
+      req.body.returningVisitor || 
+      req.body.isReturningVisitor || 
+      req.body.isReturning || 
+      req.body.registrationType === 'Returning'
+    );
+
+    // Check if visitor has prior visits (returning visitor)
+    const pastPreBookingCount = await PreBooking.countDocuments({
+      mobileNumber: normalizedMobile || mobileNumber
+    });
+    const Visitor = require("../models/Visitor");
+    const pastVisitorCount = await Visitor.countDocuments({
+      mobileNumber: normalizedMobile || mobileNumber
+    });
+    const isReturning = isExplicitReturning || (pastPreBookingCount + pastVisitorCount) > 0;
 
     const preBooking = await PreBooking.create({
       visitorId,
@@ -176,6 +191,9 @@ const createPreBooking = async (req, res) => {
       visitorType,
       bookingType: "PRE_BOOKING",
       status: "PENDING",
+      isReturning: isReturning,
+      isReturningVisitor: isReturning,
+      returningVisitor: isReturning,
       trackingToken: require("crypto").randomBytes(32).toString("hex"),
       trackingTokenExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
     });
@@ -192,7 +210,10 @@ const createPreBooking = async (req, res) => {
         hostId: preBooking.assignedHr, // Map assigned HR as the explicit host if provided
         companyId: preBooking.companyId || 'FIC001',
         branch: preBooking.branchLocation,
-        email: preBooking.email
+        email: preBooking.email,
+        isReturning: isReturning,
+        isReturningVisitor: isReturning,
+        returningVisitor: isReturning
       };
 
       await visitorNotificationService.notifyVisitorEvent({
@@ -261,6 +282,11 @@ const getAllPreBookings = async (req, res) => {
       }
       filter.visitorType = { $ne: 'NEW_VISITOR' };
     }
+
+    filter.hostEmployee = { $not: /direct\s*visit/i };
+    filter.visitPurpose = { $not: /direct\s*visit/i };
+    filter.registrationType = { $not: /direct/i };
+    filter.visitType = { $not: /direct/i };
 
     const preBookings = await PreBooking.find(filter)
       .populate('assignedHr', 'name email')
@@ -372,8 +398,9 @@ const approvePreBooking = async (req, res) => {
         $or: [{ companyId: companyRegex }, { companyId: 'SYSTEM' }, { companyId: null }]
       });
 
-      const approverName = req.userName || req.userRole || "Authorized Personnel";
-      const notificationMessage = `Visitor pre-booking for ${preBooking.fullName} has been approved by ${approverName}.`;
+      const approverName = formatDisplayName(req.userName || req.userRole || "Authorized Personnel");
+      const visitorName = formatDisplayName(preBooking.fullName);
+      const notificationMessage = `Visitor pre-booking for ${visitorName} has been approved by ${approverName}.`;
 
       const recipientIds = dashboardUsers.map(u => String(u._id));
       const uniqueRecipientIds = [...new Set(recipientIds)];
@@ -495,8 +522,9 @@ const rejectPreBooking = async (req, res) => {
         $or: [{ companyId: companyRegex }, { companyId: 'SYSTEM' }, { companyId: null }]
       });
 
-      const rejectorName = req.userName || req.userRole || "Authorized Personnel";
-      const notificationMessage = `Visitor pre-booking for ${preBooking.fullName} has been rejected by ${rejectorName}.`;
+      const rejectorName = formatDisplayName(req.userName || req.userRole || "Authorized Personnel");
+      const visitorName = formatDisplayName(preBooking.fullName);
+      const notificationMessage = `Visitor pre-booking for ${visitorName} has been rejected by ${rejectorName}.`;
 
       const recipientIds = dashboardUsers.map(u => String(u._id));
       const uniqueRecipientIds = [...new Set(recipientIds)];
@@ -1164,7 +1192,13 @@ const getPreBookingReports = async (req, res) => {
     }
 
 
-    const reports = await PreBooking.find({})
+    const reports = await PreBooking.find({
+      hostEmployee: { $not: /direct\s*visit/i },
+      visitPurpose: { $not: /direct\s*visit/i },
+      registrationType: { $not: /direct/i },
+      visitType: { $not: /direct/i },
+      visitorType: { $not: /direct|NEW_VISITOR/i }
+    })
       .populate("assignedHr", "name email")
       .sort({ createdAt: -1 });
 
@@ -1252,6 +1286,10 @@ const reschedulePreBooking = async (req, res) => {
       });
     }
 
+    const reschedulerName = formatDisplayName(req.userName || req.body?.rescheduledByName || (req.user && req.user.name) || req.userRole || "Authorized Personnel");
+    const reschedulerRole = req.userRole || (req.user && req.user.role) || "User";
+    const reschedulerUserId = req.userId || (req.user && req.user._id) || 'system';
+
     if (!preBooking.rescheduleHistory) {
       preBooking.rescheduleHistory = [];
     }
@@ -1265,9 +1303,9 @@ const reschedulePreBooking = async (req, res) => {
       newEndTime: appointmentEndTime || oldEndTime,
       reason: reason || "Appointment Rescheduled",
       rescheduledBy: {
-        userId: req.userId || 'system',
-        name: req.userName || req.userRole || 'Authorized User',
-        role: req.userRole || 'User'
+        userId: reschedulerUserId,
+        name: reschedulerName,
+        role: reschedulerRole
       },
       rescheduledAt: new Date()
     });
@@ -1321,7 +1359,11 @@ const reschedulePreBooking = async (req, res) => {
           rescheduleHistory: preBooking.rescheduleHistory
         },
         event: visitorNotificationService.VISITOR_EVENTS.RESCHEDULED,
-        actor: req.user,
+        actor: {
+          _id: reschedulerUserId,
+          name: reschedulerName,
+          role: reschedulerRole
+        },
         reason: reason || "Appointment Rescheduled",
         io: req.app.get('io')
       });
@@ -1461,8 +1503,8 @@ const reApprovePreBooking = async (req, res) => {
             type: "PREBOOKING_REAPPROVED",
             module: "PreBooking",
             title: "Pre-Booking Re-Approved",
-            message: `${updatedPreBooking.fullName || updatedPreBooking.visitorName} has been re-approved by Super Admin.`,
-            createdBy: req.userName || req.userRole || "Super Admin",
+            message: `Visitor pre-booking for ${formatDisplayName(updatedPreBooking.fullName || updatedPreBooking.visitorName)} has been re-approved by ${formatDisplayName(req.userName || req.userRole || "Super Admin")}.`,
+            createdBy: formatDisplayName(req.userName || req.userRole || "Super Admin"),
             isRead: false
           }
         },
@@ -1565,6 +1607,160 @@ const reApprovePreBooking = async (req, res) => {
   }
 };
 
+const getReturningVisitor = async (req, res) => {
+  try {
+    const mobile = String(req.params.mobile || "")
+      .replace(/\D/g, "")
+      .slice(-10);
+
+    if (mobile.length !== 10) {
+      return res.status(400).json({
+        success: false,
+        message: "Please enter a valid 10-digit mobile number."
+      });
+    }
+
+    // First check whether this visitor already has an ACTIVE booking
+    const activeBooking = await PreBooking.findOne({
+      mobileNumber: mobile,
+      status: {
+        $in: [
+          "PENDING",
+          "APPROVED",
+          "CHECKED_IN",
+          "Pending",
+          "Approved",
+          "Checked In",
+          "Pre-Booked"
+        ]
+      }
+    }).sort({ createdAt: -1 });
+
+    if (activeBooking) {
+      return res.status(200).json({
+        success: true,
+        hasActiveBooking: true,
+        returningVisitor: true,
+
+        data: {
+          visitorId: activeBooking.visitorId,
+          fullName: activeBooking.fullName,
+          mobileNumber: activeBooking.mobileNumber,
+          email: activeBooking.email,
+          visitDate: activeBooking.visitDate,
+          expectedTime: activeBooking.expectedTime,
+          status: activeBooking.status
+        }
+      });
+    }
+
+    // Otherwise find their previous visit
+    const previousBooking = await PreBooking.findOne({
+      mobileNumber: mobile
+    }).sort({ createdAt: -1 });
+
+    if (!previousBooking) {
+      return res.status(200).json({
+        success: true,
+        hasActiveBooking: false,
+        returningVisitor: false
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      hasActiveBooking: false,
+      returningVisitor: true,
+
+      data: {
+        fullName: previousBooking.fullName,
+        mobileNumber: previousBooking.mobileNumber,
+        email: previousBooking.email || "",
+        visitingCompany: previousBooking.visitingCompany || "",
+        vehicleNumber: previousBooking.vehicleNumber || ""
+      }
+    });
+
+  } catch (error) {
+    console.error("Returning Visitor Lookup Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to check visitor."
+    });
+  }
+};
+
+const updatePreBooking = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      fullName,
+      mobileNumber,
+      email,
+      visitingCompany,
+      hostEmployee,
+      visitPurpose,
+      visitDate,
+      expectedTime,
+      appointmentEndTime,
+      branchLocation,
+      vehicleNumber,
+      status
+    } = req.body;
+
+    const mongoose = require('mongoose');
+    const searchConditions = [
+      { visitorId: id },
+      { visitId: id }
+    ];
+    if (mongoose.isValidObjectId(id)) {
+      searchConditions.push({ _id: id });
+    }
+
+    const preBooking = await PreBooking.findOne({ $or: searchConditions });
+    if (!preBooking) {
+      return res.status(404).json({ success: false, message: "Pre-Booking not found." });
+    }
+
+    if (fullName !== undefined) preBooking.fullName = fullName;
+    if (mobileNumber !== undefined) preBooking.mobileNumber = mobileNumber;
+    if (email !== undefined) preBooking.email = email;
+    if (visitingCompany !== undefined) preBooking.visitingCompany = visitingCompany;
+    if (hostEmployee !== undefined) preBooking.hostEmployee = hostEmployee;
+    if (visitPurpose !== undefined) preBooking.visitPurpose = visitPurpose;
+    if (visitDate !== undefined) preBooking.visitDate = new Date(visitDate);
+    if (expectedTime !== undefined) preBooking.expectedTime = expectedTime;
+    if (appointmentEndTime !== undefined) preBooking.appointmentEndTime = appointmentEndTime;
+    if (branchLocation !== undefined) preBooking.branchLocation = branchLocation;
+    if (vehicleNumber !== undefined) preBooking.vehicleNumber = vehicleNumber;
+    if (status !== undefined) preBooking.status = status;
+
+    // If host changed, re-assign HR
+    if (hostEmployee) {
+      const User = require('../models/User');
+      const hrUser = await User.findOne({ 
+        name: new RegExp(`^${hostEmployee.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'), 
+        role: { $in: ['HR', 'Super Admin', 'Admin'] } 
+      });
+      if (hrUser) {
+        preBooking.assignedHr = hrUser._id;
+      }
+    }
+
+    await preBooking.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Pre-booking updated successfully.",
+      data: preBooking
+    });
+  } catch (error) {
+    console.error("Update Pre-Booking Error:", error);
+    return res.status(500).json({ success: false, message: "Failed to update pre-booking.", error: error.message });
+  }
+};
+
 module.exports = {
   createPreBooking,
   getAllPreBookings,
@@ -1581,4 +1777,7 @@ module.exports = {
   getMyPreBookings,
   getPreBookingReports,
   reschedulePreBooking,
+  getReturningVisitor,
+  updatePreBooking,
 };
+

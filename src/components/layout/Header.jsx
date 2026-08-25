@@ -7,6 +7,8 @@ import { io } from 'socket.io-client';
 import { useNavigate } from 'react-router-dom';
 import { formatNotificationDate } from '../../utils/dateFormatter';
 import { normalizeNotifications } from '../../utils/notificationUtils';
+import { formatDisplayName } from '../../utils/nameFormatter';
+import { normalizeBranchName } from '../../utils/branchUtils';
 
 const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.match(/^\d{1,3}\./);
 const API_URL = `${import.meta.env.VITE_API_URL || (isLocalhost ? `http://${window.location.hostname}:5000` : 'https://fic-visitor-1.onrender.com')}/api/notifications`;
@@ -122,16 +124,18 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
         }
       }
 
+      const cleanedNotif = normalizeNotifications([notification])[0] || notification;
+
       setNotifications(prev => {
         const list = Array.isArray(prev) ? prev : [];
         const exists = list.some(item => 
-          String(item._id || item.id) === String(notification._id || notification.id) ||
-          (item.eventId && notification.eventId && item.eventId === notification.eventId)
+          String(item._id || item.id) === String(cleanedNotif._id || cleanedNotif.id) ||
+          (item.eventId && cleanedNotif.eventId && item.eventId === cleanedNotif.eventId)
         );
         if (exists) return list;
-        return [notification, ...list];
+        return [cleanedNotif, ...list];
       });
-      addNotification(notification.title, notification.message, 'info');
+      addNotification(cleanedNotif.title, cleanedNotif.message, 'info');
     });
 
     return () => socket.disconnect();
@@ -205,7 +209,7 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
         )}
         <div className="flex flex-col hidden sm:block">
           <h2 className="text-xl font-semibold text-gray-800">
-            Welcome back, {user?.name || 'User'}
+            Welcome back, {formatDisplayName(user?.name, 'User')}
           </h2>
         </div>
         
@@ -217,7 +221,7 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
               onChange={(e) => setActiveBranch(e.target.value)}
               className="bg-transparent outline-none text-xs sm:text-sm font-medium text-gray-700 cursor-pointer w-24 sm:w-40"
             >
-              {branches.map(b => (
+              {Array.from(new Set((branches || []).map(b => normalizeBranchName(b)).filter(Boolean))).map(b => (
                 <option key={b} value={b}>{b}</option>
               ))}
             </select>
@@ -323,7 +327,7 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
             {user?.name?.charAt(0) || <User size={18} />}
           </div>
           <div className="hidden sm:flex flex-col">
-            <span className="text-sm font-medium text-gray-700">{user?.name || 'Admin'}</span>
+            <span className="text-sm font-medium text-gray-700">{formatDisplayName(user?.name, 'Admin')}</span>
             <span className="text-xs text-gray-500">{user?.role || 'Role'}</span>
           </div>
         </div>

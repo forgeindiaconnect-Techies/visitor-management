@@ -5,14 +5,14 @@ import { useBranch } from '../../context/BranchContext';
 import { useNotification } from '../../context/NotificationContext';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Plus, Search, Filter, MoreVertical, QrCode, X, FileText, Edit, Save, CalendarCheck, UserPlus, Eye, User } from 'lucide-react';
+import { Plus, Search, Filter, MoreVertical, QrCode, X, FileText, Edit, Save, CalendarCheck, UserPlus, Eye, User, Trash2, LogIn, LogOut, Clock, Check } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import VisitorHistoryModal from '../../components/visitors/VisitorHistoryModal';
 import VisitorRescheduleModal from '../../components/visitors/VisitorRescheduleModal';
 import { formatDisplayTime, formatDisplayDateTime, formatDisplayDate } from '../../utils/dateUtils';
 
 const VisitorList = () => {
-  const { visitors, allVisitors, updateVisitorStatus, updateVisitorTracking, updateVisitor, networkIp } = useVisitors();
+  const { visitors, allVisitors, updateVisitorStatus, updateVisitorTracking, updateVisitor, deleteVisitor, networkIp } = useVisitors();
   const { zones } = useZones();
   const { activeBranch, branches } = useBranch();
   const { addNotification } = useNotification();
@@ -108,31 +108,37 @@ const VisitorList = () => {
   }, []);
 
   const getStatusColor = (status) => {
-    switch (status) {
-      case 'Draft': return 'bg-gray-100 text-gray-700 border border-gray-200';
-      case 'Pending Approval':
-      case 'Pending': return 'bg-orange-100 text-orange-800 border border-orange-200';
-      case 'Approved': return 'bg-green-100 text-green-800 border border-green-200';
-      case 'Rejected':
-      case 'Cancelled': return 'bg-red-100 text-red-800 border border-red-200';
-      case 'Checked In':
-      case 'Inside': return 'bg-blue-100 text-blue-800 border border-blue-200';
-      case 'Checked Out':
-      case 'Exited': return 'bg-purple-100 text-purple-800 border border-purple-200';
-      case 'Expired': return 'bg-slate-800 text-white border border-slate-700';
+    const s = String(status || '').toUpperCase().trim();
+    switch (s) {
+      case 'DRAFT': return 'bg-gray-100 text-gray-700 border border-gray-200';
+      case 'PENDING APPROVAL':
+      case 'PENDING': return 'bg-orange-100 text-orange-800 border border-orange-200';
+      case 'APPROVED': return 'bg-green-100 text-green-800 border border-green-200';
+      case 'REJECTED':
+      case 'CANCELLED': return 'bg-red-100 text-red-800 border border-red-200';
+      case 'CHECKED_IN':
+      case 'CHECKED IN':
+      case 'INSIDE': return 'bg-blue-100 text-blue-800 border border-blue-200';
+      case 'CHECKED_OUT':
+      case 'CHECKED OUT':
+      case 'EXITED': return 'bg-purple-100 text-purple-800 border border-purple-200';
+      case 'EXPIRED': return 'bg-slate-800 text-white border border-slate-700';
       default: return 'bg-gray-100 text-gray-700';
     }
   };
 
-  const directVisitors = (Array.isArray(visitors) ? visitors : []).filter(v => 
-    v.hostEmployee === "Direct Visits" || 
-    v.hostEmployee === "Direct Visit" || 
-    v.hostName === "Direct Visits" || 
-    v.hostName === "Direct Visit" || 
-    v.visitorType === "NEW_VISITOR" || 
-    v.registrationType === "Direct Visit" ||
-    v.visitType === "DIRECT_VISIT"
-  );
+  const directVisitors = (Array.isArray(visitors) ? visitors : []).filter(v => {
+    const host = String(v.hostEmployee || v.hostName || '').trim().toLowerCase();
+    const isDirect = host === 'direct visits' || host === 'direct visit' || host.includes('direct visit') ||
+                     v.registrationType === 'Direct Visit' || v.visitType === 'DIRECT_VISIT' || v.visitorType === 'NEW_VISITOR';
+    
+    if (isDirect) return true;
+
+    // If it came from the visitor collection (not a scheduled pre-booking)
+    if (!v.isPreBooking && v.registrationType !== 'Pre-Booking') return true;
+
+    return false;
+  });
 
   const statusCounts = {
     all: directVisitors.length,
@@ -231,26 +237,31 @@ const VisitorList = () => {
 
   const isReturningVisitor = (visitor) => {
     if (!visitor) return false;
-    if (visitor.isReturning === true || (visitor.visitCount && visitor.visitCount > 1)) return true;
+    if (visitor.isReturning === true) return true;
+    if (visitor.registrationType === 'Returning') return true;
 
     const listToCheck = allVisitors && allVisitors.length > 0 ? allVisitors : visitors;
-    
-    if (visitor.profileId && listToCheck.length > 0) {
-      const hasPrior = listToCheck.some(v => 
-        v.profileId === visitor.profileId && 
-        new Date(v.createdAt || v.visitDate) < new Date(visitor.createdAt || visitor.visitDate)
-      );
-      if (hasPrior) return true;
-    }
+    const mobile = String(visitor.mobileNumber || '').replace(/\D/g, '').slice(-10);
 
-    if (visitor.mobileNumber && listToCheck.length > 0) {
-      const mobile = String(visitor.mobileNumber).replace(/\D/g, '').slice(-10);
-      if (mobile) {
-        const count = listToCheck.filter(v => {
-          const vMobile = String(v.mobileNumber || '').replace(/\D/g, '').slice(-10);
-          return vMobile && vMobile === mobile;
-        }).length;
-        if (count > 1) return true;
+    if (mobile && listToCheck.length > 0) {
+      // Find all records matching this mobile number
+      const sameMobileVisits = listToCheck.filter(v => {
+        const vMobile = String(v.mobileNumber || '').replace(/\D/g, '').slice(-10);
+        return vMobile && vMobile === mobile;
+      });
+
+      if (sameMobileVisits.length > 1) {
+        // Sort chronologically (oldest first)
+        sameMobileVisits.sort((a, b) => {
+          const timeA = new Date(a.createdAt || a.visitDate || a.date || 0).getTime();
+          const timeB = new Date(b.createdAt || b.visitDate || b.date || 0).getTime();
+          return timeA - timeB;
+        });
+
+        // The very first visit is the initial visit ('New'). All subsequent visits are 'Returning'.
+        const earliestVisit = sameMobileVisits[0];
+        const isCurrentEarliest = String(earliestVisit._id || earliestVisit.id || earliestVisit.visitorId) === String(visitor._id || visitor.id || visitor.visitorId);
+        return !isCurrentEarliest;
       }
     }
 
@@ -517,7 +528,7 @@ const VisitorList = () => {
                 {isFilterOpen && (
                   <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-200 z-50 overflow-hidden">
                     <div className="p-2 space-y-1">
-                      {['All', 'Pending', 'Approved', 'Checked In', 'Checked Out', 'Rejected', 'Reports'].map((status) => (
+                      {['All', 'Pending', 'Approved', 'Checked In', 'Checked Out', 'Rejected'].map((status) => (
                         <button
                           key={status}
                           onClick={() => {
@@ -581,19 +592,8 @@ const VisitorList = () => {
                   <td className="px-6 py-4 text-sm text-gray-700 font-medium whitespace-nowrap">{visitor.companyName || visitor.visitingCompany || visitor.company || 'Forge India Connect Private Limited'}</td>
                   <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap">{visitor.hostName || visitor.hostEmployee || visitor.host || 'Staff'}</td>
                   <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">{formatDisplayDate(visitor.visitDate)}</td>
-                  <td className="px-6 py-4">
-                    {visitor.status === 'Exited' || visitor.status === 'CHECKED_OUT' || visitor.status === 'Checked Out' ? (
-                      <div className="flex flex-col gap-1">
-                        <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-bold border border-gray-200 flex items-center gap-1 w-max">
-                          <span className="text-[10px]">🚪</span> Checked Out
-                        </span>
-                        {(visitor.remarks || visitor.exitNotes || visitor.notes || visitor.checkoutNotes) && (
-                          <span className="text-[11px] font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/70 max-w-[220px] truncate block" title={visitor.remarks || visitor.exitNotes || visitor.notes || visitor.checkoutNotes}>
-                            📝 {visitor.remarks || visitor.exitNotes || visitor.notes || visitor.checkoutNotes}
-                          </span>
-                        )}
-                      </div>
-                    ) : visitor.currentZone ? (
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {visitor.currentZone ? (
                       <span className="px-3 py-1 bg-indigo-100 text-[var(--color-brand-indigo)] rounded-full text-xs font-bold border border-indigo-200 flex items-center gap-1 w-max">
                         <span className="text-[10px]">📍</span> {visitor.currentZone}
                       </span>
@@ -601,10 +601,13 @@ const VisitorList = () => {
                       <span className="text-gray-400 text-sm font-medium">Not Assigned</span>
                     )}
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(visitor.status)}`}>
-                      {visitor.status === 'Inside' ? '🟡 In Progress' : 
-                       visitor.status === 'Exited' ? '🟢 Completed' : 
+                      {visitor.status === 'Inside' || visitor.status === 'CHECKED_IN' || visitor.status === 'Checked In' ? 'Checked In' : 
+                       visitor.status === 'Exited' || visitor.status === 'CHECKED_OUT' || visitor.status === 'Checked Out' ? 'Checked Out' : 
+                       visitor.status === 'PENDING' || visitor.status === 'Pending' ? 'Pending' :
+                       visitor.status === 'APPROVED' || visitor.status === 'Approved' ? 'Approved' :
+                       visitor.status === 'REJECTED' || visitor.status === 'Rejected' ? 'Rejected' :
                        visitor.status}
                     </span>
                   </td>
@@ -624,45 +627,77 @@ const VisitorList = () => {
                           >
                             <MoreVertical size={18} />
                           </button>
-                        
-                        {openDropdownId === visitor.id && (
-                          <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-xl border border-gray-200 z-50">
-                            <div className="py-1">
+                                   {openDropdownId === visitor.id && (
+                          <div className="absolute right-0 top-full mt-1.5 w-56 bg-white rounded-2xl shadow-2xl border border-slate-200/90 py-1.5 z-50 text-left overflow-hidden animate-in fade-in duration-150">
+                            <button 
+                              onClick={() => { setSelectedVisitorDetails(visitor); setOpenDropdownId(null); }} 
+                              className="w-full px-3.5 py-2 hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-2.5 transition-colors"
+                            >
+                              <Eye size={14} className="text-slate-500" /> View Details
+                            </button>
+
+                            <button 
+                              onClick={() => { setSelectedVisitorEdit(visitor); setOpenDropdownId(null); }} 
+                              className="w-full px-3.5 py-2 hover:bg-indigo-50 text-indigo-700 text-xs font-semibold flex items-center gap-2.5 transition-colors border-t border-gray-100"
+                            >
+                              <Edit size={14} className="text-indigo-600" /> Edit Details
+                            </button>
+
+                            {!['CHECKED_IN', 'CHECKED IN', 'INSIDE', 'CHECKED_OUT', 'CHECKED OUT', 'EXITED'].includes((visitor.status || '').toUpperCase()) && (
                               <button 
-                                onClick={() => { setSelectedVisitorDetails(visitor); setOpenDropdownId(null); }} 
-                                className="block w-full text-left px-4 py-2 text-sm text-slate-800 font-bold hover:bg-indigo-50 flex items-center gap-2 border-b border-gray-100"
+                                onClick={() => { updateVisitorStatus(visitor._id || visitor.id, 'Checked In'); setOpenDropdownId(null); }} 
+                                className="w-full px-3.5 py-2 hover:bg-emerald-50 text-emerald-700 text-xs font-bold flex items-center gap-2.5 transition-colors border-t border-gray-100"
                               >
-                                <Eye size={15} className="text-indigo-600" /> View Details
+                                <LogIn size={14} className="text-emerald-600" /> Check In
                               </button>
-                              <button onClick={() => { setSelectedVisitorEdit(visitor); setOpenDropdownId(null); }} className="block w-full text-left px-4 py-2 text-sm text-gray-700 font-medium hover:bg-slate-50 flex items-center gap-2">
-                                <Edit size={14} /> Edit Details
+                            )}
+
+                            {['CHECKED_IN', 'CHECKED IN', 'INSIDE'].includes((visitor.status || '').toUpperCase()) && (
+                              <button 
+                                onClick={() => { updateVisitorStatus(visitor._id || visitor.id, 'Checked Out'); setOpenDropdownId(null); }} 
+                                className="w-full px-3.5 py-2 hover:bg-purple-50 text-purple-700 text-xs font-bold flex items-center gap-2.5 transition-colors border-t border-gray-100"
+                              >
+                                <LogOut size={14} className="text-purple-600" /> Check Out
                               </button>
-                              <button onClick={() => { updateVisitorStatus(visitor._id || visitor.id, 'Checked In'); setOpenDropdownId(null); }} className="block w-full text-left px-4 py-2 text-sm text-green-700 font-semibold hover:bg-green-50 border-t border-gray-100">Check In</button>
-                              <button onClick={() => { updateVisitorStatus(visitor._id || visitor.id, 'Checked Out'); setOpenDropdownId(null); }} className="block w-full text-left px-4 py-2 text-sm text-slate-700 font-semibold hover:bg-slate-50">Check Out</button>
-                              {user?.role !== 'Security' && (
-                                <>
-                                  <button onClick={() => { setSelectedVisitorUpdateZone(visitor); setOpenDropdownId(null); }} className="block w-full text-left px-4 py-2 text-sm text-indigo-600 font-medium hover:bg-slate-50 border-t border-gray-100">Update Zone</button>
-                                  {hasApprovalPermission && (
-                                    <button onClick={() => { updateVisitorStatus(visitor._id || visitor.id, 'Approved'); setOpenDropdownId(null); }} className="block w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-slate-50 border-t border-gray-100">Approve</button>
-                                  )}
-                                  <button onClick={() => { updateVisitorStatus(visitor._id || visitor.id, 'Cancelled'); setOpenDropdownId(null); }} className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-slate-50 border-t border-gray-100">Cancel Booking</button>
-                                  {visitor.visitType !== 'DIRECT_VISIT' && hasApprovalPermission && (
-                                    <button onClick={() => { setReschedulingVisitor(visitor); setOpenDropdownId(null); }} className="block w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-slate-50 border-t border-gray-100">
-                                      Reschedule Appointment
-                                    </button>
-                                  )}
-                                  <button onClick={() => { setSelectedVisitorHistory(visitor); setOpenDropdownId(null); }} className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-slate-50 border-t border-gray-100">
-                                    View Approval History
-                                  </button>
-                                </>
-                              )}
-                              <button onClick={() => { setSelectedVisitorQR(visitor); setOpenDropdownId(null); }} className="block w-full text-left px-4 py-2 text-sm text-indigo-600 hover:bg-slate-50">
-                                View QR Pass
-                              </button>
-                              <button onClick={() => { navigate(`/visitors/returning?mobile=${visitor.mobileNumber}`); setOpenDropdownId(null); }} className="block w-full text-left px-4 py-2 text-sm font-bold text-[var(--color-brand-indigo)] hover:bg-indigo-50 border-t border-indigo-100">
-                                Schedule Return Visit
-                              </button>
-                            </div>
+                            )}
+
+                            <button 
+                              onClick={() => { setSelectedVisitorQR(visitor); setOpenDropdownId(null); }} 
+                              className="w-full px-3.5 py-2 hover:bg-indigo-50 text-indigo-700 text-xs font-semibold flex items-center gap-2.5 transition-colors border-t border-gray-100"
+                            >
+                              <QrCode size={14} className="text-indigo-600" /> View QR Pass
+                            </button>
+
+                            {visitor.mobileNumber && (
+                              <>
+                                <button 
+                                  onClick={() => { navigate(`/visitors/returning?mobile=${encodeURIComponent(visitor.mobileNumber)}`); setOpenDropdownId(null); }} 
+                                  className="w-full px-3.5 py-2 hover:bg-emerald-50 text-emerald-700 text-xs font-bold flex items-center gap-2.5 transition-colors border-t border-gray-100"
+                                >
+                                  <UserPlus size={14} className="text-emerald-600" /> Direct Visit (Register Again)
+                                </button>
+                                <button 
+                                  onClick={() => { window.open(`/prebook?mobile=${encodeURIComponent(visitor.mobileNumber)}`, '_blank'); setOpenDropdownId(null); }} 
+                                  className="w-full px-3.5 py-2 hover:bg-indigo-50 text-[var(--color-brand-indigo)] text-xs font-bold flex items-center gap-2.5 transition-colors border-t border-indigo-100"
+                                >
+                                  <CalendarCheck size={14} className="text-[var(--color-brand-indigo)]" /> Pre-Booking (Register Again)
+                                </button>
+                              </>
+                            )}
+
+                            <div className="border-t border-gray-100 my-1" />
+
+                            <button 
+                              onClick={async () => {
+                                if (window.confirm(`Are you sure you want to delete visitor record for ${visitor.visitorName || visitor.fullName}?`)) {
+                                  await deleteVisitor(visitor._id || visitor.id, false);
+                                  setOpenDropdownId(null);
+                                }
+                              }} 
+                              className="w-full px-3.5 py-2 hover:bg-red-50 text-red-600 text-xs font-semibold flex items-center gap-2.5 transition-colors"
+                            >
+                              <Trash2 size={14} className="text-red-500" /> Delete Record
+                            </button>
                           </div>
                         )}
                       </div>
@@ -674,7 +709,7 @@ const VisitorList = () => {
               
               {filteredVisitors.length === 0 && (
                 <tr>
-                  <td colSpan="6" className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan="7" className="px-6 py-12 text-center text-gray-500">
                     No visitors found.
                   </td>
                 </tr>

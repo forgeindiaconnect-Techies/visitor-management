@@ -126,9 +126,17 @@ router.post('/login', loginLimiter, async (req, res) => {
     const u = user.toJSON();
     delete u.password;
     
+    const { formatDisplayName } = require('../utils/nameFormatter');
+    const cleanedName = formatDisplayName(u.name);
+    if (user.name && (user.name.includes('2007') || /\.\s*\d+/.test(user.name))) {
+      user.name = cleanedName;
+      await user.save();
+    }
+
     // Explicitly construct the response object to ensure properties are added
     const responsePayload = {
       ...u,
+      name: cleanedName,
       branch: u.branch || u.branchId,
       companyName: company ? company.name : (u.companyId === 'SYSTEM' ? 'System Administration' : undefined),
       isExpired,

@@ -15,7 +15,7 @@ const Company = require('../models/Company');
 const checkApprovalPermission = require('../middleware/approvalPermission');
 
 router.use((req, res, next) => {
-  if (req.path.startsWith('/pass/') || req.path.startsWith('/status/') || req.path.startsWith('/public-status/') || req.path === '/public-prebook' || req.path === '/upload' || req.path === '/clean-notifications-temp') {
+  if (req.path.startsWith('/pass/') || req.path.startsWith('/status/') || req.path.startsWith('/public-status/') || req.path === '/public-prebook' || req.path === '/upload' || req.path === '/clean-notifications-temp' || req.path.startsWith('/profile/')) {
     return next();
   }
   authMiddleware(req, res, next);
@@ -360,8 +360,12 @@ router.get('/todays-summary', async (req, res) => {
 
     // Isolate HR users to ONLY see their own visitor counts
     if (req.userRole === 'HR') {
+      const mongoose = require('mongoose');
       const User = require('../models/User');
-      const hrUser = await User.findById(req.userId);
+      let hrUser = null;
+      if (req.userId && mongoose.isValidObjectId(req.userId)) {
+        hrUser = await User.findById(req.userId);
+      }
       if (hrUser && hrUser.name) {
         matchStage.hostName = new RegExp(`^${hrUser.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
       } else {
@@ -431,8 +435,12 @@ router.get('/', async (req, res) => {
     // Isolate HR/Employee users to ONLY see visitors explicitly tagged to them
     const normalizedRole = (req.userRole || '').toUpperCase().trim();
     if (normalizedRole === 'HR' || normalizedRole === 'EMPLOYEE') {
+      const mongoose = require('mongoose');
       const User = require('../models/User');
-      const hrUser = await User.findById(req.userId);
+      let hrUser = null;
+      if (req.userId && mongoose.isValidObjectId(req.userId)) {
+        hrUser = await User.findById(req.userId);
+      }
       if (hrUser && hrUser.name) {
         // Find exact matches or case-insensitive matches for the HR user's name
         query.hostName = new RegExp(`^${hrUser.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
@@ -1510,13 +1518,14 @@ router.patch('/:id/reschedule', async (req, res) => {
     
     if (changes.length > 0) {
       const reqUserId = req.userId || (req.user && req.user._id) || null;
-      const reqUserRole = req.userRole || (req.user && req.user.role) || 'System';
-      const reqUserName = (req.user && req.user.name) || 'System';
+      const reqUserRole = req.userRole || (req.user && req.user.role) || 'User';
+      const reqUserName = (req.user && req.user.name) || req.userName || req.body?.rescheduledByName || reqUserRole || 'Authorized Personnel';
       
       const historyEntry = {
         status: primaryStatus,
         changedBy: reqUserId,
         changedByRole: reqUserRole,
+        changedByName: reqUserName,
         changedAt: new Date(),
         reason: reason || changes.join(', ')
       };
@@ -1545,7 +1554,11 @@ router.patch('/:id/reschedule', async (req, res) => {
       await visitorNotificationService.notifyVisitorEvent({
         visitor: updatedVisitor,
         event: visitorNotificationService.VISITOR_EVENTS.RESCHEDULED,
-        actor: req.user,
+        actor: {
+          _id: reqUserId,
+          name: reqUserName,
+          role: reqUserRole
+        },
         reason: reason || changes.join(', '),
         io: req.app.get('io')
       });
@@ -1727,55 +1740,135 @@ router.patch('/:id/zone', async (req, res) => {
     res.status(400).json({ message: err.message });
   }
 });
+
 // Get Visitor Profile by Mobile Number or Name
 router.get('/profile/:query', async (req, res) => {
   try {
-    const query = req.params.query;
+    const rawQuery = (req.params.query || '').trim();
+    const cleanMobile = rawQuery.replace(/\D/g, '').slice(-10);
+
+    const searchCriteria = [
+      { mobileNumber: rawQuery },
+      ...(cleanMobile ? [{ mobileNumber: cleanMobile }, { mobileNumber: new RegExp(cleanMobile + '$') }] : []),
+      { visitorName: { $regex: new RegExp(rawQuery, 'i') } },
+      { fullName: { $regex: new RegExp(rawQuery, 'i') } }
+    ];
+
     let profile = await VisitorProfile.findOne({
-      companyId: req.companyId,
-      $or: [
-        { mobileNumber: query },
-        { visitorName: { $regex: new RegExp(query, 'i') } }
-      ]
+      $or: searchCriteria
     });
 
     if (!profile) {
       const pastVisit = await Visitor.findOne({
-        companyId: req.companyId,
-        $or: [
-          { mobileNumber: query },
-          { visitorName: { $regex: new RegExp(query, 'i') } }
-        ]
+        $or: searchCriteria
       }).sort({ createdAt: -1 });
 
       if (pastVisit) {
         profile = {
-          profileId: pastVisit.profileId,
+          profileId: pastVisit.profileId || pastVisit.visitorId || pastVisit.id,
           mobileNumber: pastVisit.mobileNumber,
-          visitorName: pastVisit.visitorName,
+          visitorName: pastVisit.visitorName || pastVisit.fullName,
           email: pastVisit.email,
-          companyName: pastVisit.companyName,
-          photoUrl: pastVisit.photoUrl || ''
+          companyName: pastVisit.companyName || pastVisit.visitingCompany,
+          photoUrl: pastVisit.photoUrl || pastVisit.facePhoto || ''
         };
       }
     }
 
-    if (!profile) return res.json({ exists: false });
+    if (!profile) {
+      const PreBooking = require('../models/PreBooking');
+      const pastPreBooking = await PreBooking.findOne({
+        $or: [
+          { mobileNumber: rawQuery },
+          ...(cleanMobile ? [{ mobileNumber: cleanMobile }, { mobileNumber: new RegExp(cleanMobile + '$') }] : []),
+          { fullName: { $regex: new RegExp(rawQuery, 'i') } }
+        ]
+      }).sort({ createdAt: -1 });
+
+      if (pastPreBooking) {
+        profile = {
+          profileId: pastPreBooking.visitorId,
+          mobileNumber: pastPreBooking.mobileNumber,
+          visitorName: pastPreBooking.fullName,
+          email: pastPreBooking.email,
+          companyName: pastPreBooking.visitingCompany,
+          photoUrl: pastPreBooking.facePhoto || ''
+        };
+      }
+    }
+
+    // Fetch all visit history across Visitor and PreBooking models
+    const directVisits = await Visitor.find({ $or: searchCriteria }).sort({ createdAt: -1 }).lean();
+    const PreBookingModel = require('../models/PreBooking');
+    const preBookVisits = await PreBookingModel.find({ $or: searchCriteria }).sort({ createdAt: -1 }).lean();
+
+    const allVisitsHistory = [
+      ...directVisits.map(v => ({
+        id: v.visitorId || v.id || v._id,
+        visitDate: v.visitDate || v.date || v.createdAt,
+        purpose: v.purpose || v.visitPurpose || 'Direct Visit',
+        hostName: v.hostName || v.hostEmployee || 'Staff',
+        branch: v.branch || v.branchLocation || 'Head Office',
+        status: v.status || 'Completed',
+        entryTime: v.checkInTime || v.entryTime || '',
+        exitTime: v.checkOutTime || v.exitTime || '',
+        type: 'Direct Visit'
+      })),
+      ...preBookVisits.map(pb => ({
+        id: pb.visitorId || pb.id || pb._id,
+        visitDate: pb.visitDate || pb.date || pb.createdAt,
+        purpose: pb.visitPurpose || pb.purpose || 'Pre-Booking',
+        hostName: pb.hostEmployee || pb.hostName || 'Staff',
+        branch: pb.branchLocation || pb.branch || 'Head Office',
+        status: pb.status || 'Pending',
+        entryTime: pb.checkInTime || '',
+        exitTime: pb.checkOutTime || '',
+        type: 'Pre-Booking'
+      }))
+    ].sort((a, b) => new Date(b.visitDate || 0) - new Date(a.visitDate || 0));
 
     // Ensure profileId is always returned (even if it's from the Profile document)
     res.json({
       exists: true,
       profile: {
-        profileId: profile.profileId,
+        profileId: profile.profileId || profile.visitorId,
         mobileNumber: profile.mobileNumber,
-        visitorName: profile.visitorName,
+        visitorName: profile.visitorName || profile.fullName,
         email: profile.email,
-        companyName: profile.companyName,
-        photoUrl: profile.photoUrl || ''
-      }
+        companyName: profile.companyName || profile.visitingCompany,
+        photoUrl: profile.photoUrl || profile.facePhoto || ''
+      },
+      history: allVisitsHistory,
+      totalVisitsCount: allVisitsHistory.length
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+});
+
+// DELETE single visitor record (Direct Visit)
+router.delete('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const isValidObjectId = require('mongoose').isValidObjectId(id);
+    const query = isValidObjectId ? { _id: id } : { id: id };
+    
+    if (req.companyId) {
+      query.companyId = req.companyId;
+    }
+    
+    let deleted = await Visitor.findOneAndDelete(query);
+    if (!deleted && isValidObjectId) {
+      deleted = await Visitor.findByIdAndDelete(id);
+    }
+    if (!deleted) {
+      deleted = await Visitor.findOneAndDelete({ id: id });
+    }
+    
+    return res.json({ success: true, message: 'Visitor record deleted successfully' });
+  } catch (err) {
+    console.error("Delete visitor error:", err);
+    return res.status(500).json({ success: false, message: err.message });
   }
 });
 

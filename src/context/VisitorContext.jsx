@@ -437,6 +437,28 @@ export const VisitorProvider = ({ children }) => {
     }
   };
 
+  const deleteVisitor = async (id, isPreBooking = false) => {
+    try {
+      const endpoint = isPreBooking 
+        ? `${import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com')}/api/prebookings/${id}`
+        : `${API_URL}/${id}`;
+
+      const res = await fetch(endpoint, {
+        method: 'DELETE',
+        headers: getHeaders()
+      });
+
+      if (res.ok) {
+        setVisitors(prev => prev.filter(v => String(v._id || v.id) !== String(id) && String(v.visitorId) !== String(id)));
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('Delete visitor error:', err);
+      return false;
+    }
+  };
+
   // Keep local storage updated as a backup
   useEffect(() => {
     if (allVisitors) {
@@ -445,7 +467,7 @@ export const VisitorProvider = ({ children }) => {
   }, [allVisitors]);
 
   return (
-    <VisitorContext.Provider value={{ visitors, allVisitors, addVisitor, updateVisitorStatus, approveVisitor, rejectVisitor, updateVisitorTracking, updateVisitor, loading, networkIp }}>
+    <VisitorContext.Provider value={{ visitors, allVisitors, addVisitor, deleteVisitor, updateVisitorStatus, approveVisitor, rejectVisitor, updateVisitorTracking, updateVisitor, loading, networkIp }}>
       {children}
     </VisitorContext.Provider>
   );

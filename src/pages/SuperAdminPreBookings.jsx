@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { 
-  Search, Filter, CalendarCheck, UserPlus, Eye, Check, X, QrCode, Trash2, MapPin, Calendar, Clock, RefreshCw, User, Building, ShieldAlert, CheckCircle2, XCircle, Download
+  Search, Filter, CalendarCheck, UserPlus, Eye, Check, X, QrCode, Trash2, MapPin, Calendar, Clock, RefreshCw, User, Building, ShieldAlert, CheckCircle2, XCircle, Download, Edit, Save
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from '../context/AuthContext';
@@ -21,6 +21,9 @@ export default function SuperAdminPreBookings() {
   const [selectedVisitor, setSelectedVisitor] = useState(null);
   const [selectedVisitorHistory, setSelectedVisitorHistory] = useState(null);
   const [reschedulingVisitor, setReschedulingVisitor] = useState(null);
+  const [editingVisitor, setEditingVisitor] = useState(null);
+  const [editFormData, setEditFormData] = useState({});
+  const [editSaving, setEditSaving] = useState(false);
   const [approvedQR, setApprovedQR] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFilter, setDateFilter] = useState("");
@@ -113,6 +116,52 @@ export default function SuperAdminPreBookings() {
     }
   };
 
+  const startEditing = (visitor) => {
+    setEditingVisitor(visitor);
+    setEditFormData({
+      fullName: visitor.fullName || visitor.visitorName || '',
+      mobileNumber: visitor.mobileNumber || '',
+      email: visitor.email || '',
+      visitingCompany: visitor.visitingCompany || visitor.companyName || '',
+      hostEmployee: visitor.hostEmployee || visitor.hostName || '',
+      visitPurpose: visitor.visitPurpose || visitor.purpose || 'Interview',
+      visitDate: visitor.visitDate ? String(visitor.visitDate).split('T')[0] : new Date().toISOString().split('T')[0],
+      expectedTime: visitor.expectedTime || visitor.expectedArrivalTime || '10:00 AM',
+      branchLocation: visitor.branchLocation || visitor.branch || 'Head Office(KRISHNAGIRI)',
+      vehicleNumber: visitor.vehicleNumber || ''
+    });
+  };
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    if (!editingVisitor) return;
+    try {
+      setEditSaving(true);
+      const id = editingVisitor._id || editingVisitor.id || editingVisitor.visitorId;
+      const response = await fetch(`${API_URL}/api/prebookings/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getHeaders()
+        },
+        body: JSON.stringify(editFormData)
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message || "Failed to update pre-booking");
+
+      setEditingVisitor(null);
+      await fetchPreBookings();
+      if (activeTab === 'REPORTS') {
+        await fetchReports();
+      }
+    } catch (err) {
+      console.error("Save edit error:", err);
+      alert(err.message);
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   useEffect(() => {
     fetchPreBookings();
     
@@ -191,6 +240,22 @@ export default function SuperAdminPreBookings() {
   };
 
   const filteredReports = (Array.isArray(reportsData) ? reportsData : []).filter((r) => {
+    // Strictly exclude Direct Visits from Pre-Bookings Report
+    const host = String(r.hostEmployee || r.hostName || '').toLowerCase();
+    const purpose = String(r.visitPurpose || r.purpose || '').toLowerCase();
+    const regType = String(r.registrationType || '').toLowerCase();
+    const vType = String(r.visitType || r.visitorType || '').toLowerCase();
+    const isDirect = host.includes('direct') || 
+                     purpose.includes('direct') || 
+                     regType.includes('direct') || 
+                     vType.includes('direct') || 
+                     vType === 'new_visitor' ||
+                     r.isDirectVisit || 
+                     r.isDirect;
+    if (isDirect) {
+      return false;
+    }
+
     const q = reportSearchQuery.toLowerCase().trim();
     const matchesQuery =
       !q ||
@@ -201,9 +266,14 @@ export default function SuperAdminPreBookings() {
       (r.visitingCompany && r.visitingCompany.toLowerCase().includes(q)) ||
       (r.hostEmployee && r.hostEmployee.toLowerCase().includes(q));
 
+    const itemStatus = (r.status || '').toUpperCase().replace(/\s+/g, '_');
+    const targetStatus = reportStatusFilter.toUpperCase().replace(/\s+/g, '_');
+
     const matchesStatus =
       reportStatusFilter === "ALL" ||
-      r.status?.toUpperCase() === reportStatusFilter.toUpperCase();
+      itemStatus === targetStatus ||
+      (targetStatus === 'CHECKED_IN' && (itemStatus === 'INSIDE' || itemStatus === 'CHECKED_IN')) ||
+      (targetStatus === 'CHECKED_OUT' && (itemStatus === 'EXITED' || itemStatus === 'CHECKED_OUT'));
 
     const matchesHR =
       reportHrFilter === "ALL" ||
@@ -329,13 +399,17 @@ export default function SuperAdminPreBookings() {
 
     const matchesDate = !dateFilter || (item.visitDate && item.visitDate.startsWith(dateFilter));
 
-    const isDirectVisit = item.hostEmployee === "Direct Visits" || 
-                          item.hostEmployee === "Direct Visit" || 
-                          item.hostName === "Direct Visits" || 
-                          item.hostName === "Direct Visit" || 
-                          item.visitorType === "NEW_VISITOR" ||
-                          item.registrationType === "Direct Visit" ||
-                          item.visitType === "DIRECT_VISIT";
+    const host = String(item.hostEmployee || item.hostName || '').toLowerCase();
+    const purpose = String(item.visitPurpose || item.purpose || '').toLowerCase();
+    const regType = String(item.registrationType || '').toLowerCase();
+    const vType = String(item.visitType || item.visitorType || '').toLowerCase();
+    const isDirectVisit = host.includes('direct') || 
+                          purpose.includes('direct') || 
+                          regType.includes('direct') || 
+                          vType.includes('direct') || 
+                          vType === 'new_visitor' ||
+                          item.isDirectVisit || 
+                          item.isDirect;
 
     return matchesQuery && matchesStatus && matchesDate && !isDirectVisit;
   });
@@ -432,15 +506,21 @@ export default function SuperAdminPreBookings() {
   };
 
   const deletePreBooking = async (id, name) => {
-    if (!window.confirm(`Are you sure you want to delete pre-booking for ${name}?`)) return;
+    if (!window.confirm(`Are you sure you want to delete pre-booking for ${name || 'this visitor'}?`)) return;
     try {
-      await fetch(`${API_URL}/api/prebookings/${id}`, { 
+      const res = await fetch(`${API_URL}/api/prebookings/${id}`, { 
         method: 'DELETE',
         headers: getHeaders()
       });
-      setPreBookings(prev => prev.filter(p => (p._id || p.id) !== id));
+      if (res.ok) {
+        setPreBookings(prev => (Array.isArray(prev) ? prev : []).filter(p => (p._id || p.id) !== id && p.visitorId !== id));
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.message || 'Failed to delete pre-booking.');
+      }
     } catch (err) {
       console.error("Delete Error:", err);
+      alert("Error deleting pre-booking record.");
     }
   };
 
@@ -938,6 +1018,17 @@ export default function SuperAdminPreBookings() {
                                 <Eye size={14} className="text-slate-500" /> View Details
                               </button>
 
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  startEditing(visitor);
+                                  setActiveActionMenuId(null);
+                                }}
+                                className="w-full px-4 py-2.5 hover:bg-indigo-50 text-indigo-700 text-xs font-semibold flex items-center gap-2 transition-colors border-t border-gray-100"
+                              >
+                                <Edit size={14} className="text-indigo-600" /> Edit Details
+                              </button>
+
                               {(user?.role === "Super Admin" || user?.role === "SaaS Super Admin") &&
                                 (visitor.status === "REJECTED" || visitor.status === "Rejected") && (
                                   <button
@@ -955,17 +1046,52 @@ export default function SuperAdminPreBookings() {
                                   </button>
                                 )}
 
-                              {/* The Approve/Reject buttons have been moved outside the menu */}
+                              {hasApprovalPermission && visitor.status !== "CHECKED_IN" && visitor.status !== "CHECKED_OUT" && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setReschedulingVisitor(visitor);
+                                    setActiveActionMenuId(null);
+                                  }}
+                                  className="w-full px-4 py-2.5 hover:bg-slate-50 text-blue-600 text-xs font-semibold flex items-center gap-2 transition-colors border-t border-gray-100"
+                                >
+                                  <Clock size={14} className="text-blue-500" /> Reschedule Appointment
+                                </button>
+                              )}
 
                               <button
                                 onClick={() => {
                                   window.open(`/pass/${visitor.visitorId || id}`, '_blank');
                                   setActiveActionMenuId(null);
                                 }}
-                                className="w-full px-4 py-2.5 hover:bg-indigo-50 text-indigo-700 text-xs font-semibold flex items-center gap-2 transition-colors"
+                                className="w-full px-4 py-2.5 hover:bg-indigo-50 text-indigo-700 text-xs font-semibold flex items-center gap-2 transition-colors border-t border-gray-100"
                               >
                                 <QrCode size={14} className="text-indigo-600" /> View QR Pass
                               </button>
+
+                              {visitor.mobileNumber && (
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      navigate(`/visitors/returning?mobile=${encodeURIComponent(visitor.mobileNumber)}`);
+                                      setActiveActionMenuId(null);
+                                    }}
+                                    className="w-full px-4 py-2.5 hover:bg-emerald-50 text-emerald-700 text-xs font-bold flex items-center gap-2 transition-colors border-t border-gray-100"
+                                  >
+                                    <UserPlus size={14} className="text-emerald-600" /> Direct Visit (Register Again)
+                                  </button>
+
+                                  <button
+                                    onClick={() => {
+                                      window.open(`/prebook?mobile=${encodeURIComponent(visitor.mobileNumber)}`, '_blank');
+                                      setActiveActionMenuId(null);
+                                    }}
+                                    className="w-full px-4 py-2.5 hover:bg-indigo-50 text-[var(--color-brand-indigo)] text-xs font-bold flex items-center gap-2 transition-colors border-t border-gray-100"
+                                  >
+                                    <CalendarCheck size={14} className="text-[var(--color-brand-indigo)]" /> Pre-Booking (Register Again)
+                                  </button>
+                                </>
+                              )}
 
                               <div className="border-t border-gray-100 my-1" />
 
@@ -1260,16 +1386,207 @@ export default function SuperAdminPreBookings() {
               )}
 
               {selectedVisitor.visitType !== 'DIRECT_VISIT' && hasApprovalPermission && (
-                <div className="pt-1">
+                <div className="pt-1 flex gap-2">
+                  <button
+                    onClick={() => { 
+                      const v = selectedVisitor;
+                      setSelectedVisitor(null);
+                      startEditing(v);
+                    }}
+                    className="flex-1 px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-[var(--color-brand-indigo)] font-bold rounded-xl flex items-center justify-center gap-2 transition-colors border border-indigo-200 text-sm"
+                  >
+                    <Edit size={16} /> Edit Details
+                  </button>
+
                   <button
                     onClick={() => { setReschedulingVisitor(selectedVisitor); setSelectedVisitor(null); }}
-                    className="w-full px-4 py-2.5 border-2 border-indigo-100 text-indigo-700 hover:bg-indigo-50 font-bold rounded-xl flex items-center justify-center gap-2 transition-colors"
+                    className="flex-1 px-4 py-2.5 border-2 border-indigo-100 text-indigo-700 hover:bg-indigo-50 font-bold rounded-xl flex items-center justify-center gap-2 transition-colors text-sm"
                   >
-                    <Clock size={18} /> Reschedule Appointment
+                    <Clock size={16} /> Reschedule
                   </button>
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Pre-Booking Modal */}
+      {editingVisitor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/75 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden my-auto">
+            <div className="p-5 sm:p-6 bg-gradient-to-r from-indigo-700 via-indigo-800 to-slate-900 text-white flex items-center justify-between shrink-0 shadow-md">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/10 rounded-xl text-white border border-white/20">
+                  <Edit size={20} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold">Edit Pre-Booking Details</h3>
+                  <p className="text-xs text-indigo-200 font-mono">Visitor Number: {editingVisitor.visitorId || 'VISITOR'}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditingVisitor(null)}
+                className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white/80 hover:text-white transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} className="p-6 space-y-4 overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wider">Full Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editFormData.fullName || ''}
+                    onChange={(e) => setEditFormData({ ...editFormData, fullName: e.target.value })}
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wider">Mobile Number *</label>
+                  <input
+                    type="tel"
+                    required
+                    value={editFormData.mobileNumber || ''}
+                    onChange={(e) => setEditFormData({ ...editFormData, mobileNumber: e.target.value })}
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wider">Email Address</label>
+                  <input
+                    type="email"
+                    value={editFormData.email || ''}
+                    onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wider">Visiting Company</label>
+                  <input
+                    type="text"
+                    value={editFormData.visitingCompany || ''}
+                    onChange={(e) => setEditFormData({ ...editFormData, visitingCompany: e.target.value })}
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wider">Host Employee *</label>
+                  <select
+                    required
+                    value={editFormData.hostEmployee || ''}
+                    onChange={(e) => setEditFormData({ ...editFormData, hostEmployee: e.target.value })}
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none bg-white"
+                  >
+                    <option value="">Select Host Employee</option>
+                    <option value="PRIYADHARSHINI(HR)">PRIYADHARSHINI(HR)</option>
+                    <option value="GANESH KUMAR(HR)">GANESH KUMAR(HR)</option>
+                    <option value="SANDEEP(CEO SIR)">SANDEEP(CEO SIR)</option>
+                    <option value="AVINASH(MD SIR)">AVINASH(MD SIR)</option>
+                    <option value="SABARI(ADMIN)">SABARI(ADMIN)</option>
+                    <option value="AGILA(IT)">AGILA(IT)</option>
+                    {hrUsers && hrUsers.map((hr, idx) => (
+                      <option key={idx} value={hr.name}>{hr.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wider">Purpose of Visit *</label>
+                  <select
+                    required
+                    value={editFormData.visitPurpose || ''}
+                    onChange={(e) => setEditFormData({ ...editFormData, visitPurpose: e.target.value })}
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none bg-white"
+                  >
+                    <option value="">Select Purpose</option>
+                    <option value="Interview">Interview</option>
+                    <option value="Meeting">Meeting</option>
+                    <option value="Follow up">Follow up</option>
+                    <option value="Job consulting">Job consulting</option>
+                    <option value="Banking">Banking</option>
+                    <option value="CEO meeting">CEO meeting</option>
+                    <option value="Client Visit">Client Visit</option>
+                    <option value="Vendor Visit">Vendor Visit</option>
+                    <option value="Guest">Guest</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wider">Branch Location</label>
+                  <select
+                    value={editFormData.branchLocation || ''}
+                    onChange={(e) => setEditFormData({ ...editFormData, branchLocation: e.target.value })}
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none bg-white"
+                  >
+                    <option value="Head Office(KRISHNAGIRI)">Head Office(KRISHNAGIRI)</option>
+                    <option value="Thirupattur Branch">Thirupattur Branch</option>
+                    <option value="Salem Branch">Salem Branch</option>
+                    <option value="Bangalore Branch">Bangalore Branch</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wider">Visit Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={editFormData.visitDate || ''}
+                    onChange={(e) => setEditFormData({ ...editFormData, visitDate: e.target.value })}
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wider">Expected Time</label>
+                  <select
+                    value={editFormData.expectedTime || '10:00 AM'}
+                    onChange={(e) => setEditFormData({ ...editFormData, expectedTime: e.target.value })}
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none bg-white"
+                  >
+                    {['09:00 AM', '09:30 AM', '10:00 AM', '10:30 AM', '11:00 AM', '11:30 AM', '12:00 PM', '01:00 PM', '02:00 PM', '02:30 PM', '03:00 PM', '03:30 PM', '04:00 PM', '04:30 PM', '05:00 PM'].map((t, idx) => (
+                      <option key={idx} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wider">Vehicle Number</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. TN-24-AB-1234"
+                    value={editFormData.vehicleNumber || ''}
+                    onChange={(e) => setEditFormData({ ...editFormData, vehicleNumber: e.target.value })}
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none uppercase"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 mt-4">
+                <button
+                  type="button"
+                  onClick={() => setEditingVisitor(null)}
+                  className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-sm transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editSaving}
+                  className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition-colors shadow-md flex items-center gap-2"
+                >
+                  <Save size={16} />
+                  <span>{editSaving ? 'Saving Changes...' : 'Save Changes'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

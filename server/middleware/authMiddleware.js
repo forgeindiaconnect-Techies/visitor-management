@@ -33,6 +33,7 @@ module.exports = async (req, res, next) => {
     // 2. Force database truth for authenticated real users (with ObjectId validation guard)
     if (userId && require('mongoose').isValidObjectId(userId)) {
       const User = require('../models/User');
+      const { formatDisplayName } = require('../utils/nameFormatter');
       const userObj = await User.findById(userId);
       if (userObj) {
         if (userObj.status === 'Inactive') {
@@ -41,11 +42,16 @@ module.exports = async (req, res, next) => {
         if (userObj.status === 'Blocked') {
           return res.status(403).json({ message: 'Your account has been blocked.' });
         }
+        // If name had birth year or email digits, clean it up
+        if (userObj.name && (userObj.name.includes('2007') || /\.\s*\d+/.test(userObj.name))) {
+          userObj.name = formatDisplayName(userObj.name);
+          await User.findByIdAndUpdate(userObj._id, { name: userObj.name });
+        }
         // Override headers with database truth
         companyId = userObj.companyId;
         userRole = userObj.role;
         branchId = userObj.branch;
-        req.userName = userObj.name;
+        req.userName = formatDisplayName(userObj.name);
         req.user = userObj;
       }
     }

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { UserCheck } from 'lucide-react';
+import { UserCheck, User } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useBranch } from '../../context/BranchContext';
 import { useVisitors } from '../../context/VisitorContext';
 import { isBranchMatch } from '../../utils/branchUtils';
+import { formatDisplayName } from '../../utils/nameFormatter';
 
 const TodaysVisitorsCard = () => {
   const { visitors, loading } = useVisitors();
@@ -13,7 +14,6 @@ const TodaysVisitorsCard = () => {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
   const queryBranch = activeBranch || 'All Branches';
-
   const safeVisitors = Array.isArray(visitors) ? visitors : [];
 
   // Filter visitors for the selected date and branch
@@ -33,22 +33,30 @@ const TodaysVisitorsCard = () => {
     return vDateStr === selectedDate;
   });
 
-  // Aggregate host breakdown
-  const aggregatedBreakdown = {};
+  // Group visitors by host (only hosts with visitors on this date)
+  const hostMap = {};
+
   filteredVisitors.forEach(v => {
-    const rawName = v.hostName || v.hostEmployee || v.team || 'Staff';
-    const displayKey = rawName.split('(')[0].trim() || 'Staff';
-    const key = displayKey.toLowerCase();
-    
-    if (!aggregatedBreakdown[key]) {
-      aggregatedBreakdown[key] = { hostName: displayKey, count: 0 };
+    const rawHost = formatDisplayName(v.hostName || v.hostEmployee || v.host || 'Direct Visits', 'Direct Visits');
+    const visitorName = formatDisplayName(v.visitorName || v.fullName || v.name || 'Visitor', 'Visitor');
+    const count = parseInt(v.visitorCount, 10) || 1;
+
+    if (!hostMap[rawHost]) {
+      hostMap[rawHost] = {
+        hostName: rawHost,
+        count: 0,
+        visitorNames: []
+      };
     }
-    aggregatedBreakdown[key].count += (parseInt(v.visitorCount, 10) || 1);
+
+    hostMap[rawHost].count += count;
+    if (!hostMap[rawHost].visitorNames.includes(visitorName)) {
+      hostMap[rawHost].visitorNames.push(visitorName);
+    }
   });
 
-  const teamBreakdown = Object.values(aggregatedBreakdown).sort((a, b) => b.count - a.count);
-  const totalVisitorsToday = teamBreakdown.reduce((sum, item) => sum + item.count, 0);
-
+  const hostList = Object.values(hostMap).sort((a, b) => b.count - a.count);
+  const totalVisitorsToday = filteredVisitors.reduce((sum, v) => sum + (parseInt(v.visitorCount, 10) || 1), 0);
   const isToday = selectedDate === new Date().toISOString().split('T')[0];
 
   return (
@@ -66,30 +74,36 @@ const TodaysVisitorsCard = () => {
         />
       </div>
 
-      <div className="px-6 py-4">
-        {loading && teamBreakdown.length === 0 ? (
+      <div className="px-6 py-4 max-h-[360px] overflow-y-auto divide-y divide-gray-100">
+        {loading && hostList.length === 0 ? (
           <div className="text-center text-gray-400 py-6">Loading live data...</div>
-        ) : teamBreakdown.length === 0 ? (
-          <div className="text-center text-gray-500 py-6 font-medium">No visitors registered for this date.</div>
+        ) : hostList.length === 0 ? (
+          <div className="text-center text-gray-500 py-6 font-medium">
+            No visitors registered for this date.
+          </div>
         ) : (
-          <div className="space-y-4">
-            {teamBreakdown.map((item, index) => (
-              <div key={index} className="flex items-center justify-between group">
+          hostList.map((item, index) => (
+            <div key={index} className="py-3 group first:pt-1 last:pb-1">
+              <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                   <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center text-[var(--color-brand-indigo)] group-hover:bg-indigo-100 transition-colors">
                     <UserCheck size={14} />
                   </div>
-                  <span className="text-gray-800 font-semibold text-sm">
+                  <span className="text-gray-900 font-bold text-sm">
                     {item.hostName}
                   </span>
                 </div>
-                <div className="text-gray-600 font-medium text-sm">
-                  <span className="text-base text-gray-900 font-bold mr-1">{item.count}</span>
-                  <span className="text-xs">Visitors</span>
+                <div className="text-gray-600 font-medium text-sm flex items-center gap-1">
+                  <span className="text-base text-[var(--color-brand-indigo)] font-extrabold mr-1">
+                    {item.count}
+                  </span>
+                  <span className="text-xs text-gray-500 font-semibold">
+                    {item.count === 1 ? 'Visitor' : 'Visitors'}
+                  </span>
                 </div>
               </div>
-            ))}
-          </div>
+            </div>
+          ))
         )}
       </div>
 
