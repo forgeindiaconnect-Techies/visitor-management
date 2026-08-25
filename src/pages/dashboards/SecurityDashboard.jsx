@@ -509,10 +509,47 @@ const SecurityDashboard = () => {
   // Metrics
   const today = new Date().toISOString().split('T')[0];
   const safeVisitors = Array.isArray(visitors) ? visitors : [];
-  const todaysVisitors = safeVisitors.filter(v => v.visitDate === today).length;
-  const visitorsInside = safeVisitors.filter(v => v.status === 'Inside');
-  const qrScans = safeVisitors.filter(v => v.status === 'Inside' || v.status === 'Exited').length;
-  const blockedAttempts = safeVisitors.filter(v => v.status === 'Rejected').length; // Treating rejected as blocked for security proxy
+  
+  const isDirectVisit = (v) => {
+    const name = String(v.visitorName || v.fullName || '').trim().toLowerCase();
+    
+    // 1. Exclude all test records
+    if (
+      name === 'test' ||
+      name === 'test 1' ||
+      name === 'test 2' ||
+      name === 'test 3' ||
+      name === 'lokeee' ||
+      name.startsWith('test ') ||
+      name.startsWith('test_') ||
+      name === 'testing'
+    ) {
+      return false;
+    }
+
+    // 2. Exclude legacy test data before Thilagavathy U (Aug 26, 2026)
+    const rawDate = v.visitDate || v.date || v.createdAt;
+    if (rawDate && !name.includes('thilagavathy')) {
+      const d = new Date(rawDate);
+      const dateStr = !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : String(rawDate);
+      if (dateStr < '2026-08-26') {
+        return false;
+      }
+    }
+
+    const host = String(v.hostEmployee || v.hostName || '').trim().toLowerCase();
+    const isDirect = host === 'direct visits' || host === 'direct visit' || host.includes('direct') ||
+                     v.registrationType === 'Direct Visit' || v.registrationType === 'Walk-in' ||
+                     v.visitType === 'DIRECT_VISIT' || v.visitorType === 'NEW_VISITOR' || v.bookingType === 'DIRECT_VISIT' ||
+                     !v.isPreBooking || v.isReturning || v.returningVisitor;
+    return isDirect;
+  };
+
+  const totalDirectVisits = safeVisitors.filter(v => isDirectVisit(v)).length;
+  const totalPreBookings = safeVisitors.filter(v => !isDirectVisit(v)).length;
+  const visitorsInside = safeVisitors.filter(v => ['Inside', 'Checked In', 'CHECKED_IN'].includes(v.status));
+  const qrScans = safeVisitors.filter(v => ['Inside', 'Checked In', 'CHECKED_IN', 'Exited', 'Checked Out', 'CHECKED_OUT'].includes(v.status)).length;
+  const blockedAttempts = safeVisitors.filter(v => ['Rejected', 'REJECTED', 'Blocked'].includes(v.status)).length;
   const securityAlerts = 0; // Simulated
 
   // Change to recent registrations to improve UX
@@ -543,10 +580,10 @@ const SecurityDashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-        <DashboardCard onClick={() => navigate('/visitors')} title="Total Visitors" value={safeVisitors.length} icon={Users} colorClass="bg-blue-100 text-blue-600" />
-        <DashboardCard onClick={() => navigate('/pre-bookings')} title="Pre-Bookings" value={safeVisitors.filter(v => v.registrationType === 'Pre-Booking' || v.isPreBooking).length} icon={Users} colorClass="bg-indigo-100 text-indigo-600" />
+        <DashboardCard onClick={() => navigate('/visitors')} title="Direct Visits" value={totalDirectVisits} icon={Users} colorClass="bg-blue-100 text-blue-600" />
+        <DashboardCard onClick={() => navigate('/pre-bookings')} title="Pre-Bookings" value={totalPreBookings} icon={Users} colorClass="bg-indigo-100 text-indigo-600" />
         <DashboardCard onClick={() => navigate('/tracking')} title="Visitors Inside" value={visitorsInside.length} icon={UserCheck} colorClass="bg-green-100 text-green-600" />
-        <DashboardCard onClick={() => navigate('/visitors?filter=checked-in')} title="QR Scans" value={qrScans} icon={QrCode} colorClass="bg-purple-100 text-purple-600" />
+        <DashboardCard onClick={() => setShowQrModal(true)} title="QR Scans" value={qrScans} icon={QrCode} colorClass="bg-purple-100 text-purple-600" />
         <DashboardCard onClick={() => navigate('/tracking')} title="Security Alerts" value={securityAlerts} icon={ShieldAlert} colorClass="bg-red-100 text-red-600" />
         <DashboardCard onClick={() => navigate('/blacklist')} title="Blocked Attempts" value={blockedAttempts} icon={Ban} colorClass="bg-orange-100 text-orange-600" />
       </div>

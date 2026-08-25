@@ -77,33 +77,12 @@ const notifyVisitorEvent = async ({
       if (hostUser) hostUserId = hostUser._id.toString();
     }
 
-    // Detect returning visitor status across the entire lifecycle
-    let isReturningVisitor = Boolean(
+    // Detect returning visitor status strictly when explicitly flagged
+    const isReturningVisitor = Boolean(
       visitor.isReturning || 
       visitor.returningVisitor || 
       visitor.registrationType === 'Returning'
     );
-
-    if (!isReturningVisitor && visitor.mobileNumber) {
-      try {
-        const cleanMobile = String(visitor.mobileNumber).replace(/\D/g, '').slice(-10);
-        const PreBookingModel = require('../models/PreBooking');
-        const VisitorModel = require('../models/Visitor');
-        const pastPreBookings = await PreBookingModel.countDocuments({
-          mobileNumber: cleanMobile,
-          _id: { $ne: visitor._id }
-        });
-        const pastVisitors = await VisitorModel.countDocuments({
-          mobileNumber: cleanMobile,
-          _id: { $ne: visitor._id }
-        });
-        if (pastPreBookings + pastVisitors > 0) {
-          isReturningVisitor = true;
-        }
-      } catch (err) {
-        console.error("Error detecting returning visitor:", err);
-      }
-    }
 
     switch (event) {
       case VISITOR_EVENTS.REGISTERED:
@@ -292,52 +271,50 @@ const notifyVisitorEvent = async ({
     }
 
     // --- Create DB Notification ---
-    if (notifyRecipients.length > 0) {
-      const formattedRecipients = notifyRecipients.map((id) => ({
-        userId: String(id),
-        user: id
-      }));
+    const formattedRecipients = (notifyRecipients || []).map((id) => ({
+      userId: String(id),
+      user: id
+    }));
 
-      const notificationEventId =
-        event === VISITOR_EVENTS.RESCHEDULED
-          ? `PREBOOK_RESCHEDULED_${visitor._id}_${new Date(visitor.visitDate).getTime()}_${visitor.expectedArrivalTime || visitor.expectedTime}`
-          : `${event}_${visitor._id}`;
+    const notificationEventId =
+      event === VISITOR_EVENTS.RESCHEDULED
+        ? `PREBOOK_RESCHEDULED_${visitor._id}_${new Date(visitor.visitDate).getTime()}_${visitor.expectedArrivalTime || visitor.expectedTime}`
+        : `${event}_${visitor._id}`;
 
-      const notificationDoc = await Notification.findOneAndUpdate(
-        { eventId: notificationEventId },
-        {
-          $set: {
-            title: notificationTitle,
-            message: notificationMessage,
-            isReturning: isReturningVisitor,
-            visitorType: isReturningVisitor ? 'RETURNING_PRE_BOOKING' : 'PRE_BOOKING'
-          },
-          $setOnInsert: {
-            eventId: notificationEventId,
-            companyId: visitor.companyId || 'FIC001',
-            branchId: visitor.branch || visitor.branchLocation,
-            recipients: formattedRecipients,
-            roles: ['Super Admin', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'MD', 'Senior HR', 'HR', 'Security', 'Receptionist'],
-            visitorId: visitor.visitorId || null,
-            visitorName: visitorDisplayName,
-            preBookingId: visitor._id,
-            createdBy: reschedulerName || 'Authorized Personnel',
-            type: 'Visitor',
-            module: 'PreBooking',
-            isRead: false
-          }
+    const notificationDoc = await Notification.findOneAndUpdate(
+      { eventId: notificationEventId },
+      {
+        $set: {
+          title: notificationTitle,
+          message: notificationMessage,
+          isReturning: isReturningVisitor,
+          visitorType: isReturningVisitor ? 'RETURNING_PRE_BOOKING' : 'PRE_BOOKING'
         },
-        {
-          new: true,
-          upsert: true
+        $setOnInsert: {
+          eventId: notificationEventId,
+          companyId: visitor.companyId || 'FIC001',
+          branchId: visitor.branch || visitor.branchLocation,
+          recipients: formattedRecipients,
+          roles: ['Super Admin', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'MD', 'Senior HR', 'HR', 'Security', 'Receptionist'],
+          visitorId: visitor.visitorId || null,
+          visitorName: visitorDisplayName,
+          preBookingId: visitor._id,
+          createdBy: reschedulerName || 'Authorized Personnel',
+          type: 'Visitor',
+          module: 'PreBooking',
+          isRead: false
         }
-      );
-
-      // --- Emit Socket.IO Event for App Notification ---
-      if (io) {
-        // Broadcast to everyone; client filters via `recipients` array
-        io.emit('new_notification', notificationDoc);
+      },
+      {
+        new: true,
+        upsert: true
       }
+    );
+
+    // --- Emit Socket.IO Event for App Notification ---
+    if (io && notificationDoc) {
+      // Broadcast to everyone; client filters via `recipients` array
+      io.emit('new_notification', notificationDoc);
     }
     
     // --- Emit Socket.IO Event for Tracking Page / Real-Time UI ---

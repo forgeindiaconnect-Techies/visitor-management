@@ -3,6 +3,7 @@ import { useVisitors } from '../../context/VisitorContext';
 import { useAuth } from '../../context/AuthContext';
 import { CheckCircle2, XCircle, Clock, Search, Filter, Eye, ShieldCheck, Check, X } from 'lucide-react';
 import HostVisitorDetailsModal from '../../components/approvals/HostVisitorDetailsModal';
+import { formatDisplayDate, formatDisplayTime } from '../../utils/dateUtils';
 
 const ApprovalList = () => {
   const { allVisitors, approveVisitor, rejectVisitor } = useVisitors();
@@ -141,17 +142,19 @@ const ApprovalList = () => {
                 >
                   <td className="px-6 py-4 font-bold text-gray-900 whitespace-nowrap">
                     <div>
-                      <span>{visitor.visitorName}</span>
-                      {visitor.bookingId && (
-                        <span className="block text-[10px] font-mono text-indigo-600 font-semibold">{visitor.bookingId}</span>
+                      <span>{visitor.visitorName || visitor.fullName || visitor.name || 'Visitor'}</span>
+                      {(visitor.bookingId || visitor.visitorId) && (
+                        <span className="block text-[10px] font-mono text-indigo-600 font-semibold">{visitor.bookingId || visitor.visitorId}</span>
                       )}
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">{visitor.companyName}</td>
                   <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">
-                    {visitor.visitDate} {visitor.expectedArrivalTime ? `(${visitor.expectedArrivalTime})` : ''}
+                    {visitor.companyName || visitor.visitingCompany || 'Forge India Connect Private Limited'}
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-800 font-medium whitespace-nowrap">{visitor.purpose}</td>
+                  <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap font-medium">
+                    {formatDisplayDate(visitor.visitDate || visitor.date || visitor.createdAt)} {visitor.expectedArrivalTime || visitor.expectedTime ? `(${formatDisplayTime(visitor.expectedArrivalTime || visitor.expectedTime)})` : ''}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-800 font-medium whitespace-nowrap">{visitor.purpose || visitor.visitPurpose || 'Official Visit'}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {getStatusBadge(visitor.status)}
                     {visitor.rejectionReason && (

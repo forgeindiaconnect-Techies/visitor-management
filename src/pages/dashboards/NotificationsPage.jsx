@@ -7,7 +7,8 @@ import { Search, Filter, Trash2, CheckCircle, BellOff, Info, CheckCircle2, Alert
 import { formatNotificationDate } from '../../utils/dateFormatter';
 import { normalizeNotifications } from '../../utils/notificationUtils';
 
-const API_URL = `${import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com')}/api/notifications`;
+const rawApi = (import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com')).replace(/\/api\/?$/, '');
+const API_URL = `${rawApi}/api/notifications`;
 
 const NotificationsPage = () => {
   const navigate = useNavigate();

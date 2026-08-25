@@ -9,52 +9,96 @@ exports.getNotifications = async (req, res) => {
     const isSuperOrAdmin = ['Super Admin', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'MD'].includes(role);
     const companyRegex = new RegExp(`^${userCompanyId}$`, 'i');
 
-    let query;
-    if (isSuperOrAdmin) {
-      // Super Admins, Admins, and MDs have company-wide notification visibility
-      query = {
-        $or: [
-          { companyId: companyRegex },
-          { companyId: 'SYSTEM' },
-          { companyId: null },
-          { companyId: { $exists: false } }
-        ]
-      };
-    } else {
-      let orConditions = [
-        { recipient: null },
-        { recipient: { $exists: false } },
-        { recipients: { $exists: false } },
-        { recipients: null },
-        { 'recipients.role': new RegExp(`^${role}$`, 'i') },
-        { recipientRole: new RegExp(`^${role}$`, 'i') },
-        { targetRole: new RegExp(`^${role}$`, 'i') },
-        { roles: { $in: [role, 'All', 'ALL'] } },
-        { roles: new RegExp(role, 'i') }
-      ];
+    // All dashboards have complete company notification visibility from starting to ending
+    const query = {
+      $or: [
+        { companyId: companyRegex },
+        { companyId: 'SYSTEM' },
+        { companyId: null },
+        { companyId: { $exists: false } }
+      ]
+    };
+    // Auto-create/sync missing registration notifications for pending prebookings & direct visits
+    try {
+      const PreBooking = require('../models/PreBooking');
+      const Visitor = require('../models/Visitor');
+      
+      const [pendingPBs, pendingVis] = await Promise.all([
+        PreBooking.find({ status: { $in: ['PENDING', 'Pending', 'PENDING APPROVAL', 'Pending Approval'] } }).lean(),
+        Visitor.find({ status: { $in: ['PENDING', 'Pending', 'PENDING APPROVAL', 'Pending Approval'] } }).lean()
+      ]);
 
-      if (userId) {
-        orConditions.push({ 'recipients.userId': String(userId) });
-        orConditions.push({ recipient: String(userId) });
-        orConditions.push({ userId: String(userId) });
-        if (require('mongoose').isValidObjectId(userId)) {
-          orConditions.push({ 'recipients.user': userId });
-        }
+      const syncPromises = [];
+      const testRegex = /^(test|test 1|test 3|lokeee)$/i;
+
+      for (const pb of (pendingPBs || [])) {
+        const nameCap = pb.fullName || pb.visitorName || 'Visitor';
+        if (testRegex.test(nameCap)) continue;
+
+        const isRet = Boolean(pb.isReturning || pb.returningVisitor);
+        const eventId = `REGISTERED_${pb._id}`;
+        
+        syncPromises.push(
+          Notification.findOneAndUpdate(
+            { eventId },
+            {
+              $setOnInsert: {
+                eventId,
+                companyId: pb.companyId || userCompanyId || 'FIC001',
+                branchId: pb.branchLocation || pb.branch,
+                roles: ['Super Admin', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'MD', 'Senior HR', 'HR', 'Security', 'Receptionist'],
+                visitorId: pb.visitorId || null,
+                visitorName: nameCap,
+                preBookingId: pb._id,
+                type: 'Visitor',
+                module: 'PreBooking',
+                title: isRet ? 'A Returning Visitor Request Received' : 'A New Visitor Request Received',
+                message: `${isRet ? 'Returning' : 'New'} visitor ${nameCap} waiting for approval`,
+                isRead: false,
+                createdAt: pb.createdAt || new Date()
+              }
+            },
+            { upsert: true }
+          )
+        );
       }
 
-      query = {
-        $and: [
-          {
-            $or: [
-              { companyId: companyRegex },
-              { companyId: 'SYSTEM' },
-              { companyId: null },
-              { companyId: { $exists: false } }
-            ]
-          },
-          { $or: orConditions }
-        ]
-      };
+      for (const v of (pendingVis || [])) {
+        const nameCap = v.visitorName || v.fullName || 'Visitor';
+        if (testRegex.test(nameCap)) continue;
+
+        const isRet = Boolean(v.isReturning || v.returningVisitor);
+        const eventId = `DIRECT_VISIT_CREATED_${v._id}`;
+        
+        syncPromises.push(
+          Notification.findOneAndUpdate(
+            { eventId },
+            {
+              $setOnInsert: {
+                eventId,
+                companyId: v.companyId || userCompanyId || 'FIC001',
+                branchId: v.branchLocation || v.branch,
+                roles: ['Super Admin', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'MD', 'Senior HR', 'HR', 'Security', 'Receptionist'],
+                visitorId: v.visitorId || v.visitId || null,
+                visitorName: nameCap,
+                type: 'Visitor',
+                module: 'Visitors',
+                title: isRet ? 'A Returning Visitor Request Received' : 'A New Visitor Request Received',
+                message: `${isRet ? 'Returning' : 'New'} visitor ${nameCap} waiting for approval`,
+                isRead: false,
+                createdAt: v.createdAt || new Date()
+              }
+            },
+            { upsert: true }
+          )
+        );
+      }
+
+      if (syncPromises.length > 0) {
+        await Promise.all(syncPromises);
+      }
+    } catch (syncErr) {
+      console.warn('Sync pending notifications warning:', syncErr.message);
     }
 
     const notifications = await Notification.find(query)
@@ -62,53 +106,30 @@ exports.getNotifications = async (req, res) => {
       .limit(100)
       .lean();
 
-    // Check returning visitors across recent prebookings and direct visitors
     const PreBooking = require('../models/PreBooking');
     const Visitor = require('../models/Visitor');
-    const [allPreBookings, allVisitors] = await Promise.all([
-      PreBooking.find({}, 'fullName mobileNumber isReturning returningVisitor').lean(),
-      Visitor.find({}, 'visitorName fullName mobileNumber isReturning returningVisitor').lean()
-    ]);
+    
+    // Find strictly returning records
+    const returningPBs = await PreBooking.find({
+      $or: [
+        { registrationType: 'Returning' },
+        { isReturning: true },
+        { returningVisitor: true }
+      ]
+    }, 'fullName visitorName mobileNumber').lean();
+    
+    const returningVis = await Visitor.find({
+      $or: [
+        { registrationType: 'Returning' },
+        { isReturning: true },
+        { returningVisitor: true }
+      ]
+    }, 'visitorName fullName mobileNumber').lean();
 
-    const visitorNameCounts = {};
     const returningNameSet = new Set();
-
-    for (const pb of (allPreBookings || [])) {
-      const nameKey = (pb.fullName || '').trim().toLowerCase();
-      if (nameKey) {
-        visitorNameCounts[nameKey] = (visitorNameCounts[nameKey] || 0) + 1;
-        if (pb.isReturning || pb.returningVisitor) returningNameSet.add(nameKey);
-      }
-    }
-
-    for (const v of (allVisitors || [])) {
-      const nameKey = (v.visitorName || v.fullName || '').trim().toLowerCase();
-      if (nameKey) {
-        visitorNameCounts[nameKey] = (visitorNameCounts[nameKey] || 0) + 1;
-        if (v.isReturning || v.returningVisitor) returningNameSet.add(nameKey);
-      }
-    }
-
-    for (const [name, count] of Object.entries(visitorNameCounts)) {
-      if (count > 1) {
-        returningNameSet.add(name);
-      }
-    }
-
-    // Also scan existing notification titles/messages for any marked as "Returning"
-    for (const n of (Array.isArray(notifications) ? notifications : [])) {
-      if (n) {
-        const title = (n.title || '').toLowerCase();
-        const msg = (n.message || '').toLowerCase();
-        if (title.includes('returning') || msg.includes('returning') || n.isReturning || n.returningVisitor) {
-          let vName = (n.visitorName || '').trim().toLowerCase();
-          if (!vName && n.message) {
-            const m = n.message.match(/(?:for|visitor)\s+([A-Za-z0-9\s]+?)(?:\s+waiting|\s+has\s+been|\s+has\s+arrived|\s+has\s+checked|\s+was|\s+to|\.|$)/i);
-            if (m) vName = m[1].trim().toLowerCase();
-          }
-          if (vName) returningNameSet.add(vName);
-        }
-      }
+    for (const r of [...(returningPBs || []), ...(returningVis || [])]) {
+      const name = (r.fullName || r.visitorName || '').trim().toLowerCase();
+      if (name) returningNameSet.add(name);
     }
 
     const cleanedNotifications = (Array.isArray(notifications) ? notifications : []).map(n => {
@@ -123,23 +144,14 @@ exports.getNotifications = async (req, res) => {
           n.message = `${dashMatch[1].trim()} has rescheduled the appointment for visitor ${visitorName} to ${dashMatch[2]}.`;
         }
 
-        // Extract visitor name from message or properties
-        let detectedVisitorName = (n.visitorName || '').trim().toLowerCase();
-        if (!detectedVisitorName) {
-          const matchFor = n.message.match(/(?:for|visitor)\s+([A-Za-z0-9\s]+?)(?:\s+waiting|\s+has\s+been|\s+has\s+arrived|\s+has\s+checked|\s+was|\s+to|\.|$)/i);
-          if (matchFor) {
-            detectedVisitorName = matchFor[1].trim().toLowerCase();
-          }
-        }
-
+        // Strictly check if candidate was registered via Returning Visitor flow
+        const visitorRawName = (n.visitorName || '').trim().toLowerCase();
         const isReturningVisitor = Boolean(
-          n.isReturning || 
-          n.returningVisitor || 
-          (detectedVisitorName && returningNameSet.has(detectedVisitorName)) ||
-          (detectedVisitorName && visitorNameCounts[detectedVisitorName] && visitorNameCounts[detectedVisitorName] > 1)
+          (n.registrationType === 'Returning') ||
+          (visitorRawName && returningNameSet.has(visitorRawName))
         );
 
-        const rawName = n.visitorName || detectedVisitorName || 'Visitor';
+        const rawName = n.visitorName || 'Visitor';
         const nameCap = rawName.charAt(0).toUpperCase() + rawName.slice(1);
 
         // 1. Check In & Check Out Notifications

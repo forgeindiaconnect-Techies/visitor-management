@@ -67,7 +67,7 @@ export const VisitorProvider = ({ children }) => {
     }
     try {
       let queryBranch = currentUser?.branch;
-      if (['Super Admin', 'MD', 'Senior HR', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'HR'].includes(currentUser?.role)) {
+      if (['Super Admin', 'MD', 'Senior HR', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'HR', 'Security', 'Receptionist'].includes(currentUser?.role)) {
         queryBranch = activeBranch === 'All Branches' ? null : activeBranch;
       }
       
@@ -144,24 +144,50 @@ export const VisitorProvider = ({ children }) => {
       // Deduplicate strictly by unique Document ID
       const seenIds = new Set();
       const mergedData = [];
+      const testNamesRegex = /^(test|test 1|test 2|test 3|lokeee|testing)$/i;
 
       for (const item of allCombined) {
         const idKey = String(item._id || item.id || '');
-
         if (idKey && seenIds.has(idKey)) continue;
+
+        const name = String(item.visitorName || item.fullName || '').trim();
+        // Exclude test records from global metrics
+        if (testNamesRegex.test(name) || name.toLowerCase().startsWith('test ') || name.toLowerCase().startsWith('test_')) {
+          continue;
+        }
+
+        // Exclude legacy direct visit test data before Thilagavathy U (Aug 26, 2026)
+        const rawDate = item.visitDate || item.date || item.createdAt;
+        if (rawDate && !name.toLowerCase().includes('thilagavathy') && !item.isPreBooking) {
+          const d = new Date(rawDate);
+          const dateStr = !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : String(rawDate);
+          if (dateStr < '2026-08-26') {
+            continue;
+          }
+        }
 
         if (idKey) seenIds.add(idKey);
         mergedData.push(item);
       }
 
-      // Filter by host name for HR / Employee roles to enforce visibility isolation
+      // Filter by host name ONLY for HR / Employee roles to enforce candidate visibility isolation
       let finalData = mergedData;
-      if (currentUser && ['HR', 'Employee'].includes(currentUser.role)) {
-        const currentUserNameLower = (currentUser.name || '').toLowerCase().trim();
-        finalData = mergedData.filter(v => 
-          (v.hostName || '').toLowerCase().trim() === currentUserNameLower ||
-          (v.hostEmployee || '').toLowerCase().trim() === currentUserNameLower
-        );
+      const isHostRestrictedRole = ['HR', 'Employee'].includes(currentUser?.role);
+      if (currentUser && isHostRestrictedRole) {
+        const myName = String(
+          currentUser.name || 
+          currentUser.fullName || 
+          currentUser.username || 
+          currentUser.displayName || 
+          ''
+        ).toLowerCase().trim();
+
+        if (myName) {
+          finalData = mergedData.filter(v => {
+            const hostLower = String(v.hostName || v.hostEmployee || v.host || '').toLowerCase().trim();
+            return hostLower && (hostLower.includes(myName) || myName.includes(hostLower));
+          });
+        }
       }
 
       if (allVisitorsRef.current.length > 0) {

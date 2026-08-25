@@ -155,22 +155,26 @@ const createPreBooking = async (req, res) => {
     const finalAssignedHr = (isNewVisitor || !assignedHr) ? null : assignedHr;
     const visitorType = isNewVisitor ? "NEW_VISITOR" : "NORMAL";
 
-    const isExplicitReturning = Boolean(
+    const completedStatuses = ["CHECKED_OUT", "Checked Out", "Exited", "Completed"];
+    const Visitor = require("../models/Visitor");
+    const hasCompletedPastVisit = Boolean(
+      (await PreBooking.exists({
+        mobileNumber: normalizedMobile || mobileNumber,
+        status: { $in: completedStatuses }
+      })) ||
+      (await Visitor.exists({
+        mobileNumber: normalizedMobile || mobileNumber,
+        status: { $in: completedStatuses }
+      }))
+    );
+
+    const isReturning = Boolean(
       req.body.returningVisitor || 
       req.body.isReturningVisitor || 
       req.body.isReturning || 
-      req.body.registrationType === 'Returning'
+      req.body.registrationType === 'Returning' ||
+      hasCompletedPastVisit
     );
-
-    // Check if visitor has prior visits (returning visitor)
-    const pastPreBookingCount = await PreBooking.countDocuments({
-      mobileNumber: normalizedMobile || mobileNumber
-    });
-    const Visitor = require("../models/Visitor");
-    const pastVisitorCount = await Visitor.countDocuments({
-      mobileNumber: normalizedMobile || mobileNumber
-    });
-    const isReturning = isExplicitReturning || (pastPreBookingCount + pastVisitorCount) > 0;
 
     const preBooking = await PreBooking.create({
       visitorId,
@@ -270,21 +274,25 @@ const getAllPreBookings = async (req, res) => {
     // Role-based filtering: HR/Employee users only see their assigned visitors or where they are the host
     if (normalizedRole === 'HR' || normalizedRole === 'EMPLOYEE') {
       const mongoose = require('mongoose');
-      let hrUser = null;
-      if (req.userId && mongoose.isValidObjectId(req.userId)) {
+      let hrUser = req.user;
+      if (!hrUser && req.userId && mongoose.isValidObjectId(req.userId)) {
         const User = require('../models/User');
         hrUser = await User.findById(req.userId);
       }
-      if (hrUser && hrUser.name) {
-        filter.$or = [
-          { assignedHr: req.userId },
-          { hostEmployee: new RegExp(`^${hrUser.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }
-        ];
-      } else {
-        filter.assignedHr = req.userId;
+      const hrName = (hrUser?.name || req.headers['x-user-name'] || '').trim();
+      const hrId = req.userId || req.headers['x-user-id'];
+
+      const hrOr = [];
+      if (hrId) hrOr.push({ assignedHr: hrId });
+      if (hrName) hrOr.push({ hostEmployee: new RegExp(`^${hrName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') });
+      
+      if (hrOr.length > 0) {
+        filter.$or = hrOr;
       }
       filter.visitorType = { $ne: 'NEW_VISITOR' };
     }
+
+    filter.fullName = { $not: /^(test|test 1|test 2|test 3|lokeee|testing)$/i };
 
     const preBookings = await PreBooking.find(filter)
       .populate('assignedHr', 'name email')
@@ -1147,19 +1155,18 @@ const checkOutPreBooking = async (req, res) => {
 const getMyPreBookings = async (req, res) => {
   try {
     const mongoose = require('mongoose');
-    let userObj = null;
-    if (req.userId && mongoose.isValidObjectId(req.userId)) {
+    let userObj = req.user;
+    if (!userObj && req.userId && mongoose.isValidObjectId(req.userId)) {
       const User = require('../models/User');
       userObj = await User.findById(req.userId);
     }
-    const filter = { assignedHr: req.userId };
-    if (userObj && userObj.name) {
-      filter.$or = [
-        { assignedHr: req.userId },
-        { hostEmployee: new RegExp(`^${userObj.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }
-      ];
-      delete filter.assignedHr;
-    }
+    const hrName = (userObj?.name || req.headers['x-user-name'] || req.userId || 'Priyadharshini').trim();
+
+    // Strict host name match: only return pre-bookings where hostEmployee matches this HR's name
+    const filter = {
+      hostEmployee: new RegExp(hrName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+    };
+
     const visitors = await PreBooking.find(filter)
       .populate("assignedHr", "name email")
       .sort({

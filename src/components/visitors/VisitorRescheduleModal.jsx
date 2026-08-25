@@ -69,8 +69,9 @@ const VisitorRescheduleModal = ({ visitor, onClose, onSuccess }) => {
       return;
     }
 
+    const isDirect = visitor.bookingType === 'DIRECT_VISIT' || visitor.visitType === 'DIRECT_VISIT' || visitor.registrationType === 'Direct Visit';
     const chosenDate = new Date(`${date}T00:00:00`);
-    if (!isAllowedDay(chosenDate)) {
+    if (!isDirect && !isAllowedDay(chosenDate)) {
       setError('Pre-booking is allowed only on Monday, Wednesday, and Saturday.');
       return;
     }

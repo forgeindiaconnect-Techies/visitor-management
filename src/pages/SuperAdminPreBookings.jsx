@@ -97,7 +97,8 @@ export default function SuperAdminPreBookings() {
   const fetchPreBookings = async () => {
     try {
       setLoading(true);
-      const endpoint = user?.role === 'HR'
+      const isHostRestricted = ['HR', 'Employee'].includes(user?.role);
+      const endpoint = isHostRestricted
         ? `${API_URL}/api/prebookings/my`
         : `${API_URL}/api/prebookings`;
 
@@ -379,6 +380,27 @@ export default function SuperAdminPreBookings() {
   };
 
   const filteredPreBookings = (Array.isArray(preBookings) ? preBookings : []).filter((item) => {
+    // Strict Host Name Match ONLY for HR and Employee roles:
+    const isHostRestrictedRole = ['HR', 'Employee'].includes(user?.role);
+    if (isHostRestrictedRole) {
+      const myName = String(
+        user?.name || 
+        user?.fullName || 
+        user?.username || 
+        user?.displayName || 
+        ''
+      ).toLowerCase().trim();
+
+      if (myName) {
+        const hostName = String(item.hostEmployee || item.hostName || item.host || '').toLowerCase().trim();
+
+        // If the visitor's host name is not this HR's name, STRICTLY EXCLUDE IT
+        if (!hostName || (!hostName.includes(myName) && !myName.includes(hostName))) {
+          return false;
+        }
+      }
+    }
+
     const q = searchQuery.toLowerCase().trim();
     const matchesQuery =
       !q ||

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, CheckCircle2, XCircle, User, Calendar, Clock, MapPin, FileText, IdCard, Building, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { formatDisplayDate, formatDisplayTime } from '../../utils/dateUtils';
 
 const HostVisitorDetailsModal = ({ isOpen, onClose, visitor, onApprove, onReject }) => {
   const { hasApprovalPermission } = useAuth();
@@ -28,25 +29,24 @@ const HostVisitorDetailsModal = ({ isOpen, onClose, visitor, onApprove, onReject
         {/* Header */}
         <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-indigo-600 rounded-lg text-white font-bold text-xs uppercase tracking-wider">
-              {visitor.bookingId || visitor.visitId || 'REQUEST'}
+            <div className="w-9 h-9 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
+              <IdCard size={20} />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-white">{visitor.visitorName}</h3>
-              <p className="text-xs text-slate-300">
-                {visitor.status === 'Approved' ? '✅ Approved Pre-Booking' : 
-                 visitor.status === 'Rejected' ? '❌ Rejected Pre-Booking' : 
-                 '⏳ Pending Host Approval'}
-              </p>
+              <h3 className="text-base font-bold">Visitor Details & Verification</h3>
+              <p className="text-xs text-slate-400">Pass Reference: {visitor.bookingId || visitor.visitorId || 'Direct Visit'}</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white p-1 rounded-full hover:bg-slate-800 transition-colors">
+          <button 
+            onClick={onClose}
+            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
+          >
             <X size={20} />
           </button>
         </div>
 
-        {/* Content */}
-        <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
+        {/* Modal Body */}
+        <div className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
           
           {/* Section 1: Personal Details */}
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
@@ -57,11 +57,11 @@ const HostVisitorDetailsModal = ({ isOpen, onClose, visitor, onApprove, onReject
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
               <div>
                 <span className="text-xs text-gray-400 block">Full Name</span>
-                <span className="font-bold text-gray-900">{visitor.visitorName}</span>
+                <span className="font-bold text-gray-900">{visitor.visitorName || visitor.fullName || visitor.name || 'Visitor'}</span>
               </div>
               <div>
                 <span className="text-xs text-gray-400 block">Mobile Number</span>
-                <span className="font-semibold text-gray-800">{visitor.mobileNumber}</span>
+                <span className="font-semibold text-gray-800">{visitor.mobileNumber || '-'}</span>
               </div>
               <div>
                 <span className="text-xs text-gray-400 block">Email Address</span>
@@ -69,7 +69,7 @@ const HostVisitorDetailsModal = ({ isOpen, onClose, visitor, onApprove, onReject
               </div>
               <div>
                 <span className="text-xs text-gray-400 block">Company Name</span>
-                <span className="font-semibold text-gray-800">{visitor.companyName}</span>
+                <span className="font-semibold text-gray-800">{visitor.companyName || visitor.visitingCompany || 'Forge India Connect Private Limited'}</span>
               </div>
               <div className="sm:col-span-2">
                 <span className="text-xs text-gray-400 block">Aadhaar Card Number</span>
@@ -87,19 +87,19 @@ const HostVisitorDetailsModal = ({ isOpen, onClose, visitor, onApprove, onReject
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
               <div>
                 <span className="text-xs text-indigo-400 block">Branch</span>
-                <span className="font-bold text-indigo-900">📍 {visitor.branch}</span>
+                <span className="font-bold text-indigo-900">📍 {visitor.branch || visitor.branchLocation || 'Head Office'}</span>
               </div>
               <div>
                 <span className="text-xs text-indigo-400 block">Host Name</span>
-                <span className="font-bold text-indigo-900">{visitor.hostName}</span>
+                <span className="font-bold text-indigo-900">{visitor.hostName || visitor.hostEmployee || 'Staff'}</span>
               </div>
               <div>
                 <span className="text-xs text-indigo-400 block">Purpose of Visit</span>
-                <span className="font-semibold text-gray-900">{visitor.purpose}</span>
+                <span className="font-semibold text-gray-900">{visitor.purpose || visitor.visitPurpose || 'Official Visit'}</span>
               </div>
               <div>
                 <span className="text-xs text-indigo-400 block">Visit Date & Time</span>
-                <span className="font-semibold text-gray-900">{visitor.visitDate} ({visitor.expectedArrivalTime || '10:00 AM'})</span>
+                <span className="font-semibold text-gray-900">{formatDisplayDate(visitor.visitDate || visitor.date || visitor.createdAt)} ({formatDisplayTime(visitor.expectedArrivalTime || visitor.expectedTime || '10:00 AM')})</span>
               </div>
               {visitor.notes && (
                 <div className="sm:col-span-2 bg-white p-3 rounded-lg border border-indigo-100">

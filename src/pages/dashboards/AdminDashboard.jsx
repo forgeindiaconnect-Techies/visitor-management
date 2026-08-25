@@ -40,10 +40,46 @@ const AdminDashboard = () => {
 
   // Metrics calculations
   const today = new Date().toISOString().split('T')[0];
-  const walkInVisitors = safeVisitors.filter(v => v.registrationType !== 'Pre-Booking' && !v.isPreBooking);
-  const preBookedVisitors = safeVisitors.filter(v => v.registrationType === 'Pre-Booking' || v.isPreBooking);
   
-  const totalWalkIns = walkInVisitors.length;
+  const isDirectVisit = (v) => {
+    const name = String(v.visitorName || v.fullName || '').trim().toLowerCase();
+    
+    // 1. Exclude all test records
+    if (
+      name === 'test' ||
+      name === 'test 1' ||
+      name === 'test 2' ||
+      name === 'test 3' ||
+      name === 'lokeee' ||
+      name.startsWith('test ') ||
+      name.startsWith('test_') ||
+      name === 'testing'
+    ) {
+      return false;
+    }
+
+    // 2. Exclude legacy test data before Thilagavathy U (Aug 26, 2026)
+    const rawDate = v.visitDate || v.date || v.createdAt;
+    if (rawDate && !name.includes('thilagavathy')) {
+      const d = new Date(rawDate);
+      const dateStr = !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : String(rawDate);
+      if (dateStr < '2026-08-26') {
+        return false;
+      }
+    }
+
+    const host = String(v.hostEmployee || v.hostName || '').trim().toLowerCase();
+    const isDirect = host === 'direct visits' || host === 'direct visit' || host.includes('direct') ||
+                     v.registrationType === 'Direct Visit' || v.registrationType === 'Walk-in' ||
+                     v.visitType === 'DIRECT_VISIT' || v.visitorType === 'NEW_VISITOR' || v.bookingType === 'DIRECT_VISIT' ||
+                     !v.isPreBooking || v.isReturning || v.returningVisitor;
+    return isDirect;
+  };
+
+  const directVisitors = safeVisitors.filter(v => isDirectVisit(v));
+  const preBookedVisitors = safeVisitors.filter(v => !isDirectVisit(v));
+  
+  const totalDirectVisits = directVisitors.length;
   const totalPreBookings = preBookedVisitors.length;
   const insideVisitors = safeVisitors.filter(v => ['Inside', 'Checked In', 'CHECKED_IN'].includes(v.status));
   const pendingApprovals = safeVisitors.filter(v => ['PENDING', 'PENDING APPROVAL', 'Pending', 'Pending Approval'].includes(v.status)).length;
@@ -59,7 +95,7 @@ const AdminDashboard = () => {
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
   sevenDaysAgo.setHours(0, 0, 0, 0);
 
-  visitors.forEach(v => {
+  safeVisitors.forEach(v => {
     const rawDate = v.visitDate || v.date || v.createdAt;
     if (!rawDate) return;
     const visitDate = new Date(rawDate);
@@ -212,7 +248,7 @@ const AdminDashboard = () => {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-        <DashboardCard onClick={() => navigate('/visitors')} title="Total Visitors" value={visitors.length} icon={Users} colorClass="bg-blue-100 text-blue-600" />
+        <DashboardCard onClick={() => navigate('/visitors')} title="Direct Visits" value={totalDirectVisits} icon={Users} colorClass="bg-blue-100 text-blue-600" />
         <DashboardCard onClick={() => navigate('/pre-bookings')} title="Pre-Bookings" value={totalPreBookings} icon={Users} colorClass="bg-indigo-100 text-indigo-600" />
         <DashboardCard onClick={() => navigate('/tracking')} title="Visitors Inside" value={insideVisitors.length} icon={Users} colorClass="bg-green-100 text-green-600" />
         <DashboardCard onClick={() => navigate('/approvals')} title="Pending Approvals" value={pendingApprovals} icon={Clock} colorClass="bg-orange-100 text-orange-600" />

@@ -5,7 +5,7 @@ import { useBranch } from '../../context/BranchContext';
 import { useNotification } from '../../context/NotificationContext';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Plus, Search, Filter, MoreVertical, QrCode, X, FileText, Edit, Save, CalendarCheck, UserPlus, Eye, User, Trash2, LogIn, LogOut, Clock, Check } from 'lucide-react';
+import { Plus, Search, Filter, MoreVertical, QrCode, X, FileText, Edit, Save, Calendar, CalendarCheck, UserPlus, Eye, User, Trash2, LogIn, LogOut, Clock, Check } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import VisitorHistoryModal from '../../components/visitors/VisitorHistoryModal';
 import VisitorRescheduleModal from '../../components/visitors/VisitorRescheduleModal';
@@ -129,33 +129,38 @@ const VisitorList = () => {
 
   const directVisitors = (Array.isArray(visitors) ? visitors : []).filter(v => {
     const host = String(v.hostEmployee || v.hostName || '').trim().toLowerCase();
-    
-    // 1. Explicit Direct Visit tags & Host "Direct Visits"
-    const isDirect = host === 'direct visits' || host === 'direct visit' || host.includes('direct') ||
-                     v.registrationType === 'Direct Visit' || v.registrationType === 'Walk-in' ||
-                     v.visitType === 'DIRECT_VISIT' || v.visitorType === 'NEW_VISITOR' || v.bookingType === 'DIRECT_VISIT';
-    if (isDirect) return true;
+    const name = String(v.visitorName || v.fullName || '').trim().toLowerCase();
 
-    // 2. Direct desk registrations (from Visitor collection)
-    if (!v.isPreBooking) return true;
-
-    // 3. Returning visitors
-    if (v.isReturning || v.returningVisitor) return true;
-
-    // 4. Arrived / Checked-in / Checked-out visitors
-    const statusUpper = (v.status || '').toUpperCase();
+    // 1. Exclude all test records
     if (
-      statusUpper === 'CHECKED_IN' || 
-      statusUpper === 'CHECKED IN' || 
-      statusUpper === 'CHECKED_OUT' || 
-      statusUpper === 'CHECKED OUT' || 
-      statusUpper === 'INSIDE' || 
-      statusUpper === 'EXITED'
+      name === 'test' ||
+      name === 'test 1' ||
+      name === 'test 2' ||
+      name === 'test 3' ||
+      name === 'lokeee' ||
+      name.startsWith('test ') ||
+      name.startsWith('test_') ||
+      name === 'testing'
     ) {
-      return true;
+      return false;
     }
 
-    return false;
+    // 2. Exclude legacy test data before Thilagavathy U (Aug 26, 2026)
+    const rawDate = v.visitDate || v.date || v.createdAt;
+    if (rawDate && !name.includes('thilagavathy')) {
+      const d = new Date(rawDate);
+      const dateStr = !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : String(rawDate);
+      if (dateStr < '2026-08-26') {
+        return false;
+      }
+    }
+    
+    // Strict Direct Visit Check: Walk-ins, direct desk visits, returning visitors, or host "Direct Visits"
+    const isDirect = host === 'direct visits' || host === 'direct visit' || host.includes('direct') ||
+                     v.registrationType === 'Direct Visit' || v.registrationType === 'Walk-in' ||
+                     v.visitType === 'DIRECT_VISIT' || v.visitorType === 'NEW_VISITOR' || v.bookingType === 'DIRECT_VISIT' ||
+                     !v.isPreBooking || v.isReturning || v.returningVisitor;
+    return isDirect;
   });
 
   const statusCounts = {
@@ -659,6 +664,13 @@ const VisitorList = () => {
                               className="w-full px-3.5 py-2 hover:bg-indigo-50 text-indigo-700 text-xs font-semibold flex items-center gap-2.5 transition-colors border-t border-gray-100"
                             >
                               <Edit size={14} className="text-indigo-600" /> Edit Details
+                            </button>
+
+                            <button 
+                              onClick={() => { setReschedulingVisitor(visitor); setOpenDropdownId(null); }} 
+                              className="w-full px-3.5 py-2 hover:bg-amber-50 text-amber-700 text-xs font-semibold flex items-center gap-2.5 transition-colors border-t border-gray-100"
+                            >
+                              <Calendar size={14} className="text-amber-600" /> Reschedule Appointment
                             </button>
 
                             {!['CHECKED_IN', 'CHECKED IN', 'INSIDE', 'CHECKED_OUT', 'CHECKED OUT', 'EXITED'].includes((visitor.status || '').toUpperCase()) && (

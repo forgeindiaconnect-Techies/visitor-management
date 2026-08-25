@@ -115,8 +115,32 @@ mongoose.connect(process.env.MONGO_URI)
           { upsert: true }
         );
       }
+
+      // Cleanup test data on startup (TEST 1, Lokeee, TEST 3, Test)
+      const PreBooking = require('./models/PreBooking');
+      const Visitor = require('./models/Visitor');
+      const Notification = require('./models/Notification');
+      const namesRegex = /^(test|test 1|test 3|lokeee)$/i;
+      const cutoffDate = new Date('2026-08-26T00:00:00.000Z');
+
+      await PreBooking.deleteMany({ fullName: { $regex: namesRegex } });
+      await Visitor.deleteMany({
+        $or: [
+          { createdAt: { $lt: cutoffDate } },
+          { visitDate: { $lt: '2026-08-26' } },
+          { visitorName: { $regex: namesRegex } },
+          { fullName: { $regex: namesRegex } }
+        ]
+      });
+      await Notification.deleteMany({
+        $or: [
+          { visitorName: { $regex: namesRegex } },
+          { message: { $regex: /(test 1|test 3|lokeee|\btest\b)/i } }
+        ]
+      });
+      console.log('🧹 Cleaned up test records, notifications, and legacy visitor data before Aug 26.');
     } catch (err) {
-      console.error('Error initializing default approval permissions:', err);
+      console.error('Error initializing default approval permissions or cleanup:', err);
     }
   })
   .catch(err => {
@@ -242,8 +266,45 @@ app.use('/api/super-admin', superAdminRouter);
 app.use('/api/company', companyRouter);
 app.use('/api/audit-logs', auditLogsRouter);
 app.use('/api/payment', paymentRoutes);
-app.use('/api/test', testNotification);
 app.use('/api/approval-permissions', approvalPermissionRoutes);
+
+app.all('/api/cleanup-test-data', async (req, res) => {
+  try {
+    const PreBooking = require('./models/PreBooking');
+    const Visitor = require('./models/Visitor');
+    const Notification = require('./models/Notification');
+    const namesRegex = /^(test|test 1|test 3|lokeee)$/i;
+    const cutoffDate = new Date('2026-08-26T00:00:00.000Z');
+
+    const [pbRes, visRes, notifRes] = await Promise.all([
+      PreBooking.deleteMany({ fullName: { $regex: namesRegex } }),
+      Visitor.deleteMany({
+        $or: [
+          { createdAt: { $lt: cutoffDate } },
+          { visitDate: { $lt: '2026-08-26' } },
+          { visitorName: { $regex: namesRegex } },
+          { fullName: { $regex: namesRegex } }
+        ]
+      }),
+      Notification.deleteMany({
+        $or: [
+          { visitorName: { $regex: namesRegex } },
+          { message: { $regex: /(test 1|test 3|lokeee|\btest\b)/i } }
+        ]
+      })
+    ]);
+
+    return res.json({
+      success: true,
+      message: 'Test data cleaned up successfully.',
+      preBookingsDeleted: pbRes.deletedCount,
+      visitorsDeleted: visRes.deletedCount,
+      notificationsDeleted: notifRes.deletedCount
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 app.get('/api/network-ip', (req, res) => {
   const os = require('os');

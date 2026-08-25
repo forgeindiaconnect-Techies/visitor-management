@@ -22,7 +22,7 @@ const checkApprovalPermission = async (req, res, next) => {
     }
 
     // Standard approval roles that have permission by default
-    const defaultApprovalRoles = ['SUPER_ADMIN', 'SAAS_SUPER_ADMIN', 'MD', 'SENIOR_HR', 'ADMIN', 'BRANCH_ADMIN', 'HR'];
+    const defaultApprovalRoles = ['SUPER_ADMIN', 'SAAS_SUPER_ADMIN', 'MD', 'ADMIN', 'BRANCH_ADMIN'];
     const isDefaultRole = defaultApprovalRoles.includes(role);
 
     // Named approver fallback list

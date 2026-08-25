@@ -52,8 +52,8 @@ export const BranchProvider = ({ children }) => {
         const allB = ['All Branches', ...Array.from(branchSet)];
         setBranches(allB);
         
-        // Roles that can view All Branches. Everyone else is locked to their assigned branch.
-        if (!['Super Admin', 'MD', 'Senior HR', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'HR'].includes(user.role)) {
+        // Roles that can view All Branches.
+        if (!['Super Admin', 'MD', 'Senior HR', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'HR', 'Security', 'Receptionist'].includes(user.role)) {
           const userBranchNorm = user.branch ? normalizeBranchName(user.branch) : Array.from(branchSet)[0];
           setActiveBranch(userBranchNorm || 'All Branches');
         } else {

@@ -11,7 +11,8 @@ import { formatDisplayName } from '../../utils/nameFormatter';
 import { normalizeBranchName } from '../../utils/branchUtils';
 
 const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.match(/^\d{1,3}\./);
-const API_URL = `${import.meta.env.VITE_API_URL || (isLocalhost ? `http://${window.location.hostname}:5000` : 'https://fic-visitor-1.onrender.com')}/api/notifications`;
+const rawApi = (import.meta.env.VITE_API_URL || (isLocalhost ? `http://${window.location.hostname}:5000` : 'https://fic-visitor-1.onrender.com')).replace(/\/api\/?$/, '');
+const API_URL = `${rawApi}/api/notifications`;
 
 const Header = ({ toggleSidebar, isSidebarOpen }) => {
   const { user } = useAuth();
@@ -33,17 +34,7 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
 
   const fetchNotifications = async () => {
     try {
-      let queryBranch = user?.branch;
-      if (user?.role === 'Super Admin' || user?.role === 'SaaS Super Admin') {
-        queryBranch = activeBranch === 'All Branches' ? null : activeBranch;
-      }
-      
-      let fetchUrl = new URL(API_URL);
-      if (queryBranch && queryBranch !== 'All Branches') {
-        fetchUrl.searchParams.append('branch', queryBranch);
-      }
-      
-      const res = await fetch(fetchUrl.toString(), { 
+      const res = await fetch(API_URL, { 
         cache: 'no-store',
         headers: getHeaders()
       });
@@ -70,58 +61,14 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
   useEffect(() => {
     fetchNotifications();
     
-    const socketUrl = import.meta.env.VITE_API_URL 
-      ? import.meta.env.VITE_API_URL.replace('/api', '')
-      : (isLocalhost ? `http://${window.location.hostname}:5000` : 'https://fic-visitor-1.onrender.com');
-    const socket = io(socketUrl);
+    const socket = io(rawApi);
     
     socket.on('new_notification', (notification) => {
-      let queryBranch = user?.branch;
-      if (['Super Admin', 'MD', 'Senior HR', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'HR'].includes(user?.role)) {
-        queryBranch = activeBranch === 'All Branches' ? null : activeBranch;
-      }
-      
-      // Basic role/branch filtering on socket client
-      if (queryBranch && queryBranch !== 'All Branches' && notification.branchId && notification.branchId !== queryBranch && notification.branchId !== 'All Branches') {
-        return;
-      }
+      if (!notification) return;
 
-      if (user?.role === 'SaaS Super Admin') {
-        const saasTypes = ['Tenant', 'Subscription', 'System', 'Branch', 'Admin', 'Announcement', 'info', 'success', 'warning'];
-        if (!saasTypes.includes(notification.type) && notification.createdBy !== 'SaaS Super Admin') {
-          return;
-        }
-      } else if (user?.role !== 'SaaS Super Admin' && notification.companyId && notification.companyId !== 'SYSTEM' && notification.companyId.toUpperCase() !== (user?.companyId || 'FIC001').toUpperCase()) {
+      // Filter by company tenant if applicable
+      if (user?.role !== 'SaaS Super Admin' && notification.companyId && notification.companyId !== 'SYSTEM' && notification.companyId.toUpperCase() !== (user?.companyId || 'FIC001').toUpperCase()) {
         return;
-      }
-
-      // Filter out Security Attendance notifications for non-super users
-      if (notification.type === 'Attendance' && user?.role !== 'Super Admin' && user?.role !== 'SaaS Super Admin') {
-        return;
-      }
-
-      // If notification has a recipient or recipients list, verify match
-      const currentUserId = String(user?._id || user?.id || '');
-      const currentUserRole = user?.role || '';
-      
-      if (notification.recipients && Array.isArray(notification.recipients) && notification.recipients.length > 0) {
-        const matchesUser = notification.recipients.some(r => {
-          if (!r) return false;
-          if (typeof r === 'string') {
-            return (currentUserId && r === currentUserId) || (currentUserRole && r.toLowerCase() === currentUserRole.toLowerCase());
-          }
-          const rUserId = String(r.userId || r.user || r._id || '');
-          const rRole = String(r.role || '');
-          return (currentUserId && rUserId === currentUserId) || (currentUserRole && rRole.toLowerCase() === currentUserRole.toLowerCase());
-        });
-        if (!matchesUser) {
-          return;
-        }
-      } else if (notification.recipient) {
-        const rStr = typeof notification.recipient === 'object' ? String(notification.recipient._id || notification.recipient.id || '') : String(notification.recipient);
-        if (rStr !== currentUserId && rStr.toLowerCase() !== currentUserRole.toLowerCase()) {
-          return;
-        }
       }
 
       const cleanedNotif = normalizeNotifications([notification])[0] || notification;
@@ -135,7 +82,6 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
         if (exists) return list;
         return [cleanedNotif, ...list];
       });
-      addNotification(cleanedNotif.title, cleanedNotif.message, 'info');
     });
 
     return () => socket.disconnect();

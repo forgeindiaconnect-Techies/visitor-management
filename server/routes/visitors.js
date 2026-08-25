@@ -420,11 +420,8 @@ router.get('/', async (req, res) => {
       query.status = req.query.status;
     }
 
-    // Enforce strict branch isolation based on role
-    if (req.userRole === 'Security' || req.userRole === 'Admin' || req.userRole === 'MD') {
-      query.branch = req.branchId;
-    } else if (req.query.branch && req.query.branch !== 'All Branches') {
-      // Super Admins can filter by branch
+    // Branch query filter
+    if (req.query.branch && req.query.branch !== 'All Branches') {
       const branchUpper = req.query.branch.toUpperCase();
       const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       let searchRegexStr = escapeRegExp(req.query.branch);
@@ -432,25 +429,25 @@ router.get('/', async (req, res) => {
       if (branchUpper.includes('THIRUPATTUR')) {
         searchRegexStr = `${searchRegexStr}|Tirupattur`;
       } else if (branchUpper.includes('KRISHNAGIRI')) {
-        searchRegexStr = `${searchRegexStr}|Salem`;
+        searchRegexStr = `${searchRegexStr}|Salem|Head Office`;
       } else if (branchUpper === 'BANGALORE') {
         searchRegexStr = `${searchRegexStr}|Bangalore`;
       }
-      query.branch = { $regex: new RegExp(`^(${searchRegexStr})$`, 'i') };
+      query.branch = { $regex: new RegExp(searchRegexStr, 'i') };
     }
 
     // Isolate HR/Employee users to ONLY see visitors explicitly tagged to them
     const normalizedRole = (req.userRole || '').toUpperCase().trim();
     if (normalizedRole === 'HR' || normalizedRole === 'EMPLOYEE') {
       const mongoose = require('mongoose');
-      const User = require('../models/User');
-      let hrUser = null;
-      if (req.userId && mongoose.isValidObjectId(req.userId)) {
+      let hrUser = req.user;
+      if (!hrUser && req.userId && mongoose.isValidObjectId(req.userId)) {
+        const User = require('../models/User');
         hrUser = await User.findById(req.userId);
       }
-      if (hrUser && hrUser.name) {
-        // Find exact matches or case-insensitive matches for the HR user's name
-        query.hostName = new RegExp(`^${hrUser.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+      const hrName = (hrUser?.name || req.headers['x-user-name'] || req.userId || '').trim();
+      if (hrName) {
+        query.hostName = new RegExp(`^${hrName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
       } else {
         query.hostName = 'DO_NOT_MATCH_ANYTHING';
       }
@@ -1461,22 +1458,19 @@ router.patch('/:id/reject', checkApprovalPermission, async (req, res) => {
 });
 
 // Host Reschedule Visitor Endpoint
-router.patch('/:id/reschedule', async (req, res) => {
+const handleRescheduleVisitor = async (req, res) => {
   try {
     const visitor = await Visitor.findOne(buildVisitorQuery(req.params.id, req.companyId));
     if (!visitor) return res.status(404).json({ message: 'Visitor request not found' });
     
-    if (visitor.visitType !== 'PRE_BOOKING' && visitor.visitType !== 'Pre-Booking') {
-      return res.status(400).json({ success: false, message: 'Only Pre-Booking visitors can be rescheduled.' });
-    }
-
-    const { visitDate, expectedArrivalTime, appointmentEndTime, reason } = req.body;
+    const { visitDate, appointmentEndTime, reason } = req.body;
+    const expectedArrivalTime = req.body.expectedArrivalTime || req.body.expectedTime;
     let changes = [];
     let primaryStatus = '';
     
     // Capture previous values BEFORE updating
     const previousDate = visitor.visitDate;
-    const previousStartTime = visitor.expectedArrivalTime;
+    const previousStartTime = visitor.expectedArrivalTime || visitor.expectedTime;
     const previousEndTime = visitor.appointmentEndTime;
 
     // Time validation if both provided
@@ -1583,7 +1577,10 @@ router.patch('/:id/reschedule', async (req, res) => {
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
-});
+};
+
+router.patch('/:id/reschedule', handleRescheduleVisitor);
+router.put('/:id/reschedule', handleRescheduleVisitor);
 
 // Update visitor status/tracking
 router.patch('/:id', async (req, res) => {
