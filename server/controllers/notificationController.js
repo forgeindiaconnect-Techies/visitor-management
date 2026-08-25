@@ -6,40 +6,56 @@ exports.getNotifications = async (req, res) => {
     const userId = req.userId || req.user?.id || req.user?._id;
     const userCompanyId = req.companyId || req.user?.companyId || 'FIC001';
 
-    let orConditions = [
-      { recipient: null },
-      { recipient: { $exists: false } },
-      { recipients: { $exists: false } },
-      { recipients: null },
-      { 'recipients.role': new RegExp(`^${role}$`, 'i') },
-      { recipientRole: new RegExp(`^${role}$`, 'i') },
-      { targetRole: new RegExp(`^${role}$`, 'i') },
-      { roles: new RegExp(`^${role}$`, 'i') }
-    ];
-
-    if (userId) {
-      orConditions.push({ 'recipients.userId': String(userId) });
-      orConditions.push({ recipient: String(userId) });
-      orConditions.push({ userId: String(userId) });
-      if (require('mongoose').isValidObjectId(userId)) {
-        orConditions.push({ 'recipients.user': userId });
-      }
-    }
-
+    const isSuperOrAdmin = ['Super Admin', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'MD'].includes(role);
     const companyRegex = new RegExp(`^${userCompanyId}$`, 'i');
-    const query = {
-      $and: [
-        {
-          $or: [
-            { companyId: companyRegex },
-            { companyId: 'SYSTEM' },
-            { companyId: null },
-            { companyId: { $exists: false } }
-          ]
-        },
-        { $or: orConditions }
-      ]
-    };
+
+    let query;
+    if (isSuperOrAdmin) {
+      // Super Admins, Admins, and MDs have company-wide notification visibility
+      query = {
+        $or: [
+          { companyId: companyRegex },
+          { companyId: 'SYSTEM' },
+          { companyId: null },
+          { companyId: { $exists: false } }
+        ]
+      };
+    } else {
+      let orConditions = [
+        { recipient: null },
+        { recipient: { $exists: false } },
+        { recipients: { $exists: false } },
+        { recipients: null },
+        { 'recipients.role': new RegExp(`^${role}$`, 'i') },
+        { recipientRole: new RegExp(`^${role}$`, 'i') },
+        { targetRole: new RegExp(`^${role}$`, 'i') },
+        { roles: { $in: [role, 'All', 'ALL'] } },
+        { roles: new RegExp(role, 'i') }
+      ];
+
+      if (userId) {
+        orConditions.push({ 'recipients.userId': String(userId) });
+        orConditions.push({ recipient: String(userId) });
+        orConditions.push({ userId: String(userId) });
+        if (require('mongoose').isValidObjectId(userId)) {
+          orConditions.push({ 'recipients.user': userId });
+        }
+      }
+
+      query = {
+        $and: [
+          {
+            $or: [
+              { companyId: companyRegex },
+              { companyId: 'SYSTEM' },
+              { companyId: null },
+              { companyId: { $exists: false } }
+            ]
+          },
+          { $or: orConditions }
+        ]
+      };
+    }
 
     const notifications = await Notification.find(query)
       .sort({ createdAt: -1 })
@@ -123,14 +139,15 @@ exports.getNotifications = async (req, res) => {
           (detectedVisitorName && visitorNameCounts[detectedVisitorName] && visitorNameCounts[detectedVisitorName] > 1)
         );
 
-        // Check In & Check Out Notifications (Unified Standard Format: Visitor Checked In / Visitor Checked Out)
+        const rawName = n.visitorName || detectedVisitorName || 'Visitor';
+        const nameCap = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+
+        // 1. Check In & Check Out Notifications
         if (
           n.title?.includes('Checked In') || 
           n.message?.includes('checked in') || 
           n.message?.includes('has arrived')
         ) {
-          const rawName = n.visitorName || detectedVisitorName || 'Visitor';
-          const nameCap = rawName.charAt(0).toUpperCase() + rawName.slice(1);
           n.title = 'Visitor Checked In';
           n.message = `Visitor ${nameCap} has arrived and checked in.`;
         }
@@ -138,50 +155,66 @@ exports.getNotifications = async (req, res) => {
           n.title?.includes('Checked Out') || 
           n.message?.includes('checked out')
         ) {
-          const rawName = n.visitorName || detectedVisitorName || 'Visitor';
-          const nameCap = rawName.charAt(0).toUpperCase() + rawName.slice(1);
           n.title = 'Visitor Checked Out';
           n.message = `Visitor ${nameCap} has checked out.`;
         }
-        else if (isReturningVisitor) {
-          // Returning Visitor lifecycle notifications
-          if (n.title === 'New Pre-Booking' || n.message.startsWith('New visitor')) {
-            n.title = 'Returning Pre-Booking';
-            n.message = n.message.replace(/^New visitor/i, 'Returning visitor');
-          }
-          else if (n.title === 'Pre-Booking Approved' || n.title === 'New Pre-Booking Approved' || n.title === 'Returning Pre-Booking Approved') {
+        // 2. Approved Notifications
+        else if (
+          n.title?.includes('Approved') || 
+          n.message?.includes('approved') || 
+          n.message?.includes('has been approved')
+        ) {
+          if (isReturningVisitor) {
             n.title = 'Returning Pre-Booking Approved';
             n.message = n.message
               .replace(/^Visitor pre-booking for/i, 'Returning visitor pre-booking for')
               .replace(/^New pre-booking for/i, 'Returning visitor pre-booking for')
               .replace(/^New visitor pre-booking for/i, 'Returning visitor pre-booking for');
+          } else {
+            n.title = 'Pre-Booking Approved';
+            n.message = n.message
+              .replace(/^Returning visitor pre-booking for/i, 'Visitor pre-booking for')
+              .replace(/^New visitor pre-booking for/i, 'Visitor pre-booking for');
           }
-          else if (n.title === 'Pre-Booking Rejected' || n.title === 'Returning Pre-Booking Rejected') {
+        }
+        // 3. Rejected Notifications
+        else if (
+          n.title?.includes('Rejected') || 
+          n.message?.includes('rejected') || 
+          n.message?.includes('has been rejected')
+        ) {
+          if (isReturningVisitor) {
             n.title = 'Returning Pre-Booking Rejected';
             n.message = n.message
               .replace(/^Visitor pre-booking for/i, 'Returning visitor pre-booking for')
               .replace(/^New pre-booking for/i, 'Returning visitor pre-booking for');
+          } else {
+            n.title = 'Pre-Booking Rejected';
           }
-          else if (n.title === 'Appointment Rescheduled' || n.title === 'Returning Appointment Rescheduled') {
+        }
+        // 4. Rescheduled Notifications
+        else if (
+          n.title?.includes('Rescheduled') || 
+          n.title?.includes('Appointment') || 
+          n.message?.includes('rescheduled')
+        ) {
+          if (isReturningVisitor) {
             n.title = 'Returning Appointment Rescheduled';
             n.message = n.message
               .replace(/for visitor/i, 'for returning visitor')
               .replace(/for new visitor/i, 'for returning visitor');
-          }
-        } else {
-          // Regular Pre-Booking lifecycle notifications
-          if (n.title === 'Returning Pre-Booking') {
-            n.title = 'New Pre-Booking';
-            n.message = n.message.replace(/^Returning visitor/i, 'New visitor');
-          }
-          else if (n.title === 'Returning Pre-Booking Approved') {
-            n.title = 'Pre-Booking Approved';
-            n.message = n.message.replace(/^Returning visitor pre-booking for/i, 'Visitor pre-booking for');
-          }
-          else if (n.title === 'Returning Appointment Rescheduled') {
+          } else {
             n.title = 'Appointment Rescheduled';
             n.message = n.message.replace(/for returning visitor/i, 'for visitor');
           }
+        }
+        // 5. New Request / Registration Notifications
+        else if (isReturningVisitor) {
+          n.title = 'A Returning Visitor Request Received';
+          n.message = `Returning visitor ${nameCap} waiting for approval`;
+        } else {
+          n.title = 'A New Visitor Request Received';
+          n.message = `New visitor ${nameCap} waiting for approval`;
         }
       }
       return n;

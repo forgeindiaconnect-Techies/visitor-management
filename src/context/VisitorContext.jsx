@@ -138,15 +138,15 @@ export const VisitorProvider = ({ children }) => {
 
       // Sort newest first before deduplication
       const allCombined = [...safeVData, ...normalizedPreBookings].sort(
-        (a, b) => new Date(b.createdAt || b.date || b.visitDate || 0) - new Date(a.createdAt || a.date || a.visitDate || 0)
+        (a, b) => new Date(b.visitDate || b.createdAt || b.date || 0) - new Date(a.visitDate || a.createdAt || a.date || 0)
       );
 
-      // Deduplicate strictly by Document ID (preventing cross-endpoint duplication of the exact same document)
+      // Deduplicate strictly by unique Document ID
       const seenIds = new Set();
       const mergedData = [];
 
       for (const item of allCombined) {
-        const idKey = String(item._id || item.id || item.visitorId || '');
+        const idKey = String(item._id || item.id || '');
 
         if (idKey && seenIds.has(idKey)) continue;
 

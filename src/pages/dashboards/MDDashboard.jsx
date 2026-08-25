@@ -3,9 +3,10 @@ import { useVisitors } from '../../context/VisitorContext';
 import { useBranch } from '../../context/BranchContext';
 import { useZones } from '../../context/ZoneContext';
 import { useAuth } from '../../context/AuthContext';
-import { Users, Clock, Building, ShieldAlert, AlertTriangle } from 'lucide-react';
+import { Users, Clock, Building, ShieldAlert, AlertTriangle, CreditCard, Activity } from 'lucide-react';
 import { calculateTimeSpent } from '../../utils/timeUtils';
 import { formatDisplayTime, formatDisplayDate } from '../../utils/dateUtils';
+import SubscriptionCountdown from '../../components/subscription/SubscriptionCountdown';
 
 import { getDistinctBranches, isBranchMatch } from '../../utils/branchUtils';
 
@@ -88,10 +89,71 @@ const MDDashboard = () => {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Managing Director Dashboard</h1>
-        <p className="text-gray-500 mt-1">Executive overview of visitor and security metrics.</p>
+      <SubscriptionCountdown user={currentUser} />
+
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Managing Director Dashboard</h1>
+          <p className="text-gray-500 mt-1">Executive overview of visitor and security metrics.</p>
+        </div>
+        <div className="flex items-center space-x-2 bg-green-50 text-green-700 px-4 py-2 rounded-full font-medium text-sm border border-green-200">
+          <Activity size={16} className="animate-pulse" />
+          <span>Live Feed Active</span>
+        </div>
       </div>
+
+      {currentUser?.role !== 'SaaS Super Admin' && (
+        <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6 flex flex-col md:flex-row justify-between items-center gap-6 border-l-4 border-l-[#1E1B6E] mb-6">
+          <div className="flex items-center space-x-4">
+            <div className="w-12 h-12 bg-indigo-50 rounded-full flex items-center justify-center text-[#1E1B6E]">
+              <CreditCard size={24} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-1">Subscription</p>
+              <h2 className="text-xl font-bold text-gray-900">{currentUser?.subscription || 'Enterprise'}</h2>
+            </div>
+          </div>
+          
+          <div className="flex-1 w-full flex flex-wrap justify-around items-center gap-6 border-y md:border-y-0 md:border-x border-gray-100 py-4 md:py-0 md:px-8">
+            <div className="text-center">
+              <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-1">Status</p>
+              <p className={`font-bold flex items-center justify-center gap-1 ${currentUser?.isExpired ? 'text-red-600' : 'text-green-600'}`}>
+                {currentUser?.isExpired ? '🔴 Expired' : '🟢 Active'}
+              </p>
+            </div>
+            
+            <div className="text-center">
+              <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-1">Valid Until</p>
+              <p className="font-bold text-gray-900">
+                {currentUser?.subscriptionExpiresAt ? new Date(currentUser.subscriptionExpiresAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-') : '15-Jul-2076'}
+              </p>
+            </div>
+            
+            <div className="text-center">
+              <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-1">Remaining</p>
+              <p className="font-bold text-gray-900">
+                {currentUser?.subscriptionExpiresAt ? (
+                  (() => {
+                    const diffTime = new Date(currentUser.subscriptionExpiresAt) - new Date();
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    if (diffDays < 0) return <span className="text-red-600">0 Days</span>;
+                    return `${diffDays} Days`;
+                  })()
+                ) : '18222 Days'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end min-w-[150px]">
+            <button 
+              onClick={() => window.dispatchEvent(new Event('open-upgrade-modal'))}
+              className="px-6 py-3 bg-[#1E1B6E] hover:bg-indigo-900 text-white text-sm font-bold rounded-xl transition-colors shadow-lg"
+            >
+              Upgrade Plan
+            </button>
+          </div>
+        </div>
+      )}
 
       {pendingApprovals > 0 && hasApprovalPermission && (
         <div className="bg-orange-50 border border-orange-200 rounded-xl p-6 shadow-sm mb-6">

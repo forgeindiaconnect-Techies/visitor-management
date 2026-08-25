@@ -27,12 +27,14 @@ const cleanMessage = (item, returningNames = new Set()) => {
       (detectedName && returningNames.has(detectedName))
     );
 
+    const nameCap = detectedName ? detectedName.charAt(0).toUpperCase() + detectedName.slice(1) : (item.visitorName || 'Visitor');
+
+    // 1. Check In & Check Out
     if (
       title?.includes('Checked In') || 
       msg?.includes('checked in') || 
       msg?.includes('has arrived')
     ) {
-      const nameCap = detectedName ? detectedName.charAt(0).toUpperCase() + detectedName.slice(1) : (item.visitorName || 'Visitor');
       title = 'Visitor Checked In';
       msg = `Visitor ${nameCap} has arrived and checked in.`;
     } 
@@ -40,30 +42,66 @@ const cleanMessage = (item, returningNames = new Set()) => {
       title?.includes('Checked Out') || 
       msg?.includes('checked out')
     ) {
-      const nameCap = detectedName ? detectedName.charAt(0).toUpperCase() + detectedName.slice(1) : (item.visitorName || 'Visitor');
       title = 'Visitor Checked Out';
       msg = `Visitor ${nameCap} has checked out.`;
     }
+    // 2. Approved Notifications
+    else if (
+      title?.includes('Approved') || 
+      msg?.includes('approved') || 
+      msg?.includes('has been approved')
+    ) {
+      if (isReturning) {
+        title = 'Returning Pre-Booking Approved';
+        msg = msg
+          .replace(/^Visitor pre-booking for/i, 'Returning visitor pre-booking for')
+          .replace(/^New pre-booking for/i, 'Returning visitor pre-booking for')
+          .replace(/^New visitor pre-booking for/i, 'Returning visitor pre-booking for');
+      } else {
+        title = 'Pre-Booking Approved';
+        msg = msg
+          .replace(/^Returning visitor pre-booking for/i, 'Visitor pre-booking for')
+          .replace(/^New visitor pre-booking for/i, 'Visitor pre-booking for');
+      }
+    }
+    // 3. Rejected Notifications
+    else if (
+      title?.includes('Rejected') || 
+      msg?.includes('rejected') || 
+      msg?.includes('has been rejected')
+    ) {
+      if (isReturning) {
+        title = 'Returning Pre-Booking Rejected';
+        msg = msg
+          .replace(/^Visitor pre-booking for/i, 'Returning visitor pre-booking for')
+          .replace(/^New pre-booking for/i, 'Returning visitor pre-booking for');
+      } else {
+        title = 'Pre-Booking Rejected';
+      }
+    }
+    // 4. Rescheduled Notifications
+    else if (
+      title?.includes('Rescheduled') || 
+      title?.includes('Appointment') || 
+      msg?.includes('rescheduled')
+    ) {
+      if (isReturning) {
+        title = 'Returning Appointment Rescheduled';
+        msg = msg
+          .replace(/for visitor/i, 'for returning visitor')
+          .replace(/for new visitor/i, 'for returning visitor');
+      } else {
+        title = 'Appointment Rescheduled';
+        msg = msg.replace(/for returning visitor/i, 'for visitor');
+      }
+    }
+    // 5. New Request / Registration Notifications
     else if (isReturning) {
-      if (title === 'New Pre-Booking') title = 'Returning Pre-Booking';
-      else if (title === 'Pre-Booking Approved' || title === 'New Pre-Booking Approved') title = 'Returning Pre-Booking Approved';
-      else if (title === 'Pre-Booking Rejected') title = 'Returning Pre-Booking Rejected';
-      else if (title === 'Appointment Rescheduled') title = 'Returning Appointment Rescheduled';
-
-      msg = msg
-        .replace(/^New visitor/i, 'Returning visitor')
-        .replace(/^Visitor pre-booking for/i, 'Returning visitor pre-booking for')
-        .replace(/^New pre-booking for/i, 'Returning visitor pre-booking for')
-        .replace(/for visitor/i, 'for returning visitor');
+      title = 'A Returning Visitor Request Received';
+      msg = `Returning visitor ${nameCap} waiting for approval`;
     } else {
-      if (title === 'Returning Pre-Booking') title = 'New Pre-Booking';
-      else if (title === 'Returning Pre-Booking Approved') title = 'Pre-Booking Approved';
-      else if (title === 'Returning Appointment Rescheduled') title = 'Appointment Rescheduled';
-
-      msg = msg
-        .replace(/^Returning visitor pre-booking for/i, 'Visitor pre-booking for')
-        .replace(/^Returning visitor/i, 'Visitor')
-        .replace(/for returning visitor/i, 'for visitor');
+      title = 'A New Visitor Request Received';
+      msg = `New visitor ${nameCap} waiting for approval`;
     }
 
     return {

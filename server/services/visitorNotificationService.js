@@ -129,7 +129,7 @@ const notifyVisitorEvent = async ({
           </div>
         `;
 
-        notificationTitle = isReturningVisitor ? 'Returning Pre-Booking' : 'New Pre-Booking';
+        notificationTitle = isReturningVisitor ? 'A Returning Visitor Request Received' : 'A New Visitor Request Received';
         notificationMessage = `${isReturningVisitor ? 'Returning' : 'New'} visitor ${visitorDisplayName} waiting for approval`;
         sendEmailToVisitor = true;
 

@@ -600,7 +600,7 @@ router.post('/', async (req, res) => {
       await createNotification({
         eventId: `DIRECT_VISIT_CREATED_${vId}`,
         type: 'DIRECT_VISIT_CREATED',
-        title: 'New Direct Visit',
+        title: 'A New Visitor Request Received',
         message: `${newVisitor.visitorName || newVisitor.fullName} has registered as a direct visitor.`,
         visitorId: vId,
         visitorType: 'DIRECT_VISIT',
@@ -625,7 +625,7 @@ router.post('/', async (req, res) => {
       branchId: newVisitor.branch,
       type: 'success',
       module: 'Visitors',
-      title: initialStatus === 'Pre-Booked' ? '📅 Visitor Pre-Booked' : '👥 Visitor Registered',
+      title: 'A New Visitor Request Received',
       message: `${newVisitor.visitorName} has been registered for ${newVisitor.hostName || 'a visit'}.`,
       createdBy: req.user ? req.user.name : 'Security'
     });

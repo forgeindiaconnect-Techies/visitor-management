@@ -128,15 +128,34 @@ const VisitorList = () => {
   };
 
   const directVisitors = (Array.isArray(visitors) ? visitors : []).filter(v => {
-    // If it's a scheduled pre-booking assigned to an HR/Staff host, exclude from Direct Visits
     const host = String(v.hostEmployee || v.hostName || '').trim().toLowerCase();
-    const isDirectHost = host === 'direct visits' || host === 'direct visit' || host.includes('direct');
+    
+    // 1. Explicit Direct Visit tags & Host "Direct Visits"
+    const isDirect = host === 'direct visits' || host === 'direct visit' || host.includes('direct') ||
+                     v.registrationType === 'Direct Visit' || v.registrationType === 'Walk-in' ||
+                     v.visitType === 'DIRECT_VISIT' || v.visitorType === 'NEW_VISITOR' || v.bookingType === 'DIRECT_VISIT';
+    if (isDirect) return true;
 
-    if (v.isPreBooking && !isDirectHost) {
-      return false;
+    // 2. Direct desk registrations (from Visitor collection)
+    if (!v.isPreBooking) return true;
+
+    // 3. Returning visitors
+    if (v.isReturning || v.returningVisitor) return true;
+
+    // 4. Arrived / Checked-in / Checked-out visitors
+    const statusUpper = (v.status || '').toUpperCase();
+    if (
+      statusUpper === 'CHECKED_IN' || 
+      statusUpper === 'CHECKED IN' || 
+      statusUpper === 'CHECKED_OUT' || 
+      statusUpper === 'CHECKED OUT' || 
+      statusUpper === 'INSIDE' || 
+      statusUpper === 'EXITED'
+    ) {
+      return true;
     }
 
-    return true;
+    return false;
   });
 
   const statusCounts = {

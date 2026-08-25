@@ -110,6 +110,10 @@ const ReturningVisitor = () => {
       hostName: formData.hostName,
       visitDate: formData.visitDate,
       isReturning: true,
+      returningVisitor: true,
+      visitType: 'DIRECT_VISIT',
+      registrationType: 'Direct Visit',
+      bookingType: 'DIRECT_VISIT',
       status: 'Pending'
     };
 
