@@ -27,26 +27,37 @@ const cleanMessage = (item, returningNames = new Set()) => {
       (detectedName && returningNames.has(detectedName))
     );
 
-    if (isReturning) {
+    if (
+      title?.includes('Checked In') || 
+      msg?.includes('checked in') || 
+      msg?.includes('has arrived')
+    ) {
+      const nameCap = detectedName ? detectedName.charAt(0).toUpperCase() + detectedName.slice(1) : (item.visitorName || 'Visitor');
+      title = 'Visitor Checked In';
+      msg = `Visitor ${nameCap} has arrived and checked in.`;
+    } 
+    else if (
+      title?.includes('Checked Out') || 
+      msg?.includes('checked out')
+    ) {
+      const nameCap = detectedName ? detectedName.charAt(0).toUpperCase() + detectedName.slice(1) : (item.visitorName || 'Visitor');
+      title = 'Visitor Checked Out';
+      msg = `Visitor ${nameCap} has checked out.`;
+    }
+    else if (isReturning) {
       if (title === 'New Pre-Booking') title = 'Returning Pre-Booking';
       else if (title === 'Pre-Booking Approved' || title === 'New Pre-Booking Approved') title = 'Returning Pre-Booking Approved';
       else if (title === 'Pre-Booking Rejected') title = 'Returning Pre-Booking Rejected';
-      else if (title === 'Visitor Checked In' || title === 'Pre-Booking Checked In') title = 'Returning Pre-Booking Checked In';
-      else if (title === 'Visitor Checked Out' || title === 'Pre-Booking Checked Out') title = 'Returning Pre-Booking Checked Out';
       else if (title === 'Appointment Rescheduled') title = 'Returning Appointment Rescheduled';
 
       msg = msg
         .replace(/^New visitor/i, 'Returning visitor')
         .replace(/^Visitor pre-booking for/i, 'Returning visitor pre-booking for')
         .replace(/^New pre-booking for/i, 'Returning visitor pre-booking for')
-        .replace(/^Visitor\s+([A-Za-z0-9\s]+?)\s+has\s+checked/i, 'Returning visitor $1 has checked')
-        .replace(/^Visitor\s+([A-Za-z0-9\s]+?)\s+has\s+arrived/i, 'Returning visitor $1 has arrived')
         .replace(/for visitor/i, 'for returning visitor');
     } else {
       if (title === 'Returning Pre-Booking') title = 'New Pre-Booking';
       else if (title === 'Returning Pre-Booking Approved') title = 'Pre-Booking Approved';
-      else if (title === 'Returning Pre-Booking Checked In') title = 'Pre-Booking Checked In';
-      else if (title === 'Returning Pre-Booking Checked Out') title = 'Pre-Booking Checked Out';
       else if (title === 'Returning Appointment Rescheduled') title = 'Appointment Rescheduled';
 
       msg = msg

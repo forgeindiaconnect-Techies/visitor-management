@@ -270,8 +270,8 @@ const notifyVisitorEvent = async ({
         break;
 
       case VISITOR_EVENTS.CHECKED_IN:
-        notificationTitle = isReturningVisitor ? 'Returning Pre-Booking Checked In' : 'Pre-Booking Checked In';
-        notificationMessage = `${isReturningVisitor ? 'Returning visitor' : 'Visitor'} ${visitor.visitorName || visitor.fullName} has arrived and checked in.`;
+        notificationTitle = 'Visitor Checked In';
+        notificationMessage = `Visitor ${visitorDisplayName} has arrived and checked in.`;
         sendEmailToVisitor = false;
         
         notifyRecipients = await getDashboardUserIds();
@@ -279,8 +279,8 @@ const notifyVisitorEvent = async ({
         break;
 
       case VISITOR_EVENTS.CHECKED_OUT:
-        notificationTitle = isReturningVisitor ? 'Returning Pre-Booking Checked Out' : 'Pre-Booking Checked Out';
-        notificationMessage = `${isReturningVisitor ? 'Returning visitor' : 'Visitor'} ${visitor.visitorName || visitor.fullName} has checked out.`;
+        notificationTitle = 'Visitor Checked Out';
+        notificationMessage = `Visitor ${visitorDisplayName} has checked out.`;
         sendEmailToVisitor = false;
         
         notifyRecipients = await getDashboardUserIds();

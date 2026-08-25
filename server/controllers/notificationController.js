@@ -8,14 +8,13 @@ exports.getNotifications = async (req, res) => {
 
     let orConditions = [
       { recipient: null },
-      { recipients: { $size: 0 } },
+      { recipient: { $exists: false } },
       { recipients: { $exists: false } },
       { recipients: null },
       { 'recipients.role': new RegExp(`^${role}$`, 'i') },
       { recipientRole: new RegExp(`^${role}$`, 'i') },
       { targetRole: new RegExp(`^${role}$`, 'i') },
-      { roles: new RegExp(`^${role}$`, 'i') },
-      { roles: { $in: [role] } }
+      { roles: new RegExp(`^${role}$`, 'i') }
     ];
 
     if (userId) {
@@ -124,8 +123,28 @@ exports.getNotifications = async (req, res) => {
           (detectedVisitorName && visitorNameCounts[detectedVisitorName] && visitorNameCounts[detectedVisitorName] > 1)
         );
 
-        if (isReturningVisitor) {
-          // Returning Visitor lifecycle notifications (Strict Returning Format)
+        // Check In & Check Out Notifications (Unified Standard Format: Visitor Checked In / Visitor Checked Out)
+        if (
+          n.title?.includes('Checked In') || 
+          n.message?.includes('checked in') || 
+          n.message?.includes('has arrived')
+        ) {
+          const rawName = n.visitorName || detectedVisitorName || 'Visitor';
+          const nameCap = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+          n.title = 'Visitor Checked In';
+          n.message = `Visitor ${nameCap} has arrived and checked in.`;
+        }
+        else if (
+          n.title?.includes('Checked Out') || 
+          n.message?.includes('checked out')
+        ) {
+          const rawName = n.visitorName || detectedVisitorName || 'Visitor';
+          const nameCap = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+          n.title = 'Visitor Checked Out';
+          n.message = `Visitor ${nameCap} has checked out.`;
+        }
+        else if (isReturningVisitor) {
+          // Returning Visitor lifecycle notifications
           if (n.title === 'New Pre-Booking' || n.message.startsWith('New visitor')) {
             n.title = 'Returning Pre-Booking';
             n.message = n.message.replace(/^New visitor/i, 'Returning visitor');
@@ -143,19 +162,6 @@ exports.getNotifications = async (req, res) => {
               .replace(/^Visitor pre-booking for/i, 'Returning visitor pre-booking for')
               .replace(/^New pre-booking for/i, 'Returning visitor pre-booking for');
           }
-          else if (n.title === 'Visitor Checked In' || n.title === 'Pre-Booking Checked In' || n.title === 'Returning Pre-Booking Checked In') {
-            n.title = 'Returning Pre-Booking Checked In';
-            n.message = n.message
-              .replace(/^Visitor\s+([A-Za-z0-9\s]+?)\s+has\s+arrived/i, 'Returning visitor $1 has arrived')
-              .replace(/^Visitor\s+([A-Za-z0-9\s]+?)\s+has\s+checked/i, 'Returning visitor $1 has checked')
-              .replace(/^(Visitor|New visitor)/i, 'Returning visitor');
-          }
-          else if (n.title === 'Visitor Checked Out' || n.title === 'Pre-Booking Checked Out' || n.title === 'Returning Pre-Booking Checked Out') {
-            n.title = 'Returning Pre-Booking Checked Out';
-            n.message = n.message
-              .replace(/^Visitor\s+([A-Za-z0-9\s]+?)\s+has\s+checked/i, 'Returning visitor $1 has checked')
-              .replace(/^(Visitor|New visitor)/i, 'Returning visitor');
-          }
           else if (n.title === 'Appointment Rescheduled' || n.title === 'Returning Appointment Rescheduled') {
             n.title = 'Returning Appointment Rescheduled';
             n.message = n.message
@@ -163,7 +169,7 @@ exports.getNotifications = async (req, res) => {
               .replace(/for new visitor/i, 'for returning visitor');
           }
         } else {
-          // Regular Pre-Booking lifecycle notifications (Strict New Pre-Booking Format)
+          // Regular Pre-Booking lifecycle notifications
           if (n.title === 'Returning Pre-Booking') {
             n.title = 'New Pre-Booking';
             n.message = n.message.replace(/^Returning visitor/i, 'New visitor');
@@ -171,14 +177,6 @@ exports.getNotifications = async (req, res) => {
           else if (n.title === 'Returning Pre-Booking Approved') {
             n.title = 'Pre-Booking Approved';
             n.message = n.message.replace(/^Returning visitor pre-booking for/i, 'Visitor pre-booking for');
-          }
-          else if (n.title === 'Returning Pre-Booking Checked In') {
-            n.title = 'Pre-Booking Checked In';
-            n.message = n.message.replace(/^Returning visitor/i, 'Visitor');
-          }
-          else if (n.title === 'Returning Pre-Booking Checked Out') {
-            n.title = 'Pre-Booking Checked Out';
-            n.message = n.message.replace(/^Returning visitor/i, 'Visitor');
           }
           else if (n.title === 'Returning Appointment Rescheduled') {
             n.title = 'Appointment Rescheduled';

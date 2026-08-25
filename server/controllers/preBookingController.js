@@ -152,6 +152,9 @@ const createPreBooking = async (req, res) => {
     const visitorId = await createVisitorId();
 
     const isNewVisitor = hostEmployee === "New Visitors" || hostEmployee === "New Visitor" || hostEmployee === "Direct Visits" || hostEmployee === "Direct Visit";
+    const finalAssignedHr = (isNewVisitor || !assignedHr) ? null : assignedHr;
+    const visitorType = isNewVisitor ? "NEW_VISITOR" : "NORMAL";
+
     const isExplicitReturning = Boolean(
       req.body.returningVisitor || 
       req.body.isReturningVisitor || 

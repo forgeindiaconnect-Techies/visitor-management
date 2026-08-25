@@ -404,14 +404,21 @@ router.get('/todays-summary', async (req, res) => {
 // Get all visitors
 router.get('/', async (req, res) => {
   try {
-    let query = { companyId: req.companyId };
+    const userCompanyId = req.companyId || 'FIC001';
+    const companyRegex = new RegExp(`^${userCompanyId}$`, 'i');
+
+    let query = {
+      $or: [
+        { companyId: companyRegex },
+        { companyId: 'SYSTEM' },
+        { companyId: null },
+        { companyId: { $exists: false } }
+      ]
+    };
 
     if (req.query.status) {
       query.status = req.query.status;
     }
-
-    // Explicitly lock to DIRECT_VISIT records only to maintain absolute separation
-    query.bookingType = "DIRECT_VISIT";
 
     // Enforce strict branch isolation based on role
     if (req.userRole === 'Security' || req.userRole === 'Admin' || req.userRole === 'MD') {
