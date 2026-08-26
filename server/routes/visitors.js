@@ -224,28 +224,13 @@ router.post('/public-prebook', async (req, res) => {
 
     const savedVisitor = await newVisitor.save();
 
-    // Create Notification for Host / Admin
+    // Create Notification for Host / Admin (Single document with unique eventId)
     try {
       const superAdmins = await User.find({
         companyId: companyId,
-        role: 'Super Admin'
+        role: { $in: ['Super Admin', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'MD', 'Senior HR', 'HR', 'Security', 'Receptionist'] }
       });
 
-      const superAdminNotifications = superAdmins.map((admin) => ({
-        companyId,
-        title: 'New Public Pre-Booking Request',
-        message: `Visitor ${visitorName} pre-booked a visit to meet ${hostName} on ${visitDate}.`,
-        type: 'Visitor',
-        branch: targetBranch,
-        recipient: admin._id,
-        read: false
-      }));
-
-      if (superAdminNotifications.length > 0) {
-        await Notification.insertMany(superAdminNotifications);
-      }
-
-      // Check if hostName matches an HR
       let matchedHr = null;
       if (hostName && hostName !== 'New Visitors') {
         matchedHr = await User.findOne({
@@ -253,35 +238,44 @@ router.post('/public-prebook', async (req, res) => {
           role: 'HR',
           name: new RegExp(`^${hostName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i')
         });
-
-        if (matchedHr) {
-          await Notification.create({
-            companyId,
-            title: 'New Public Pre-Booking Assigned',
-            message: `Visitor ${visitorName} pre-booked a visit to meet you on ${visitDate}.`,
-            type: 'Visitor',
-            branch: targetBranch,
-            recipient: matchedHr._id,
-            read: false
-          });
-        }
       }
 
+      const recipientIds = superAdmins.map(admin => admin._id.toString());
+      if (matchedHr && !recipientIds.includes(matchedHr._id.toString())) {
+        recipientIds.push(matchedHr._id.toString());
+      }
+
+      const formattedRecipients = recipientIds.map(id => ({
+        userId: String(id),
+        user: id
+      }));
+
+      const eventId = `PREBOOK_REGISTERED_${savedVisitor._id}`;
+
+      const notificationDoc = await Notification.findOneAndUpdate(
+        { eventId },
+        {
+          $setOnInsert: {
+            eventId,
+            companyId: companyId || 'FIC001',
+            branchId: targetBranch,
+            recipients: formattedRecipients,
+            type: 'PREBOOKING_REGISTERED',
+            module: 'PreBooking',
+            title: 'New Pre-Booking',
+            message: `${savedVisitor.visitorName || 'Visitor'} is waiting for approval.`,
+            isRead: false
+          }
+        },
+        {
+          upsert: true,
+          returnDocument: 'after'
+        }
+      );
+
       const io = req.app.get('io');
-      if (io) {
-        io.emit('new_notification', {
-          _id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-          createdAt: new Date().toISOString(),
-          type: 'Visitor',
-          title: 'New Public Pre-Booking Request',
-          message: `Visitor ${visitorName} pre-booked a visit to meet ${hostName} on ${visitDate}.`,
-          companyId: companyId,
-          branchId: targetBranch,
-          recipients: [
-            ...superAdmins.map(admin => admin._id.toString()),
-            ...(matchedHr ? [matchedHr._id.toString()] : [])
-          ]
-        });
+      if (io && notificationDoc) {
+        io.emit('new_notification', notificationDoc);
       }
     } catch (notifErr) {
       console.warn('Could not create notification:', notifErr.message);

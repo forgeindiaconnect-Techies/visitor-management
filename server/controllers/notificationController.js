@@ -36,11 +36,11 @@ exports.getNotifications = async (req, res) => {
         if (testRegex.test(nameCap)) continue;
 
         const isRet = Boolean(pb.isReturning || pb.returningVisitor);
-        const eventId = `REGISTERED_${pb._id}`;
+        const eventId = `PREBOOK_REGISTERED_${pb._id}`;
         
         syncPromises.push(
           Notification.findOneAndUpdate(
-            { eventId },
+            { eventId: { $in: [eventId, `REGISTERED_${pb._id}`, `VISITOR_REGISTERED_${pb._id}`] } },
             {
               $setOnInsert: {
                 eventId,
@@ -52,8 +52,8 @@ exports.getNotifications = async (req, res) => {
                 preBookingId: pb._id,
                 type: 'Visitor',
                 module: 'PreBooking',
-                title: isRet ? 'A Returning Visitor Request Received' : 'A New Visitor Request Received',
-                message: `${isRet ? 'Returning' : 'New'} visitor ${nameCap} waiting for approval`,
+                title: isRet ? 'Returning Visitor Request Received' : 'New Pre-Booking',
+                message: `${nameCap} is waiting for approval.`,
                 isRead: false,
                 createdAt: pb.createdAt || new Date()
               }
@@ -83,8 +83,8 @@ exports.getNotifications = async (req, res) => {
                 visitorName: nameCap,
                 type: 'Visitor',
                 module: 'Visitors',
-                title: isRet ? 'A Returning Visitor Request Received' : 'A New Visitor Request Received',
-                message: `${isRet ? 'Returning' : 'New'} visitor ${nameCap} waiting for approval`,
+                title: isRet ? 'Returning Visitor Request Received' : 'New Pre-Booking',
+                message: `${nameCap} is waiting for approval.`,
                 isRead: false,
                 createdAt: v.createdAt || new Date()
               }
@@ -132,105 +132,156 @@ exports.getNotifications = async (req, res) => {
       if (name) returningNameSet.add(name);
     }
 
-    const cleanedNotifications = (Array.isArray(notifications) ? notifications : []).map(n => {
-      if (n && typeof n.message === 'string') {
-        n.message = n.message
-          .replace(/vaideeswari[\.\s]*2007/gi, 'Vaideeswari')
-          .replace(/([\w\s]+)\.\s*\d{4}(\s+has|\s+was|\s+is|\.)/gi, (match, p1, p2) => `${p1.trim()}${p2}`);
+    const cleanedNotifications = await Promise.all(
+      (Array.isArray(notifications) ? notifications : []).map(async (n) => {
+        if (n && typeof n.message === 'string') {
+          n.message = n.message
+            .replace(/vaideeswari[\.\s]*2007/gi, 'Vaideeswari')
+            .replace(/([\w\s]+)\.\s*\d{4}(\s+has|\s+was|\s+is|\.)/gi, (match, p1, p2) => `${p1.trim()}${p2}`);
 
-        const dashMatch = n.message.match(/^([A-Za-z\s]+)\s*—\s*(\d{1,2}\s+[A-Za-z]+\s+\d{4},?\s*.*)$/);
-        if (dashMatch && (n.title?.includes('Reschedule') || n.title?.includes('Appointment'))) {
-          const visitorName = n.visitorName || n.visitorId || 'Visitor';
-          n.message = `${dashMatch[1].trim()} has rescheduled the appointment for visitor ${visitorName} to ${dashMatch[2]}.`;
-        }
+          const dashMatch = n.message.match(/^([A-Za-z\s]+)\s*—\s*(\d{1,2}\s+[A-Za-z]+\s+\d{4},?\s*.*)$/);
+          if (dashMatch && (n.title?.includes('Reschedule') || n.title?.includes('Appointment'))) {
+            const visitorName = n.visitorName || n.visitorId || 'Visitor';
+            n.message = `${dashMatch[1].trim()} has rescheduled the appointment for visitor ${visitorName} to ${dashMatch[2]}.`;
+          }
 
-        // Strictly check if candidate was registered via Returning Visitor flow
-        const visitorRawName = (n.visitorName || '').trim().toLowerCase();
-        const isReturningVisitor = Boolean(
-          (n.registrationType === 'Returning') ||
-          (visitorRawName && returningNameSet.has(visitorRawName))
-        );
+          // Strictly check if candidate was registered via Returning Visitor flow
+          const visitorRawName = (n.visitorName || '').trim().toLowerCase();
+          const isReturningVisitor = Boolean(
+            (n.registrationType === 'Returning') ||
+            (visitorRawName && returningNameSet.has(visitorRawName))
+          );
 
-        const rawName = n.visitorName || 'Visitor';
-        const nameCap = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+          // Get the REAL visitor name
+          let rawName = n.visitorName || '';
+          if (/^(is|has|was|has checked in|has checked out|visitor)$/i.test(rawName)) {
+            rawName = '';
+          }
 
-        // 1. Check In & Check Out Notifications
-        if (
-          n.title?.includes('Checked In') || 
-          n.message?.includes('checked in') || 
-          n.message?.includes('has arrived')
-        ) {
-          n.title = 'Visitor Checked In';
-          n.message = `Visitor ${nameCap} has arrived and checked in.`;
-        }
-        else if (
-          n.title?.includes('Checked Out') || 
-          n.message?.includes('checked out')
-        ) {
-          n.title = 'Visitor Checked Out';
-          n.message = `Visitor ${nameCap} has checked out.`;
-        }
-        // 2. Approved Notifications
-        else if (
-          n.title?.includes('Approved') || 
-          n.message?.includes('approved') || 
-          n.message?.includes('has been approved')
-        ) {
-          if (isReturningVisitor) {
-            n.title = 'Returning Pre-Booking Approved';
-            n.message = n.message
-              .replace(/^Visitor pre-booking for/i, 'Returning visitor pre-booking for')
-              .replace(/^New pre-booking for/i, 'Returning visitor pre-booking for')
-              .replace(/^New visitor pre-booking for/i, 'Returning visitor pre-booking for');
-          } else {
+          if (n.preBookingId) {
+            try {
+              const booking = await PreBooking.findById(
+                n.preBookingId,
+                'fullName visitorName'
+              ).lean();
+
+              if (booking) {
+                rawName =
+                  booking.fullName ||
+                  booking.visitorName ||
+                  rawName;
+              }
+            } catch (err) {
+              console.warn(
+                'Unable to resolve notification visitor name:',
+                err.message
+              );
+            }
+          }
+
+          if (!rawName && n.visitorId) {
+            try {
+              const visitor = await Visitor.findOne(
+                {
+                  $or: [
+                    { visitorId: n.visitorId },
+                    { visitId: n.visitorId }
+                  ]
+                },
+                'visitorName fullName'
+              ).lean();
+
+              if (visitor) {
+                rawName =
+                  visitor.visitorName ||
+                  visitor.fullName ||
+                  rawName;
+              }
+            } catch (err) {
+              console.warn(
+                'Unable to resolve direct visitor name:',
+                err.message
+              );
+            }
+          }
+
+          if (!rawName && n.message) {
+            const matchName = n.message.match(/^([A-Za-z0-9\s]+?)\s+(?:has checked in|has checked out|is waiting for approval|was approved|was rejected)/i);
+            if (matchName && !/^(is|has|visitor)$/i.test(matchName[1].trim())) {
+              rawName = matchName[1].trim();
+            }
+          }
+
+          rawName = String(rawName || 'Visitor').trim();
+
+          const nameCap =
+            rawName.charAt(0).toUpperCase() +
+            rawName.slice(1);
+
+          // 1. Check In & Check Out Notifications
+          if (
+            n.title?.includes('Checked In') || 
+            n.message?.includes('checked in') || 
+            n.message?.includes('has arrived')
+          ) {
+            n.title = 'Pre-Booking Checked In';
+            n.message = `${nameCap} has checked in.`;
+          }
+          else if (
+            n.title?.includes('Checked Out') || 
+            n.message?.includes('checked out')
+          ) {
+            n.title = 'Pre-Booking Checked Out';
+            n.message = `${nameCap} has checked out.`;
+          }
+          // 2. Approved Notifications
+          else if (
+            n.title?.includes('Approved') || 
+            n.message?.includes('approved') || 
+            n.message?.includes('has been approved') ||
+            n.message?.includes('was approved')
+          ) {
             n.title = 'Pre-Booking Approved';
-            n.message = n.message
-              .replace(/^Returning visitor pre-booking for/i, 'Visitor pre-booking for')
-              .replace(/^New visitor pre-booking for/i, 'Visitor pre-booking for');
+            if (!n.message.includes(' was approved by ')) {
+              n.message = n.message
+                .replace(/^(Returning visitor|Visitor|New visitor|New)?\s*pre-booking for\s+/i, '')
+                .replace(/\s+has been approved by\s+/i, ' was approved by ');
+            }
           }
-        }
-        // 3. Rejected Notifications
-        else if (
-          n.title?.includes('Rejected') || 
-          n.message?.includes('rejected') || 
-          n.message?.includes('has been rejected')
-        ) {
-          if (isReturningVisitor) {
-            n.title = 'Returning Pre-Booking Rejected';
-            n.message = n.message
-              .replace(/^Visitor pre-booking for/i, 'Returning visitor pre-booking for')
-              .replace(/^New pre-booking for/i, 'Returning visitor pre-booking for');
-          } else {
+          // 3. Rejected Notifications
+          else if (
+            n.title?.includes('Rejected') || 
+            n.message?.includes('rejected') || 
+            n.message?.includes('has been rejected') ||
+            n.message?.includes('was rejected')
+          ) {
             n.title = 'Pre-Booking Rejected';
+            if (!n.message.includes(' was rejected by ')) {
+              n.message = n.message
+                .replace(/^(Returning visitor|Visitor|New visitor|New)?\s*pre-booking for\s+/i, '')
+                .replace(/\s+has been rejected by\s+/i, ' was rejected by ');
+            }
           }
-        }
-        // 4. Rescheduled Notifications
-        else if (
-          n.title?.includes('Rescheduled') || 
-          n.title?.includes('Appointment') || 
-          n.message?.includes('rescheduled')
-        ) {
-          if (isReturningVisitor) {
-            n.title = 'Returning Appointment Rescheduled';
-            n.message = n.message
-              .replace(/for visitor/i, 'for returning visitor')
-              .replace(/for new visitor/i, 'for returning visitor');
-          } else {
+          // 4. Rescheduled Notifications
+          else if (
+            n.title?.includes('Rescheduled') || 
+            n.title?.includes('Appointment') || 
+            n.message?.includes('rescheduled')
+          ) {
             n.title = 'Appointment Rescheduled';
-            n.message = n.message.replace(/for returning visitor/i, 'for visitor');
+          }
+          // 5. New Request / Registration Notifications
+          else if (isReturningVisitor) {
+            n.title = 'Returning Visitor Request Received';
+            n.message = `${nameCap} is waiting for approval.`;
+          } else {
+            n.title = 'New Pre-Booking';
+            n.message = `${nameCap} is waiting for approval.`;
           }
         }
-        // 5. New Request / Registration Notifications
-        else if (isReturningVisitor) {
-          n.title = 'A Returning Visitor Request Received';
-          n.message = `Returning visitor ${nameCap} waiting for approval`;
-        } else {
-          n.title = 'A New Visitor Request Received';
-          n.message = `New visitor ${nameCap} waiting for approval`;
-        }
-      }
-      return n;
-    });
+        return n;
+      })
+    );
 
     res.status(200).json({
       success: true,

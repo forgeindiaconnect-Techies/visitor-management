@@ -120,24 +120,47 @@ mongoose.connect(process.env.MONGO_URI)
       const PreBooking = require('./models/PreBooking');
       const Visitor = require('./models/Visitor');
       const Notification = require('./models/Notification');
-      const namesRegex = /^(test|test 1|test 3|lokeee)$/i;
+      const namesRegex = /^(test|test\s*\d*|tet|teest|lokeee|sample|demo)$/i;
       const cutoffDate = new Date('2026-08-26T00:00:00.000Z');
 
-      await PreBooking.deleteMany({ fullName: { $regex: namesRegex } });
+      await PreBooking.deleteMany({ 
+        $or: [
+          { fullName: { $regex: namesRegex } },
+          { mobileNumber: { $in: ['6985471278', '6985471236', '9585712541'] } }
+        ]
+      });
       await Visitor.deleteMany({
         $or: [
-          { createdAt: { $lt: cutoffDate } },
-          { visitDate: { $lt: '2026-08-26' } },
           { visitorName: { $regex: namesRegex } },
-          { fullName: { $regex: namesRegex } }
+          { fullName: { $regex: namesRegex } },
+          { mobileNumber: { $in: ['6985471278', '6985471236', '9585712541'] } }
         ]
       });
       await Notification.deleteMany({
         $or: [
+          { message: { $in: ["Is is waiting for approval.", "Has checked in has checked in.", "Has checked out has checked out.", "Visitor is waiting for approval.", "Visitor has checked in.", "Visitor has checked out."] } },
+          { message: { $regex: /(^Is is waiting|^Has checked in has checked in|^Has checked out has checked out|^Visitor is waiting|^Visitor has checked|visitor Visitor waiting)/i } },
+          { visitorName: { $in: ["Is", "Has checked in", "Has checked out", "is", "has", "was", "Visitor", "visitor"] } },
           { visitorName: { $regex: namesRegex } },
-          { message: { $regex: /(test 1|test 3|lokeee|\btest\b)/i } }
+          { message: { $regex: /(test 1|test 3|lokeee|\btest\b|\btet\b|\bteest\b)/i } }
         ]
       });
+
+      // Prune any legacy duplicate notifications by eventId / (preBookingId + type)
+      const allNotifications = await Notification.find({}).sort({ createdAt: -1 });
+      const seenNotifs = new Set();
+      const duplicateIdsToDelete = [];
+      for (const n of allNotifications) {
+        const key = n.eventId || `${n.type || ''}_${n.preBookingId || ''}_${n.title || ''}`;
+        if (seenNotifs.has(key)) {
+          duplicateIdsToDelete.push(n._id);
+        } else {
+          seenNotifs.add(key);
+        }
+      }
+      if (duplicateIdsToDelete.length > 0) {
+        await Notification.deleteMany({ _id: { $in: duplicateIdsToDelete } });
+      }
       console.log('🧹 Cleaned up test records, notifications, and legacy visitor data before Aug 26.');
     } catch (err) {
       console.error('Error initializing default approval permissions or cleanup:', err);
@@ -273,23 +296,29 @@ app.all('/api/cleanup-test-data', async (req, res) => {
     const PreBooking = require('./models/PreBooking');
     const Visitor = require('./models/Visitor');
     const Notification = require('./models/Notification');
-    const namesRegex = /^(test|test 1|test 3|lokeee)$/i;
-    const cutoffDate = new Date('2026-08-26T00:00:00.000Z');
+    const namesRegex = /^(test|test\s*\d*|tet|teest|lokeee|sample|demo)$/i;
 
     const [pbRes, visRes, notifRes] = await Promise.all([
-      PreBooking.deleteMany({ fullName: { $regex: namesRegex } }),
+      PreBooking.deleteMany({ 
+        $or: [
+          { fullName: { $regex: namesRegex } },
+          { mobileNumber: { $in: ['6985471278', '6985471236', '9585712541'] } }
+        ]
+      }),
       Visitor.deleteMany({
         $or: [
-          { createdAt: { $lt: cutoffDate } },
-          { visitDate: { $lt: '2026-08-26' } },
           { visitorName: { $regex: namesRegex } },
-          { fullName: { $regex: namesRegex } }
+          { fullName: { $regex: namesRegex } },
+          { mobileNumber: { $in: ['6985471278', '6985471236', '9585712541'] } }
         ]
       }),
       Notification.deleteMany({
         $or: [
+          { message: { $in: ["Is is waiting for approval.", "Has checked in has checked in.", "Has checked out has checked out.", "Visitor is waiting for approval.", "Visitor has checked in.", "Visitor has checked out."] } },
+          { message: { $regex: /(^Is is waiting|^Has checked in has checked in|^Has checked out has checked out|^Visitor is waiting|^Visitor has checked|visitor Visitor waiting)/i } },
+          { visitorName: { $in: ["Is", "Has checked in", "Has checked out", "is", "has", "was", "Visitor", "visitor"] } },
           { visitorName: { $regex: namesRegex } },
-          { message: { $regex: /(test 1|test 3|lokeee|\btest\b)/i } }
+          { message: { $regex: /(test 1|test 3|lokeee|\btest\b|\btet\b|\bteest\b)/i } }
         ]
       })
     ]);

@@ -84,6 +84,10 @@ const notifyVisitorEvent = async ({
       visitor.registrationType === 'Returning'
     );
 
+    const visitorDisplayName = formatDisplayName(
+      visitor.visitorName || visitor.fullName || 'Visitor'
+    );
+
     switch (event) {
       case VISITOR_EVENTS.REGISTERED:
         emailSubject = isReturningVisitor 
@@ -108,8 +112,17 @@ const notifyVisitorEvent = async ({
           </div>
         `;
 
-        notificationTitle = isReturningVisitor ? 'A Returning Visitor Request Received' : 'A New Visitor Request Received';
-        notificationMessage = `${isReturningVisitor ? 'Returning' : 'New'} visitor ${visitorDisplayName} waiting for approval`;
+        notificationTitle = isReturningVisitor
+          ? 'Returning Visitor Request Received'
+          : 'New Pre-Booking';
+
+        const actualVisitorName =
+          visitor.visitorName ||
+          visitor.fullName ||
+          'Visitor';
+
+        notificationMessage =
+          `${actualVisitorName} is waiting for approval.`;
         sendEmailToVisitor = true;
 
         notifyRecipients = await getDashboardUserIds();
@@ -143,8 +156,8 @@ const notifyVisitorEvent = async ({
             </div>
           </div>
         `;
-        notificationTitle = isReturningVisitor ? 'Returning Pre-Booking Approved' : 'Pre-Booking Approved';
-        notificationMessage = `${isReturningVisitor ? 'Returning visitor' : 'Visitor'} pre-booking for ${approvedVisitorName} has been approved by ${approvedByName}.`;
+        notificationTitle = 'Pre-Booking Approved';
+        notificationMessage = `${approvedVisitorName} was approved by ${approvedByName}.`;
         sendEmailToVisitor = true;
 
         notifyRecipients = await getDashboardUserIds();
@@ -170,8 +183,8 @@ const notifyVisitorEvent = async ({
             </div>
           </div>
         `;
-        notificationTitle = isReturningVisitor ? 'Returning Pre-Booking Rejected' : 'Pre-Booking Rejected';
-        notificationMessage = `${isReturningVisitor ? 'Returning visitor' : 'Visitor'} pre-booking for ${rejectedVisitorName} has been rejected by ${rejectedByName}.`;
+        notificationTitle = 'Pre-Booking Rejected';
+        notificationMessage = `${rejectedVisitorName} was rejected by ${rejectedByName}.`;
         sendEmailToVisitor = true;
 
         notifyRecipients = await getDashboardUserIds();
@@ -190,10 +203,6 @@ const notifyVisitorEvent = async ({
           actor?.userName ||
           latestReschedule?.rescheduledBy?.name ||
           'Authorized Personnel'
-        );
-
-        const visitorDisplayName = formatDisplayName(
-          visitor.visitorName || visitor.fullName || 'Visitor'
         );
 
         const oldDateFormatted =
@@ -232,8 +241,8 @@ const notifyVisitorEvent = async ({
             </div>
           </div>
         `;
-        notificationTitle = isReturningVisitor ? 'Returning Appointment Rescheduled' : 'Appointment Rescheduled';
-        notificationMessage = `${reschedulerName} has rescheduled the appointment for ${isReturningVisitor ? 'returning visitor' : 'visitor'} ${visitorDisplayName} to ${visitDateFormatted}, ${timeFormatted}.`;
+        notificationTitle = 'Appointment Rescheduled';
+        notificationMessage = `${visitorDisplayName}'s appointment was rescheduled to ${visitor.expectedArrivalTime || visitor.expectedTime || timeFormatted}.`;
         sendEmailToVisitor = true;
 
         notifyRecipients = await getDashboardUserIds();
@@ -249,8 +258,8 @@ const notifyVisitorEvent = async ({
         break;
 
       case VISITOR_EVENTS.CHECKED_IN:
-        notificationTitle = 'Visitor Checked In';
-        notificationMessage = `Visitor ${visitorDisplayName} has arrived and checked in.`;
+        notificationTitle = 'Pre-Booking Checked In';
+        notificationMessage = `${visitorDisplayName} has checked in.`;
         sendEmailToVisitor = false;
         
         notifyRecipients = await getDashboardUserIds();
@@ -258,8 +267,8 @@ const notifyVisitorEvent = async ({
         break;
 
       case VISITOR_EVENTS.CHECKED_OUT:
-        notificationTitle = 'Visitor Checked Out';
-        notificationMessage = `Visitor ${visitorDisplayName} has checked out.`;
+        notificationTitle = 'Pre-Booking Checked Out';
+        notificationMessage = `${visitorDisplayName} has checked out.`;
         sendEmailToVisitor = false;
         
         notifyRecipients = await getDashboardUserIds();
@@ -276,10 +285,20 @@ const notifyVisitorEvent = async ({
       user: id
     }));
 
-    const notificationEventId =
-      event === VISITOR_EVENTS.RESCHEDULED
-        ? `PREBOOK_RESCHEDULED_${visitor._id}_${new Date(visitor.visitDate).getTime()}_${visitor.expectedArrivalTime || visitor.expectedTime}`
-        : `${event}_${visitor._id}`;
+    let notificationEventId = `${event}_${visitor._id}`;
+    if (event === VISITOR_EVENTS.REGISTERED) {
+      notificationEventId = `PREBOOK_REGISTERED_${visitor._id}`;
+    } else if (event === VISITOR_EVENTS.APPROVED) {
+      notificationEventId = `PREBOOK_APPROVED_${visitor._id}`;
+    } else if (event === VISITOR_EVENTS.CHECKED_IN) {
+      notificationEventId = `PREBOOK_CHECKIN_${visitor._id}`;
+    } else if (event === VISITOR_EVENTS.CHECKED_OUT) {
+      notificationEventId = `PREBOOK_CHECKOUT_${visitor._id}`;
+    } else if (event === VISITOR_EVENTS.REJECTED) {
+      notificationEventId = `PREBOOK_REJECTED_${visitor._id}`;
+    } else if (event === VISITOR_EVENTS.RESCHEDULED) {
+      notificationEventId = `PREBOOK_RESCHEDULED_${visitor._id}_${new Date(visitor.visitDate).getTime()}_${visitor.expectedArrivalTime || visitor.expectedTime}`;
+    }
 
     const notificationDoc = await Notification.findOneAndUpdate(
       { eventId: notificationEventId },
@@ -287,8 +306,9 @@ const notifyVisitorEvent = async ({
         $set: {
           title: notificationTitle,
           message: notificationMessage,
+          visitorName: visitorDisplayName,
           isReturning: isReturningVisitor,
-          visitorType: isReturningVisitor ? 'RETURNING_PRE_BOOKING' : 'PRE_BOOKING'
+          visitorType: 'PRE_BOOKING'
         },
         $setOnInsert: {
           eventId: notificationEventId,
@@ -297,17 +317,17 @@ const notifyVisitorEvent = async ({
           recipients: formattedRecipients,
           roles: ['Super Admin', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'MD', 'Senior HR', 'HR', 'Security', 'Receptionist'],
           visitorId: visitor.visitorId || null,
-          visitorName: visitorDisplayName,
           preBookingId: visitor._id,
           createdBy: reschedulerName || 'Authorized Personnel',
-          type: 'Visitor',
+          type: event === VISITOR_EVENTS.REGISTERED ? 'PREBOOKING_REGISTERED' : (event === VISITOR_EVENTS.APPROVED ? 'PREBOOKING_APPROVED' : (event === VISITOR_EVENTS.REJECTED ? 'PREBOOKING_REJECTED' : (event === VISITOR_EVENTS.RESCHEDULED ? 'PREBOOKING_RESCHEDULED' : 'Visitor'))),
           module: 'PreBooking',
           isRead: false
         }
       },
       {
         new: true,
-        upsert: true
+        upsert: true,
+        returnDocument: 'after'
       }
     );
 

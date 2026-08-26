@@ -2,7 +2,24 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useBranch } from '../../context/BranchContext';
 import { useNotification } from '../../context/NotificationContext';
-import { Bell, User, MapPin, Check, Menu, Trash2, ExternalLink } from 'lucide-react';
+import { 
+  Bell, 
+  User, 
+  MapPin, 
+  Check, 
+  Menu, 
+  Trash2, 
+  ExternalLink, 
+  Clock, 
+  CheckCircle2, 
+  LogIn, 
+  LogOut, 
+  UserCheck, 
+  XCircle, 
+  CalendarClock, 
+  ShieldCheck,
+  Sparkles
+} from 'lucide-react';
 import { io } from 'socket.io-client';
 import { useNavigate } from 'react-router-dom';
 import { formatNotificationDate } from '../../utils/dateFormatter';
@@ -13,6 +30,72 @@ import { normalizeBranchName } from '../../utils/branchUtils';
 const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.match(/^\d{1,3}\./);
 const rawApi = (import.meta.env.VITE_API_URL || (isLocalhost ? `http://${window.location.hostname}:5000` : 'https://fic-visitor-1.onrender.com')).replace(/\/api\/?$/, '');
 const API_URL = `${rawApi}/api/notifications`;
+
+const getNotificationMeta = (title = '', type = '') => {
+  const t = (title || type || '').toLowerCase();
+
+  if (t.includes('checked in') || t.includes('checkin') || t.includes('arrived')) {
+    return {
+      icon: <LogIn size={15} className="text-blue-600" />,
+      badge: 'Checked In',
+      badgeClass: 'bg-blue-50 text-blue-700 border-blue-200/70',
+      iconBg: 'bg-blue-50 border-blue-100',
+      accentBorder: 'bg-blue-500'
+    };
+  }
+  if (t.includes('checked out') || t.includes('checkout') || t.includes('departed')) {
+    return {
+      icon: <LogOut size={15} className="text-slate-600" />,
+      badge: 'Checked Out',
+      badgeClass: 'bg-slate-100 text-slate-700 border-slate-200/70',
+      iconBg: 'bg-slate-50 border-slate-200',
+      accentBorder: 'bg-slate-500'
+    };
+  }
+  if (t.includes('approved')) {
+    return {
+      icon: <CheckCircle2 size={15} className="text-emerald-600" />,
+      badge: 'Approved',
+      badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200/70',
+      iconBg: 'bg-emerald-50 border-emerald-100',
+      accentBorder: 'bg-emerald-500'
+    };
+  }
+  if (t.includes('rejected') || t.includes('denied')) {
+    return {
+      icon: <XCircle size={15} className="text-rose-600" />,
+      badge: 'Rejected',
+      badgeClass: 'bg-rose-50 text-rose-700 border-rose-200/70',
+      iconBg: 'bg-rose-50 border-rose-100',
+      accentBorder: 'bg-rose-500'
+    };
+  }
+  if (t.includes('rescheduled') || t.includes('appointment')) {
+    return {
+      icon: <CalendarClock size={15} className="text-indigo-600" />,
+      badge: 'Rescheduled',
+      badgeClass: 'bg-indigo-50 text-indigo-700 border-indigo-200/70',
+      iconBg: 'bg-indigo-50 border-indigo-100',
+      accentBorder: 'bg-indigo-500'
+    };
+  }
+  if (t.includes('returning')) {
+    return {
+      icon: <ShieldCheck size={15} className="text-teal-600" />,
+      badge: 'Returning',
+      badgeClass: 'bg-teal-50 text-teal-700 border-teal-200/70',
+      iconBg: 'bg-teal-50 border-teal-100',
+      accentBorder: 'bg-teal-500'
+    };
+  }
+  return {
+    icon: <UserCheck size={15} className="text-amber-600" />,
+    badge: 'Pre-Booking',
+    badgeClass: 'bg-amber-50 text-amber-700 border-amber-200/70',
+    iconBg: 'bg-amber-50 border-amber-100',
+    accentBorder: 'bg-amber-500'
+  };
+};
 
 const Header = ({ toggleSidebar, isSidebarOpen }) => {
   const { user } = useAuth();
@@ -40,17 +123,28 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
       });
       if (res.ok) {
         const data = await res.json();
-        const rawList = normalizeNotifications(data);
+
+        const rawList = Array.isArray(data)
+          ? data
+          : Array.isArray(data.notifications)
+            ? data.notifications
+            : [];
+
+        const normalizedList = normalizeNotifications(rawList);
+
         const seen = new Set();
-        const uniqueList = rawList.filter((item) => {
+
+        const uniqueList = normalizedList.filter((item) => {
           const key =
             item.eventId ||
             `${item.type || ''}_${item.preBookingId || ''}_${item.message || ''}`;
 
           if (seen.has(key)) return false;
+
           seen.add(key);
           return true;
         });
+
         setNotifications(uniqueList);
       }
     } catch (err) {
@@ -193,12 +287,12 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
           </button>
           
           {showDropdown && (
-            <div className="fixed top-16 left-4 right-4 sm:absolute sm:top-auto sm:left-auto sm:-right-4 sm:mt-2 sm:w-[380px] bg-white rounded-xl shadow-2xl border border-gray-200 z-50 flex flex-col max-h-[80vh] sm:max-h-[85vh] overflow-hidden">
-              <div className="p-3 sm:p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/80 shrink-0">
+            <div className="fixed top-16 left-4 right-4 sm:absolute sm:top-auto sm:left-auto sm:-right-4 sm:mt-2 sm:w-[410px] bg-white rounded-2xl shadow-2xl border border-gray-100/90 z-50 flex flex-col max-h-[80vh] sm:max-h-[85vh] overflow-hidden backdrop-blur-md">
+              <div className="px-4 py-3.5 border-b border-gray-100 flex justify-between items-center bg-gray-50/70 shrink-0">
                 <div className="flex items-center gap-2">
-                  <h3 className="font-semibold text-gray-800">Notifications</h3>
+                  <h3 className="font-bold text-gray-900 text-sm tracking-tight">Notifications</h3>
                   {unreadCount > 0 && (
-                    <span className="bg-indigo-100 text-[var(--color-brand-indigo)] text-xs font-bold px-2 py-0.5 rounded-full">
+                    <span className="bg-indigo-50 text-[var(--color-brand-indigo)] text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-indigo-100">
                       {unreadCount} new
                     </span>
                   )}
@@ -206,60 +300,80 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
                 <div className="flex items-center gap-2">
                   <button 
                     onClick={markAllAsRead}
-                    className="text-[11px] font-medium text-gray-500 hover:text-[var(--color-brand-indigo)] transition-colors flex items-center gap-1"
+                    className="text-[11px] font-semibold text-gray-500 hover:text-[var(--color-brand-indigo)] transition-colors flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-indigo-50/50"
                   >
-                    <Check size={12} /> Mark All Read
+                    <Check size={13} /> Mark All Read
                   </button>
                 </div>
               </div>
               
-              <div className="divide-y divide-gray-100 overflow-y-auto" style={{ maxHeight: 'calc(85vh - 120px)' }}>
+              <div className="divide-y divide-gray-50 overflow-y-auto" style={{ maxHeight: 'calc(85vh - 120px)' }}>
                 {notifications.length === 0 ? (
-                  <div className="p-8 text-center text-sm text-gray-500 flex flex-col items-center justify-center">
-                    <Bell size={32} className="text-gray-300 mb-2" />
-                    No notifications yet
+                  <div className="p-10 text-center text-sm text-gray-500 flex flex-col items-center justify-center">
+                    <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-400 mb-3 border border-indigo-100">
+                      <Bell size={22} />
+                    </div>
+                    <p className="font-semibold text-gray-700">No notifications yet</p>
+                    <p className="text-xs text-gray-400 mt-0.5">We'll alert you when visitor events occur</p>
                   </div>
                 ) : (
-                  notifications.slice(0, 10).map(notification => (
-                    <div 
-                      key={notification._id || notification.id || notification.eventId} 
-                      onClick={() => handleNotificationClick(notification)}
-                      className={`p-4 transition-colors cursor-pointer flex gap-3 ${!notification.isRead ? 'bg-indigo-50/40 hover:bg-indigo-50/80' : 'hover:bg-gray-50'}`}
-                    >
-                      <div className="shrink-0 mt-0.5">
-                        {!notification.isRead ? (
-                          <div className="w-2 h-2 bg-[var(--color-brand-indigo)] rounded-full mt-1.5"></div>
-                        ) : (
-                          <div className="w-2 h-2 bg-gray-300 rounded-full mt-1.5"></div>
+                  notifications.slice(0, 10).map(notification => {
+                    const meta = getNotificationMeta(notification.title, notification.type);
+                    const isUnread = !notification.isRead;
+
+                    return (
+                      <div 
+                        key={notification._id || notification.id || notification.eventId} 
+                        onClick={() => handleNotificationClick(notification)}
+                        className={`p-3.5 sm:p-4 transition-all duration-150 cursor-pointer flex gap-3.5 items-start relative hover:bg-slate-50/80 ${
+                          isUnread ? 'bg-indigo-50/25' : 'bg-white'
+                        }`}
+                      >
+                        {/* Unread Accent Indicator */}
+                        {isUnread && (
+                          <div className={`absolute left-0 top-2 bottom-2 w-1 rounded-r-full ${meta.accentBorder || 'bg-indigo-500'}`} />
                         )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-start gap-2 mb-1">
-                          <h4 className={`text-sm font-medium ${!notification.isRead ? 'text-gray-900' : 'text-gray-600'} truncate`}>
-                            {notification.title}
-                          </h4>
-                          <span className="text-[10px] text-gray-400 shrink-0 whitespace-nowrap">
-                            {formatNotificationDate(notification.createdAt)}
-                          </span>
+
+                        {/* Status Icon Badge */}
+                        <div className={`w-9 h-9 rounded-xl shrink-0 flex items-center justify-center border shadow-xs transition-transform ${meta.iconBg}`}>
+                          {meta.icon}
                         </div>
-                        <p className={`text-xs ${!notification.isRead ? 'text-gray-700' : 'text-gray-500'} line-clamp-2 leading-relaxed`}>
-                          {notification.message}
-                        </p>
+
+                        {/* Content Area */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2 mb-1">
+                            <h4 className={`text-xs sm:text-[13px] truncate ${isUnread ? 'font-bold text-gray-900' : 'font-semibold text-gray-700'}`}>
+                              {notification.title || 'Notification'}
+                            </h4>
+                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md border shrink-0 uppercase tracking-wider ${meta.badgeClass}`}>
+                              {meta.badge}
+                            </span>
+                          </div>
+
+                          <p className={`text-xs leading-relaxed break-words line-clamp-2 ${isUnread ? 'text-gray-800 font-medium' : 'text-gray-600'}`}>
+                            {notification.message}
+                          </p>
+
+                          <div className="flex items-center gap-1.5 mt-2 text-[10px] text-gray-400 font-medium">
+                            <Clock size={11} className="text-gray-400 shrink-0" />
+                            <span>{formatNotificationDate(notification.createdAt)}</span>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
               
-              <div className="p-3 border-t border-gray-100 bg-gray-50/80 shrink-0">
+              <div className="p-3 border-t border-gray-100 bg-gray-50/60 shrink-0">
                 <button 
                   onClick={() => {
                     setShowDropdown(false);
                     navigate('/notifications');
                   }}
-                  className="w-full py-2 text-sm font-medium text-[var(--color-brand-indigo)] hover:bg-indigo-50 rounded-md transition-colors flex items-center justify-center gap-1.5"
+                  className="w-full py-2.5 text-xs font-semibold text-[var(--color-brand-indigo)] hover:bg-indigo-50 rounded-lg transition-colors flex items-center justify-center gap-1.5 border border-indigo-100/60 shadow-2xs"
                 >
-                  View All Notifications <ExternalLink size={14} />
+                  View All Notifications <ExternalLink size={13} />
                 </button>
               </div>
             </div>

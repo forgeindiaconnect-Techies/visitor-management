@@ -1,9 +1,25 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useBranch } from '../../context/BranchContext';
 import { io } from 'socket.io-client';
-import { useNavigate } from 'react-router-dom';
-import { Search, Filter, Trash2, CheckCircle, BellOff, Info, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react';
+import { 
+  Search, 
+  Filter, 
+  Trash2, 
+  CheckCircle, 
+  BellOff, 
+  Info, 
+  CheckCircle2, 
+  AlertTriangle, 
+  XCircle,
+  LogIn,
+  LogOut,
+  UserCheck,
+  CalendarClock,
+  ShieldCheck,
+  Clock
+} from 'lucide-react';
 import { formatNotificationDate } from '../../utils/dateFormatter';
 import { normalizeNotifications } from '../../utils/notificationUtils';
 
@@ -49,17 +65,28 @@ const NotificationsPage = () => {
 
       if (res.ok) {
         const data = await res.json();
-        const rawList = Array.isArray(data.notifications) ? data.notifications : (Array.isArray(data) ? data : []);
+
+        const rawList = Array.isArray(data)
+          ? data
+          : Array.isArray(data.notifications)
+            ? data.notifications
+            : [];
+
+        const normalizedList = normalizeNotifications(rawList);
+
         const seen = new Set();
-        const uniqueList = rawList.filter((item) => {
+
+        const uniqueList = normalizedList.filter((item) => {
           const key =
             item.eventId ||
             `${item.type || ''}_${item.preBookingId || ''}_${item.message || ''}`;
 
           if (seen.has(key)) return false;
+
           seen.add(key);
           return true;
         });
+
         setNotifications(uniqueList);
       }
     } catch (err) {
@@ -176,14 +203,63 @@ const NotificationsPage = () => {
     }
   };
 
-  const getTypeIcon = (type) => {
-    switch(type) {
-      case 'success': return <CheckCircle2 size={20} className="text-green-500" />;
-      case 'warning': return <AlertTriangle size={20} className="text-yellow-500" />;
-      case 'error': return <XCircle size={20} className="text-red-500" />;
-      case 'info':
-      default: return <Info size={20} className="text-blue-500" />;
+  const getTypeMeta = (title = '', type = '') => {
+    const t = (title || type || '').toLowerCase();
+
+    if (t.includes('checked in') || t.includes('checkin') || t.includes('arrived')) {
+      return {
+        icon: <LogIn size={18} className="text-blue-600" />,
+        badge: 'Checked In',
+        badgeClass: 'bg-blue-50 text-blue-700 border-blue-200/70',
+        iconBg: 'bg-blue-50 border-blue-100'
+      };
     }
+    if (t.includes('checked out') || t.includes('checkout') || t.includes('departed')) {
+      return {
+        icon: <LogOut size={18} className="text-slate-600" />,
+        badge: 'Checked Out',
+        badgeClass: 'bg-slate-100 text-slate-700 border-slate-200/70',
+        iconBg: 'bg-slate-50 border-slate-200'
+      };
+    }
+    if (t.includes('approved')) {
+      return {
+        icon: <CheckCircle2 size={18} className="text-emerald-600" />,
+        badge: 'Approved',
+        badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200/70',
+        iconBg: 'bg-emerald-50 border-emerald-100'
+      };
+    }
+    if (t.includes('rejected') || t.includes('denied')) {
+      return {
+        icon: <XCircle size={18} className="text-rose-600" />,
+        badge: 'Rejected',
+        badgeClass: 'bg-rose-50 text-rose-700 border-rose-200/70',
+        iconBg: 'bg-rose-50 border-rose-100'
+      };
+    }
+    if (t.includes('rescheduled') || t.includes('appointment')) {
+      return {
+        icon: <CalendarClock size={18} className="text-indigo-600" />,
+        badge: 'Rescheduled',
+        badgeClass: 'bg-indigo-50 text-indigo-700 border-indigo-200/70',
+        iconBg: 'bg-indigo-50 border-indigo-100'
+      };
+    }
+    if (t.includes('returning')) {
+      return {
+        icon: <ShieldCheck size={18} className="text-teal-600" />,
+        badge: 'Returning',
+        badgeClass: 'bg-teal-50 text-teal-700 border-teal-200/70',
+        iconBg: 'bg-teal-50 border-teal-100'
+      };
+    }
+    return {
+      icon: <UserCheck size={18} className="text-amber-600" />,
+      badge: 'Pre-Booking',
+      badgeClass: 'bg-amber-50 text-amber-700 border-amber-200/70',
+      iconBg: 'bg-amber-50 border-amber-100'
+    };
   };
 
   const getFilteredAndGrouped = () => {
@@ -275,52 +351,60 @@ const NotificationsPage = () => {
                 <div key={groupName}>
                   <div className="bg-gray-50 px-5 py-2 text-xs font-bold text-gray-500 uppercase tracking-wider">{groupName}</div>
                   <div className="divide-y divide-gray-50">
-                    {items.map(notification => (
-                      <div 
-                        key={notification._id || notification.id || notification.eventId} 
-                        onClick={() => handleNotificationClick(notification)}
-                        className={`p-5 flex gap-4 transition-colors relative group cursor-pointer ${!notification.isRead ? 'bg-indigo-50/20' : 'hover:bg-gray-50'}`}
-                      >
-                        <div className="shrink-0 mt-1">{getTypeIcon(notification.type)}</div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex justify-between mb-1">
-                            <h4 className={`text-sm font-semibold ${!notification.isRead ? 'text-gray-900' : 'text-gray-700'}`}>{notification.title}</h4>
-                            <span className="text-xs text-gray-400">
-                              {formatNotificationDate(notification.createdAt)}
-                            </span>
+                    {items.map(notification => {
+                      const meta = getTypeMeta(notification.title, notification.type);
+                      const isUnread = !notification.isRead;
+
+                      return (
+                        <div 
+                          key={notification._id || notification.id || notification.eventId} 
+                          onClick={() => handleNotificationClick(notification)}
+                          className={`p-5 flex gap-4 transition-colors relative group cursor-pointer ${isUnread ? 'bg-indigo-50/20' : 'hover:bg-gray-50'}`}
+                        >
+                          <div className={`w-10 h-10 rounded-xl shrink-0 flex items-center justify-center border shadow-xs ${meta.iconBg}`}>
+                            {meta.icon}
                           </div>
-                          <p className={`text-sm ${!notification.isRead ? 'text-gray-800' : 'text-gray-500'}`}>{notification.message}</p>
-                          <div className="mt-2 flex gap-2">
-                            {(notification.module || notification.type) && <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{notification.module || notification.type}</span>}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <h4 className={`text-sm font-semibold ${isUnread ? 'text-gray-900 font-bold' : 'text-gray-700'}`}>{notification.title}</h4>
+                              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md border shrink-0 uppercase tracking-wider ${meta.badgeClass}`}>
+                                {meta.badge}
+                              </span>
+                            </div>
+                            <p className={`text-sm leading-relaxed ${isUnread ? 'text-gray-800' : 'text-gray-500'}`}>{notification.message}</p>
+                            <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-400 font-medium">
+                              <Clock size={12} className="text-gray-400 shrink-0" />
+                              <span>{formatNotificationDate(notification.createdAt)}</span>
+                            </div>
                           </div>
-                        </div>
-                        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-2 shrink-0">
-                          {!notification.isRead && (
+                          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-2 shrink-0">
+                            {isUnread && (
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  markAsRead(notification._id);
+                                }} 
+                                className="p-1 text-indigo-600 hover:bg-indigo-50 rounded"
+                              >
+                                <CheckCircle size={16} />
+                              </button>
+                            )}
                             <button 
                               onClick={(e) => {
                                 e.stopPropagation();
-                                markAsRead(notification._id);
+                                deleteNotification(notification._id);
                               }} 
-                              className="p-1 text-indigo-600 hover:bg-indigo-50 rounded"
+                              className="p-1 text-red-500 hover:bg-red-50 rounded"
                             >
-                              <CheckCircle size={16} />
+                              <Trash2 size={16} />
                             </button>
-                          )}
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              deleteNotification(notification._id);
-                            }} 
-                            className="p-1 text-red-500 hover:bg-red-50 rounded"
-                          >
-                            <Trash2 size={16} />
-                          </button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
-              )
+              );
             })}
           </div>
         )}
@@ -328,4 +412,5 @@ const NotificationsPage = () => {
     </div>
   );
 };
+
 export default NotificationsPage;

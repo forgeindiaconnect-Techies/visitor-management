@@ -406,34 +406,49 @@ const approvePreBooking = async (req, res) => {
 
       const approverName = formatDisplayName(req.userName || req.userRole || "Authorized Personnel");
       const visitorName = formatDisplayName(preBooking.fullName);
-      const notificationMessage = `Visitor pre-booking for ${visitorName} has been approved by ${approverName}.`;
+      const notificationMessage = `${visitorName} was approved by ${approverName}.`;
 
       const recipientIds = dashboardUsers.map(u => String(u._id));
       const uniqueRecipientIds = [...new Set(recipientIds)];
 
-      // 2. Create main persistent notification document in DB
-      const mainNotification = await Notification.create({
-        eventId: `PREBOOK_APPROVED_${preBooking._id}`,
-        companyId: preBooking.companyId || 'FIC001',
-        branchId: preBooking.branchLocation || 'Head Office(KRISHNAGIRI)',
-        recipients: uniqueRecipientIds.map(id => ({
-          userId: String(id),
-          user: id
-        })),
-        roles: ['Super Admin', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'MD', 'Senior HR', 'HR', 'Security', 'Receptionist'],
-        visitorId: preBooking.visitorId,
-        visitorType: 'PRE_BOOKING',
-        preBookingId: preBooking._id,
-        type: "PREBOOKING_APPROVED",
-        module: "PreBooking",
-        title: "Pre-Booking Approved",
-        message: notificationMessage,
-        createdBy: approverName
-      });
+      const eventId = `PREBOOK_APPROVED_${preBooking._id}`;
+
+      // 2. Create or find main persistent notification document in DB
+      const mainNotification = await Notification.findOneAndUpdate(
+        { eventId },
+        {
+          $set: {
+            title: "Pre-Booking Approved",
+            message: notificationMessage,
+            visitorName: visitorName
+          },
+          $setOnInsert: {
+            eventId,
+            companyId: preBooking.companyId || 'FIC001',
+            branchId: preBooking.branchLocation || 'Head Office(KRISHNAGIRI)',
+            recipients: uniqueRecipientIds.map(id => ({
+              userId: String(id),
+              user: id
+            })),
+            roles: ['Super Admin', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'MD', 'Senior HR', 'HR', 'Security', 'Receptionist'],
+            visitorId: preBooking.visitorId,
+            visitorType: 'PRE_BOOKING',
+            preBookingId: preBooking._id,
+            type: "PREBOOKING_APPROVED",
+            module: "PreBooking",
+            createdBy: approverName,
+            isRead: false
+          }
+        },
+        {
+          upsert: true,
+          returnDocument: "after"
+        }
+      );
 
       // 3. Emit real saved DB notification over socket.io
       const io = req.app.get('io');
-      if (io) {
+      if (io && mainNotification) {
         io.emit('new_notification', mainNotification);
       }
     } catch (notifErr) {
@@ -530,35 +545,44 @@ const rejectPreBooking = async (req, res) => {
 
       const rejectorName = formatDisplayName(req.userName || req.userRole || "Authorized Personnel");
       const visitorName = formatDisplayName(preBooking.fullName);
-      const notificationMessage = `Visitor pre-booking for ${visitorName} has been rejected by ${rejectorName}.`;
+      const notificationMessage = `${preBooking.fullName} was rejected by ${rejectorName}.`;
 
       const recipientIds = dashboardUsers.map(u => String(u._id));
       const uniqueRecipientIds = [...new Set(recipientIds)];
+      const eventId = `PREBOOK_REJECTED_${preBooking._id}`;
 
-      // 2. Create main persistent notification document in DB
-      const mainNotification = await Notification.create({
-        eventId: `PREBOOK_REJECTED_${preBooking._id}`,
-        companyId: preBooking.companyId || 'FIC001',
-        branchId: preBooking.branchLocation,
-        recipients: uniqueRecipientIds.map(id => ({
-          userId: String(id),
-          user: id
-        })),
-        roles: ['Super Admin', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'MD', 'Senior HR', 'HR', 'Security', 'Receptionist'],
-        visitorId: preBooking.visitorId,
-        visitorType: 'PRE_BOOKING',
-        preBookingId: preBooking._id,
-        type: "PREBOOKING_REJECTED",
-        module: "PreBooking",
-        title: "Pre-Booking Rejected",
-        message: notificationMessage,
-        createdBy: rejectorName || "System Rejection"
-      });
+      // 2. Create or find main persistent notification document in DB
+      const notification = await Notification.findOneAndUpdate(
+        { eventId },
+        {
+          $setOnInsert: {
+            eventId,
+            companyId: preBooking.companyId || "FIC001",
+            branchId: preBooking.branchLocation,
+            recipients: uniqueRecipientIds.map(id => ({
+              userId: String(id),
+              user: id
+            })),
+            visitorId: preBooking.visitorId,
+            visitorType: "PRE_BOOKING",
+            preBookingId: preBooking._id,
+            type: "PREBOOKING_REJECTED",
+            module: "PreBooking",
+            title: "Pre-Booking Rejected",
+            message: `${preBooking.fullName} was rejected by ${rejectorName}.`,
+            isRead: false
+          }
+        },
+        {
+          upsert: true,
+          returnDocument: "after"
+        }
+      );
 
       // 3. Emit live socket alert to all dashboard users
       const io = req.app.get('io');
-      if (io) {
-        io.emit('new_notification', mainNotification);
+      if (io && notification) {
+        io.emit('new_notification', notification);
       }
     } catch (notifErr) {
       console.error("Error creating rejection notifications:", notifErr);
@@ -938,32 +962,43 @@ const checkInPreBooking = async (req, res) => {
       }
 
       const uniqueRecipientIds = [...new Set(recipientIds)];
+      const eventId = `PREBOOK_CHECKIN_${preBooking._id}`;
 
-      const mainNotification = await Notification.create({
-        eventId: `PREBOOK_CHECKIN_${preBooking._id}`,
-        companyId: preBooking.companyId || 'FIC001',
-        branchId: preBooking.branchLocation,
+      const notification = await Notification.findOneAndUpdate(
+        { eventId },
+        {
+          $set: {
+            title: "Pre-Booking Checked In",
+            message: `${preBooking.fullName} has checked in.`,
+            visitorName: formatDisplayName(preBooking.fullName)
+          },
+          $setOnInsert: {
+            eventId,
+            companyId: preBooking.companyId || "FIC001",
+            branchId: preBooking.branchLocation,
+            recipients: uniqueRecipientIds.map(id => ({
+              userId: String(id),
+              user: id
+            })),
+            visitorId: preBooking.visitorId,
+            visitorType: "PRE_BOOKING",
+            preBookingId: preBooking._id,
+            type: "PREBOOKING_CHECKED_IN",
+            module: "PreBooking",
+            createdBy: req.user?.fullName || "Security",
+            isRead: false
+          }
+        },
+        {
+          upsert: true,
+          returnDocument: "after"
+        }
+      );
 
-        recipients: uniqueRecipientIds.map(id => ({
-          userId: String(id),
-          user: id
-        })),
+      const io = req.app.get("io");
 
-        visitorId: preBooking.visitorId,
-        visitorType: 'PRE_BOOKING',
-        preBookingId: preBooking._id,
-
-        type: "PREBOOKING_CHECKED_IN",
-        module: "PreBooking",
-        title: "Pre-Booking Checked In",
-        message: `Visitor ${preBooking.fullName} has checked in.`,
-        createdBy: req.user?.fullName || "Security"
-      });
-
-      const io = req.app.get('io');
-
-      if (io) {
-        io.emit('new_notification', mainNotification);
+      if (io && notification) {
+        io.emit("new_notification", notification);
       }
     } catch (notifErr) {
       console.error("Error creating check-in notifications:", notifErr);
@@ -1083,32 +1118,43 @@ const checkOutPreBooking = async (req, res) => {
       }
 
       const uniqueRecipientIds = [...new Set(recipientIds)];
+      const eventId = `PREBOOK_CHECKOUT_${preBooking._id}`;
 
-      const mainNotification = await Notification.create({
-        eventId: `PREBOOK_CHECKOUT_${preBooking._id}`,
-        companyId: preBooking.companyId || 'FIC001',
-        branchId: preBooking.branchLocation,
+      const notification = await Notification.findOneAndUpdate(
+        { eventId },
+        {
+          $set: {
+            title: "Pre-Booking Checked Out",
+            message: `${preBooking.fullName} has checked out.`,
+            visitorName: formatDisplayName(preBooking.fullName)
+          },
+          $setOnInsert: {
+            eventId,
+            companyId: preBooking.companyId || "FIC001",
+            branchId: preBooking.branchLocation,
+            recipients: uniqueRecipientIds.map(id => ({
+              userId: String(id),
+              user: id
+            })),
+            visitorId: preBooking.visitorId,
+            visitorType: "PRE_BOOKING",
+            preBookingId: preBooking._id,
+            type: "PREBOOKING_CHECKED_OUT",
+            module: "PreBooking",
+            createdBy: req.user?.fullName || "Security",
+            isRead: false
+          }
+        },
+        {
+          upsert: true,
+          returnDocument: "after"
+        }
+      );
 
-        recipients: uniqueRecipientIds.map(id => ({
-          userId: String(id),
-          user: id
-        })),
+      const io = req.app.get("io");
 
-        visitorId: preBooking.visitorId,
-        visitorType: 'PRE_BOOKING',
-        preBookingId: preBooking._id,
-
-        type: "PREBOOKING_CHECKED_OUT",
-        module: "PreBooking",
-        title: "Pre-Booking Checked Out",
-        message: `Visitor ${preBooking.fullName} has checked out.`,
-        createdBy: req.user?.fullName || "Security"
-      });
-
-      const io = req.app.get('io');
-
-      if (io) {
-        io.emit('new_notification', mainNotification);
+      if (io && notification) {
+        io.emit("new_notification", notification);
       }
     } catch (notifErr) {
       console.error("Error creating check-out notifications:", notifErr);
