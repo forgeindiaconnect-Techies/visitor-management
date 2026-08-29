@@ -17,7 +17,8 @@ import {
   Activity,
   X,
   Clock,
-  CreditCard
+  CreditCard,
+  Building
 } from 'lucide-react';
 
 const Sidebar = ({ isOpen, setIsOpen }) => {
@@ -26,6 +27,10 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
 
   const allNavItems = [
     { name: 'Dashboard', path: '/', icon: <LayoutDashboard size={20} />, roles: ['SaaS Super Admin', 'Super Admin', 'Company Admin', 'MD', 'Admin', 'Security', 'Visitor', 'HR', 'Receptionist', 'Employee'] },
+    { name: 'Companies', path: '/saas/companies', icon: <Building size={20} />, roles: ['SaaS Super Admin'] },
+    { name: 'Subscriptions', path: '/saas/subscriptions', icon: <CreditCard size={20} />, roles: ['SaaS Super Admin'] },
+    { name: 'Payments', path: '/saas/payments', icon: <Activity size={20} />, roles: ['SaaS Super Admin'] },
+    { name: 'Upgrade Requests', path: '/saas/upgrades', icon: <CheckSquare size={20} />, roles: ['SaaS Super Admin'] },
     { name: 'Pre-Bookings', path: '/pre-bookings', icon: <CalendarCheck size={20} />, roles: ['Super Admin', 'Company Admin', 'MD', 'Admin', 'HR', 'Receptionist', 'Security'] },
     { name: 'Direct Visit', path: '/visitors', icon: <Users size={20} />, roles: ['Super Admin', 'Company Admin', 'MD', 'Admin', 'Security', 'HR', 'Receptionist'] },
     { name: 'User Management', path: '/users', icon: <Shield size={20} />, roles: ['Super Admin', 'Company Admin'] },

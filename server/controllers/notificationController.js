@@ -16,17 +16,9 @@ exports.getNotifications = async (req, res) => {
     let query;
 
     if (isSaaSAdmin) {
-      // 1. SaaS Super Admin ONLY receives platform-level tenant events:
-      // Company created, updated, deleted, expired, subscriptions, payments
-      // SaaS Super Admin NEVER receives visitor/pre-booking notifications
+      // SaaS Super Admin NEVER receives visitor/pre-booking/user management notifications
       query = {
-        $or: [
-          { companyId: 'SYSTEM' },
-          { module: { $in: ['Tenant Management', 'Subscription', 'Company', 'Payment', 'System'] } },
-          { type: { $in: ['Company', 'Tenant Management', 'Subscription', 'Payment', 'System', 'TENANT_CREATED', 'COMPANY_CREATED', 'EXPIRY', 'SUBSCRIPTION_UPGRADE', 'SUBSCRIPTION_EXPIRED', 'info', 'success', 'warning'] } }
-        ],
-        module: { $nin: ['PreBooking', 'Visitors', 'Visitor', 'Tracking', 'Attendance', 'Blacklist'] },
-        type: { $nin: ['Visitor', 'PREBOOKING_REGISTERED', 'PREBOOKING_APPROVED', 'PREBOOKING_REJECTED', 'VISITOR_REGISTERED', 'VISITOR_CHECKED_IN', 'VISITOR_CHECKED_OUT', 'PREBOOKING_CHECKIN', 'PREBOOKING_CHECKOUT', 'PREBOOKING_RESCHEDULED'] }
+        module: { $in: ['Tenant Management', 'Subscription', 'Company', 'Payment', 'System'] }
       };
 
       // Check and generate subscription expiry warnings for SaaS Admin

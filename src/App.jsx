@@ -103,6 +103,10 @@ const AppRoutes = () => {
       <Route element={user ? <MainLayout /> : <Navigate to="/login" replace />}>
         <Route index element={<Dashboard />} />
         <Route path="dashboard" element={<Dashboard />} />
+        <Route path="saas/companies" element={<ProtectedRoute allowedRoles={['SaaS Super Admin']}><Dashboard /></ProtectedRoute>} />
+        <Route path="saas/subscriptions" element={<ProtectedRoute allowedRoles={['SaaS Super Admin']}><Dashboard /></ProtectedRoute>} />
+        <Route path="saas/payments" element={<ProtectedRoute allowedRoles={['SaaS Super Admin']}><Dashboard /></ProtectedRoute>} />
+        <Route path="saas/upgrades" element={<ProtectedRoute allowedRoles={['SaaS Super Admin']}><Dashboard /></ProtectedRoute>} />
         <Route path="notifications" element={<ProtectedRoute allowedRoles={['SaaS Super Admin', 'Super Admin', 'MD', 'Admin', 'Branch Admin', 'Security', 'HR']}><NotificationsPage /></ProtectedRoute>} />
         
         {/* User Management */}

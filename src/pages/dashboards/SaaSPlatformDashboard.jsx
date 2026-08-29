@@ -60,7 +60,16 @@ const SaaSPlatformDashboard = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editCompany, setEditCompany] = useState(null);
 
-  const [activeTab, setActiveTab] = useState('Companies');
+  const location = window.location;
+  const pathname = location.pathname;
+  
+  // Determine active tab from URL
+  let currentTab = 'Companies';
+  if (pathname.includes('/saas/subscriptions')) currentTab = 'Subscriptions';
+  else if (pathname.includes('/saas/payments')) currentTab = 'Payments';
+  else if (pathname.includes('/saas/upgrades')) currentTab = 'Upgrade Requests';
+
+  const activeTab = currentTab;
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [selectedUpgradeCompany, setSelectedUpgradeCompany] = useState(null);
   const [upgradeData, setUpgradeData] = useState({ plan: 'Standard', durationDays: '30' });
@@ -72,11 +81,13 @@ const SaaSPlatformDashboard = () => {
   const [isRegistering, setIsRegistering] = useState(false);
 
   const handleCardClick = (tabName) => {
-    setActiveTab(tabName);
-    const panel = document.getElementById('main-panel');
-    if (panel) {
-      panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+    // Navigate via browser history if card is clicked
+    let path = '/saas/companies';
+    if (tabName === 'Subscriptions') path = '/saas/subscriptions';
+    else if (tabName === 'Payments') path = '/saas/payments';
+    else if (tabName === 'Upgrade Requests') path = '/saas/upgrades';
+    
+    window.location.href = path;
   };
 
   const API_BASE = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
@@ -447,38 +458,7 @@ const SaaSPlatformDashboard = () => {
 
       {/* Main Panel */}
       <div id="main-panel" className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
-        <div className="border-b border-gray-200 bg-slate-50 flex items-center px-4 space-x-1">
-          <button 
-            onClick={() => setActiveTab('Companies')}
-            className={`px-6 py-4 font-semibold text-sm border-b-2 transition-colors ${activeTab === 'Companies' ? 'border-[#1E1B6E] text-[#1E1B6E]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-slate-100'}`}
-          >
-            Companies
-          </button>
-          <button 
-            onClick={() => setActiveTab('Subscriptions')}
-            className={`px-6 py-4 font-semibold text-sm border-b-2 transition-colors ${activeTab === 'Subscriptions' ? 'border-[#1E1B6E] text-[#1E1B6E]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-slate-100'}`}
-          >
-            Subscriptions
-          </button>
-          <button 
-            onClick={() => setActiveTab('Payments')}
-            className={`px-6 py-4 font-semibold text-sm border-b-2 transition-colors ${activeTab === 'Payments' ? 'border-[#1E1B6E] text-[#1E1B6E]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-slate-100'}`}
-          >
-            Payments
-          </button>
-
-          <button 
-            onClick={() => setActiveTab('Upgrade Requests')}
-            className={`px-6 py-4 font-semibold text-sm border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'Upgrade Requests' ? 'border-[#1E1B6E] text-[#1E1B6E]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-slate-100'}`}
-          >
-            Upgrade Requests
-            {(Array.isArray(upgradeRequests) ? upgradeRequests : []).filter(req => req.status === 'Pending').length > 0 && (
-              <span className="bg-red-500 text-white font-bold text-[10px] px-1.5 py-0.5 rounded-full">
-                {(Array.isArray(upgradeRequests) ? upgradeRequests : []).filter(req => req.status === 'Pending').length}
-              </span>
-            )}
-          </button>
-        </div>
+        {/* Horizontal tabs removed since they are now in the side navigation bar */}
 
         {activeTab === 'Companies' && (
           <>

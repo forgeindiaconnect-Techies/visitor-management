@@ -91,6 +91,22 @@ export const NotificationProvider = ({ children }) => {
 
     const handleNewNotif = (newNotif) => {
       if (!newNotif) return;
+
+      try {
+        const userStored = localStorage.getItem('zmvms_user') || sessionStorage.getItem('zmvms_user') || localStorage.getItem('user');
+        const parsedUser = userStored ? JSON.parse(userStored) : null;
+        
+        if (parsedUser?.role === 'SaaS Super Admin') {
+          const allowedModules = ['Tenant Management', 'Subscription', 'Company', 'Payment', 'System'];
+          if (!allowedModules.includes(newNotif.module)) return;
+        } else if (parsedUser?.companyId && newNotif.companyId !== 'SYSTEM' && newNotif.companyId !== parsedUser.companyId) {
+          // Prevent cross-company leakage for regular tenants
+          return;
+        }
+      } catch (e) {
+        // Ignore parse errors
+      }
+
       setPersistentNotifications((prev) => {
         const safePrev = Array.isArray(prev) ? prev : [];
         const exists = safePrev.some(
