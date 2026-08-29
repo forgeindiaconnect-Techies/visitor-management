@@ -1,10 +1,15 @@
 const nodemailer = require('nodemailer');
 const { BrevoClient } = require("@getbrevo/brevo");
 
-const SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
+const isBrevoApiKey = process.env.BREVO_API_KEY && process.env.BREVO_API_KEY.startsWith('xkeysib-');
+const isBrevoSmtpKey = (process.env.BREVO_API_KEY && process.env.BREVO_API_KEY.startsWith('xsmtpsib-')) || 
+                       (process.env.SMTP_PASS && process.env.SMTP_PASS.startsWith('xsmtpsib-')) ||
+                       (process.env.SMTP_HOST && process.env.SMTP_HOST.includes('brevo'));
+
+const SMTP_HOST = process.env.SMTP_HOST || (isBrevoSmtpKey ? 'smtp-relay.brevo.com' : 'smtp.gmail.com');
 const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587', 10);
-const SMTP_USER = process.env.SMTP_USER || 'forgeindiaconnectfic@gmail.com';
-const SMTP_PASS = process.env.SMTP_PASS || 'nuyy dzpp ysfp tcdl';
+const SMTP_USER = process.env.SMTP_USER || process.env.BREVO_SENDER_EMAIL || 'forgeindiaconnectfic@gmail.com';
+const SMTP_PASS = process.env.SMTP_PASS || (isBrevoSmtpKey ? process.env.BREVO_API_KEY : 'nuyy dzpp ysfp tcdl');
 
 // High-performance pooled transporter with fast connection timeout
 const transporter = nodemailer.createTransport({
@@ -21,14 +26,14 @@ const transporter = nodemailer.createTransport({
   tls: {
     rejectUnauthorized: false
   },
-  connectionTimeout: 4000,
-  greetingTimeout: 4000,
-  socketTimeout: 8000
+  connectionTimeout: 5000,
+  greetingTimeout: 5000,
+  socketTimeout: 10000
 });
 
-// Singleton Brevo client for instant API calls without re-initialization overhead
+// Singleton Brevo client for instant REST API calls
 let brevoClient = null;
-if (process.env.BREVO_API_KEY) {
+if (isBrevoApiKey) {
   try {
     brevoClient = new BrevoClient({ apiKey: process.env.BREVO_API_KEY });
   } catch (initErr) {
@@ -40,8 +45,8 @@ const sendEmail = async (to, subject, htmlBody) => {
   const senderEmail = process.env.BREVO_SENDER_EMAIL || SMTP_USER || 'forgeindiaconnectfic@gmail.com';
   const senderName = process.env.BREVO_SENDER_NAME || 'ForgeIndiaConnect';
 
-  // 1. Primary Attempt: High-speed Brevo REST API (< 300ms execution)
-  if (brevoClient || process.env.BREVO_API_KEY) {
+  // 1. Primary Attempt: Brevo REST API (when xkeysib- key is provided)
+  if (isBrevoApiKey && (brevoClient || process.env.BREVO_API_KEY)) {
     try {
       const client = brevoClient || new BrevoClient({ apiKey: process.env.BREVO_API_KEY });
       await client.transactionalEmails.sendTransacEmail({
@@ -57,11 +62,11 @@ const sendEmail = async (to, subject, htmlBody) => {
       console.log(`⚡ Instant Brevo API email dispatched to ${to} (${subject})`);
       return true;
     } catch (brevoErr) {
-      console.warn(`⚠️ Brevo API delivery notice (${brevoErr.message}). Falling back to Gmail SMTP...`);
+      console.warn(`⚠️ Brevo API delivery notice (${brevoErr.message}). Falling back to SMTP...`);
     }
   }
 
-  // 2. Fallback Attempt: Gmail SMTP (with connection pool & fast timeouts)
+  // 2. SMTP Delivery (Brevo SMTP relay or Gmail SMTP)
   try {
     const info = await transporter.sendMail({
       from: `"${senderName}" <${senderEmail}>`,
@@ -70,10 +75,10 @@ const sendEmail = async (to, subject, htmlBody) => {
       subject: subject,
       html: htmlBody
     });
-    console.log(`📧 Gmail SMTP email sent to ${to}. MessageId: ${info.messageId}`);
+    console.log(`📧 SMTP (${SMTP_HOST}) email sent to ${to}. MessageId: ${info.messageId}`);
     return true;
-  } catch (gmailErr) {
-    console.warn(`⚠️ Gmail SMTP failed (${gmailErr.message}). Logging email to console:`);
+  } catch (smtpErr) {
+    console.warn(`⚠️ SMTP (${SMTP_HOST}) failed (${smtpErr.message}). Logging email to console:`);
     console.log('\n' + '='.repeat(60));
     console.log('📧 EMAIL DISPATCH LOG');
     console.log('='.repeat(60));

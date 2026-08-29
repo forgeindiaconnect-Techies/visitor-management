@@ -10,7 +10,7 @@ export const requestNotificationPermission = async () => {
     
     const permission = await Notification.requestPermission();
     if (permission === "granted") {
-      const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY || "BMi4WOvwwzgiCpfLZj4rtSWDM0bHHL1ciowr6sbaGD6aQjSWsrkKae0Cfale0Q-Z8huo8grneu2XI5pEzfREgVA";
+      const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY || "BBr6ZcXFLESCz9A9LremLes_apB-zxM14psFKcm0bNtHouvz_7uVFVqrkmgryIIyQqnboXFwm6q6CuX5EiP5XSY";
       const token = await getToken(messaging, { vapidKey });
       console.log("FCM Token:", token);
       return token;

@@ -2,12 +2,12 @@ importScripts("https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js
 importScripts("https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js");
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDummyKeyReplaceInProd",
-  authDomain: "fic-vms.firebaseapp.com",
-  projectId: "fic-vms",
-  storageBucket: "fic-vms.appspot.com",
-  messagingSenderId: "105555555555",
-  appId: "1:105555555555:web:abcdef123456"
+  apiKey: "AIzaSyBONYAtgtNCfI5haoFZ3SrhUgSqfrrzJqc",
+  authDomain: "visitors-f425c.firebaseapp.com",
+  projectId: "visitors-f425c",
+  storageBucket: "visitors-f425c.firebasestorage.app",
+  messagingSenderId: "13762660060",
+  appId: "1:13762660060:web:8c55fdc80b9554ba461619"
 };
 
 if (firebase.apps.length === 0) {

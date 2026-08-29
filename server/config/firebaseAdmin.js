@@ -7,6 +7,10 @@ if (apps.length === 0) {
   try {
     let serviceAccount;
 
+    const fs = require('fs');
+    const path = require('path');
+    const localServiceAccountPath = path.join(__dirname, 'firebase-service-account.json');
+
     if (process.env.FIREBASE_SERVICE_ACCOUNT) {
       try {
         serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
@@ -15,17 +19,34 @@ if (apps.length === 0) {
       }
     }
 
+    if (!serviceAccount && fs.existsSync(localServiceAccountPath)) {
+      try {
+        serviceAccount = JSON.parse(fs.readFileSync(localServiceAccountPath, 'utf8'));
+      } catch (e) {
+        console.warn('Failed to read firebase-service-account.json file');
+      }
+    }
+
     if (!serviceAccount) {
       serviceAccount = {
         projectId: process.env.FIREBASE_PROJECT_ID,
         clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined
+        privateKey: process.env.FIREBASE_PRIVATE_KEY
       };
     }
 
-    if (serviceAccount && (serviceAccount.projectId || serviceAccount.project_id) && serviceAccount.privateKey) {
+    const projectId = serviceAccount?.projectId || serviceAccount?.project_id;
+    const clientEmail = serviceAccount?.clientEmail || serviceAccount?.client_email;
+    const rawPrivateKey = serviceAccount?.privateKey || serviceAccount?.private_key;
+    const privateKey = rawPrivateKey ? rawPrivateKey.replace(/\\n/g, '\n') : undefined;
+
+    if (projectId && clientEmail && privateKey) {
       admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
+        credential: admin.credential.cert({
+          projectId,
+          clientEmail,
+          privateKey
+        })
       });
       console.log('Firebase Admin SDK initialized successfully.');
     } else {

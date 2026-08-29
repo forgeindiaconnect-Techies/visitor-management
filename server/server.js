@@ -1,4 +1,8 @@
-require('dotenv').config({ path: '../.env' }); // Load .env from root directory
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+require('dotenv').config();
+
 const dns = require('dns');
 try {
   dns.setServers(['8.8.8.8', '1.1.1.1']);

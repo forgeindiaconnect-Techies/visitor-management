@@ -98,7 +98,7 @@ export const AuthProvider = ({ children }) => {
           if (('Notification' in window) && Notification.permission === 'granted') {
             const messaging = getMessaging(app);
             if (messaging) {
-              const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY || "BMi4WOvwwzgiCpfLZj4rtSWDM0bHHL1ciowr6sbaGD6aQjSWsrkKae0Cfale0Q-Z8huo8grneu2XI5pEzfREgV";
+              const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY || "BBr6ZcXFLESCz9A9LremLes_apB-zxM14psFKcm0bNtHouvz_7uVFVqrkmgryIIyQqnboXFwm6q6CuX5EiP5XSY";
               fcmToken = await getToken(messaging, { vapidKey }).catch(() => "");
             }
           }

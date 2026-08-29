@@ -26,3 +26,6 @@ server/config/firebase-service-account.json
 visitor-management-mobile/google-services.json
 visitor-management-mobile/service-account.json
 .env
+.env.*
+server/.env
+
