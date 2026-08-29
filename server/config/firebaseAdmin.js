@@ -1,4 +1,5 @@
 const adminModule = require('firebase-admin');
+const admin = adminModule.default || adminModule;
 const { getApps, initializeApp, cert } = require('firebase-admin/app');
 
 const apps = getApps();
