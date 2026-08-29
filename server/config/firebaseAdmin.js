@@ -1,7 +1,7 @@
 const adminModule = require('firebase-admin');
-const admin = (adminModule && adminModule.apps) ? adminModule : (adminModule.default || adminModule);
+const { getApps, initializeApp, cert } = require('firebase-admin/app');
 
-const apps = (admin && admin.apps) ? admin.apps : [];
+const apps = getApps();
 
 if (apps.length === 0) {
   try {
@@ -41,14 +41,21 @@ if (apps.length === 0) {
     const privateKey = rawPrivateKey ? rawPrivateKey.replace(/\\n/g, '\n') : undefined;
 
     if (projectId && clientEmail && privateKey) {
-      admin.initializeApp({
-        credential: admin.credential.cert({
-          projectId,
-          clientEmail,
-          privateKey
-        })
-      });
-      console.log('Firebase Admin SDK initialized successfully.');
+      const certHandler = cert || adminModule?.credential?.cert;
+      const initHandler = initializeApp || adminModule?.initializeApp;
+
+      if (certHandler && initHandler) {
+        initHandler({
+          credential: certHandler({
+            projectId,
+            clientEmail,
+            privateKey
+          })
+        });
+        console.log('Firebase Admin SDK initialized successfully.');
+      } else {
+        console.warn('Firebase Admin SDK could not resolve cert or initializeApp handler.');
+      }
     } else {
       console.warn('Firebase Admin SDK configuration missing or incomplete.');
     }
