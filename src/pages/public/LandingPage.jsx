@@ -119,7 +119,7 @@ const LandingPage = () => {
     return null;
   };
 
-  const branchesList = ['Head Office(KRISHNAGIRI)', 'Bangalore'];
+  const branchesList = [];
 
   const _rawUrl = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
   const API_BASE = _rawUrl.replace(/\/api\/?$/, '');
@@ -551,7 +551,7 @@ const LandingPage = () => {
             {/* Login / Portal Button */}
             {user ? (
               <button
-                onClick={() => navigate('/visitors')}
+                onClick={() => navigate('/dashboard')}
                 className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold text-sm hover:shadow-lg hover:shadow-indigo-500/25 transition-all flex items-center gap-2"
               >
                 Dashboard
@@ -592,7 +592,7 @@ const LandingPage = () => {
                 Pre-Book Visit Pass
               </button>
               <button
-                onClick={() => { setMobileMenuOpen(false); navigate(user ? '/visitors' : '/login'); }}
+                onClick={() => { setMobileMenuOpen(false); navigate(user ? '/dashboard' : '/login'); }}
                 className="w-full py-3 rounded-xl bg-slate-800 text-white font-semibold border border-slate-700 flex items-center justify-center gap-2"
               >
                 {user ? 'Go to Dashboard' : 'Staff Sign In'}

@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from '../context/AuthContext';
+import { useBranch } from '../context/BranchContext';
 import { io } from "socket.io-client";
 import VisitorHistoryModal from '../components/visitors/VisitorHistoryModal';
 import VisitorRescheduleModal from '../components/visitors/VisitorRescheduleModal';
@@ -16,6 +17,7 @@ export default function SuperAdminPreBookings() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, hasApprovalPermission } = useAuth();
+  const { branches } = useBranch();
   const [preBookings, setPreBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedVisitor, setSelectedVisitor] = useState(null);
@@ -128,7 +130,7 @@ export default function SuperAdminPreBookings() {
       visitPurpose: visitor.visitPurpose || visitor.purpose || 'Interview',
       visitDate: visitor.visitDate ? String(visitor.visitDate).split('T')[0] : new Date().toISOString().split('T')[0],
       expectedTime: visitor.expectedTime || visitor.expectedArrivalTime || '10:00 AM',
-      branchLocation: visitor.branchLocation || visitor.branch || 'Head Office(KRISHNAGIRI)',
+      branchLocation: visitor.branchLocation || visitor.branch || '',
       vehicleNumber: visitor.vehicleNumber || ''
     });
   };
@@ -1548,10 +1550,13 @@ export default function SuperAdminPreBookings() {
                     onChange={(e) => setEditFormData({ ...editFormData, branchLocation: e.target.value })}
                     className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none bg-white"
                   >
-                    <option value="Head Office(KRISHNAGIRI)">Head Office(KRISHNAGIRI)</option>
-                    <option value="Thirupattur Branch">Thirupattur Branch</option>
-                    <option value="Salem Branch">Salem Branch</option>
-                    <option value="Bangalore Branch">Bangalore Branch</option>
+                    {branches.filter(b => b !== 'All Branches').length === 0 ? (
+                      <option value="">No branch available</option>
+                    ) : (
+                      branches.filter(b => b !== 'All Branches').map((b, idx) => (
+                        <option key={idx} value={b}>{b}</option>
+                      ))
+                    )}
                   </select>
                 </div>
 

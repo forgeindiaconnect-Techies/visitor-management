@@ -398,17 +398,15 @@ router.get('/todays-summary', async (req, res) => {
 // Get all visitors
 router.get('/', async (req, res) => {
   try {
-    const userCompanyId = req.companyId || 'FIC001';
-    const companyRegex = new RegExp(`^${userCompanyId}$`, 'i');
+    const userCompanyId = req.companyId;
 
-    let query = {
-      $or: [
-        { companyId: companyRegex },
-        { companyId: 'SYSTEM' },
-        { companyId: null },
-        { companyId: { $exists: false } }
-      ]
-    };
+    let query = {};
+    if (req.userRole !== 'SaaS Super Admin' && userCompanyId !== 'SYSTEM') {
+      if (!userCompanyId) {
+        return res.status(400).json({ message: 'Company ID is required' });
+      }
+      query.companyId = new RegExp(`^${userCompanyId}$`, 'i');
+    }
 
     if (req.query.status) {
       query.status = req.query.status;
@@ -690,11 +688,11 @@ router.get('/search/:query', async (req, res) => {
       searchConditions.push({ _id: cleanId });
     }
 
-    let visitor = await Visitor.findOne({ $or: searchConditions }).sort({ createdAt: -1 });
+    let visitor = await Visitor.findOne({ companyId: req.companyId, $or: searchConditions }).sort({ createdAt: -1 });
 
     if (!visitor) {
       const PreBooking = require('../models/PreBooking');
-      const pb = await PreBooking.findOne({ $or: searchConditions });
+      const pb = await PreBooking.findOne({ companyId: req.companyId, $or: searchConditions });
 
       if (pb) {
         visitor = {
@@ -815,6 +813,7 @@ router.post('/scan-pass', async (req, res) => {
     
     // 1. Try finding in Visitor collection
     let visitor = await Visitor.findOne({
+      companyId: req.companyId,
       $or: [
         { visitId: cleanToken },
         { profileId: cleanToken },
@@ -827,6 +826,7 @@ router.post('/scan-pass', async (req, res) => {
     if (!visitor) {
       const PreBooking = require('../models/PreBooking');
       const pb = await PreBooking.findOne({
+        companyId: req.companyId,
         $or: [
           { visitorId: cleanToken },
           { qrToken: cleanToken },
@@ -928,6 +928,7 @@ router.post('/:id/check-in', async (req, res) => {
     const isValidObjectId = require('mongoose').isValidObjectId(id);
     
     let visitor = await Visitor.findOne({
+      companyId: req.companyId,
       $or: [
         { visitId: id },
         { profileId: id },
@@ -939,6 +940,7 @@ router.post('/:id/check-in', async (req, res) => {
     if (!visitor) {
       const PreBooking = require('../models/PreBooking');
       const pb = await PreBooking.findOne({
+        companyId: req.companyId,
         $or: [
           { visitorId: id },
           { qrToken: id },
@@ -1023,6 +1025,7 @@ router.post('/:id/check-out', async (req, res) => {
     const isValidObjectId = require('mongoose').isValidObjectId(id);
     
     let visitor = await Visitor.findOne({
+      companyId: req.companyId,
       $or: [
         { visitId: id },
         { profileId: id },
@@ -1849,18 +1852,18 @@ router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const isValidObjectId = require('mongoose').isValidObjectId(id);
-    const query = isValidObjectId ? { _id: id } : { id: id };
+    const query = { companyId: req.companyId };
     
-    if (req.companyId) {
-      query.companyId = req.companyId;
+    if (isValidObjectId) {
+      query.$or = [{ _id: id }, { id: id }];
+    } else {
+      query.id = id;
     }
     
     let deleted = await Visitor.findOneAndDelete(query);
-    if (!deleted && isValidObjectId) {
-      deleted = await Visitor.findByIdAndDelete(id);
-    }
+    
     if (!deleted) {
-      deleted = await Visitor.findOneAndDelete({ id: id });
+      return res.status(404).json({ success: false, message: 'Visitor record not found in your company' });
     }
     
     return res.json({ success: true, message: 'Visitor record deleted successfully' });

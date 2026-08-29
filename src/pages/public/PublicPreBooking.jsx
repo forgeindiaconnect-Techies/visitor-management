@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { 
   Calendar, User, Clock, Building, CheckCircle2, Phone, Mail, 
   Car, ShieldAlert, ArrowLeft, Printer, QrCode, Sparkles, Upload, FileText, Download
@@ -27,17 +27,6 @@ const formatTimeTo12Hour = (timeStr) => {
   return `${formattedHours}:${minutes} ${ampm}`;
 };
 
-const hostOptions = [
-  { label: "Priyadharshini (HR)", name: "Priyadharshini", dbName: "PRIYADHARSHINI" },
-  { label: "Ganesh Kumar (HR)", name: "Ganesh Kumar", dbName: "GANESH KUMAR" },
-  { label: "Sandeep (CEO Sir)", name: "Sandeep", dbName: "SANDEEP" },
-  { label: "Avinash (MD Sir)", name: "Avinash", dbName: "AVINASH" },
-  { label: "Sabari (Admin)", name: "Sabari", dbName: "SABARI" },
-  { label: "Agila (IT)", name: "Agila", dbName: "AGILA" },
-  { label: "Joe Christo (Senior HR)", name: "Joe Christo", dbName: "JOE CHRISTO" },
-  { label: "Direct Visits", name: "Direct Visits", dbName: "DIRECT VISITS" }
-];
-
 const isAllowedDay = (date) => {
   const day = date.getDay();
   // Monday = 1, Wednesday = 3, Saturday = 6
@@ -58,14 +47,23 @@ const getNextAllowedVisitDate = () => {
 const PublicPreBooking = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { companyId: routeCompanyId } = useParams();
   const fileInputRef = useRef(null);
+
+  // Company Validation State
+  const [isValidatingCompany, setIsValidatingCompany] = useState(true);
+  const [companyError, setCompanyError] = useState('');
+  const [targetCompany, setTargetCompany] = useState(null);
+  const [manualCode, setManualCode] = useState('');
+  const [availableHosts, setAvailableHosts] = useState([]);
+  const [availableBranches, setAvailableBranches] = useState([]);
 
   // Form State
   const [formData, setFormData] = useState({
     visitorName: '',
     mobileNumber: '',
     email: '',
-    companyName: 'Forge India Connect Private Limited',
+    companyName: '',
     hostName: '',
     assignedHr: '',
     selectedHostLabel: '',
@@ -73,7 +71,7 @@ const PublicPreBooking = () => {
     visitDate: getNextAllowedVisitDate(),
     expectedArrivalTime: '10:00',
     vehicleNumber: '',
-    branch: 'Head Office(KRISHNAGIRI)',
+    branch: '',
     idType: '',
     idProofUrl: '',
   });
@@ -93,22 +91,73 @@ const PublicPreBooking = () => {
   const [returningVisitor, setReturningVisitor] = useState(false);
   const [activeBooking, setActiveBooking] = useState(null);
 
-  const [hrUsers, setHrUsers] = useState([]);
-
-  const getHrId = (dbName) => {
-    if (!dbName || dbName === 'DIRECT VISITS') return '';
-    const found = hrUsers.find(u => u.name.toUpperCase().replace(/\s/g, '') === dbName.replace(/\s/g, ''));
-    if (found) return found._id || found.id;
-    // Fallback to Priyadharshini's ID for other normal visitors
-    const priya = hrUsers.find(u => u.name.toUpperCase().includes('PRIYA'));
-    if (priya) return priya._id || priya.id;
-    return hrUsers.length > 0 ? (hrUsers[0]._id || hrUsers[0].id) : '';
-  };
-
-  const branchesList = ['Head Office(KRISHNAGIRI)', 'Bangalore'];
-
   const _rawUrl = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
   const API_BASE = _rawUrl.replace(/\/api\/?$/, '');
+
+  // Validate company when the public pre-booking link opens
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+
+    const companyCode = String(
+      routeCompanyId || searchParams.get('companyId') || ''
+    ).trim().toUpperCase();
+
+    const validateCompany = async () => {
+      // Do not allow a generic link without a registered company ID
+      if (!companyCode) {
+        setTargetCompany(null);
+        setCompanyError(
+          "This pre-booking link is invalid. Please use the official link provided by the company."
+        );
+        setIsValidatingCompany(false);
+        return;
+      }
+
+      try {
+        setIsValidatingCompany(true);
+        setCompanyError('');
+
+        const res = await fetch(
+          `${API_BASE}/api/prebookings/validate/${encodeURIComponent(companyCode)}`
+        );
+
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+          setTargetCompany(null);
+          setCompanyError(
+            data.message ||
+            "This pre-booking link is invalid or unavailable. Please contact the company administrator."
+          );
+          return;
+        }
+
+        setTargetCompany(data.company);
+
+        const dynamicHosts = data.company.hosts || [];
+        const dynamicBranches = data.company.branches || [];
+        setAvailableHosts(dynamicHosts);
+        setAvailableBranches(dynamicBranches);
+
+        setFormData((previousData) => ({
+          ...previousData,
+          companyId: data.company.companyId,
+          companyName:
+            data.company.companyName || previousData.companyName,
+          branch: dynamicBranches?.[0] || ''
+        }));
+      } catch (error) {
+        setTargetCompany(null);
+        setCompanyError(
+          "Unable to validate the pre-booking link. Please try again later."
+        );
+      } finally {
+        setIsValidatingCompany(false);
+      }
+    };
+
+    validateCompany();
+  }, [routeCompanyId, location.search, API_BASE]);
 
   const checkReturningVisitor = async (mobile) => {
     const cleanMobile = String(mobile || '').replace(/\D/g, '');
@@ -181,11 +230,13 @@ const PublicPreBooking = () => {
     setActiveBooking(null);
     setCapturedPhoto(null);
     setIdProofPreview('');
-    setFormData({
+    setFormData(prev => ({
+      ...prev,
       visitorName: '',
       mobileNumber: '',
       email: '',
-      companyName: 'Forge India Connect Private Limited',
+      companyName: targetCompany?.companyName || prev.companyName,
+      companyId: targetCompany?.companyId || prev.companyId,
       hostName: '',
       assignedHr: '',
       selectedHostLabel: '',
@@ -193,26 +244,11 @@ const PublicPreBooking = () => {
       visitDate: getNextAllowedVisitDate(),
       expectedArrivalTime: '10:00',
       vehicleNumber: '',
-      branch: 'Head Office(KRISHNAGIRI)',
+      branch: availableBranches[0] || prev.branch,
       idType: '',
       idProofUrl: ''
-    });
+    }));
   };
-
-  useEffect(() => {
-    const fetchHRUsers = async () => {
-      try {
-        const response = await fetch(`${API_BASE}/api/users/hr`);
-        const result = await response.json();
-        if (response.ok && result.success && result.data) {
-          setHrUsers(result.data);
-        }
-      } catch (err) {
-        console.error("Error loading HR users:", err);
-      }
-    };
-    fetchHRUsers();
-  }, [API_BASE]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -334,7 +370,9 @@ const PublicPreBooking = () => {
       return;
     }
     if (!formData.branch) {
-      setErrorMsg('Please select a branch location.');
+      setErrorMsg(
+        "No branch is available. Please ask the company administrator to add a branch."
+      );
       return;
     }
     if (!capturedPhoto) {
@@ -374,12 +412,20 @@ const PublicPreBooking = () => {
         }
       }
 
+      if (!targetCompany?.companyId) {
+        setErrorMsg(
+          "Company validation failed. Please reopen the official company pre-booking link."
+        );
+        return;
+      }
+
       // 2. Submit payload to backend
       const payload = {
+        companyId: targetCompany?.companyId,
         fullName: formData.visitorName,
         mobileNumber: formData.mobileNumber,
         email: formData.email,
-        visitingCompany: formData.companyName || 'Forge India Connect Private Limited',
+        visitingCompany: formData.companyName || targetCompany?.companyName || '',
         hostEmployee: formData.hostName,
         visitPurpose: formData.purpose,
         visitDate: formData.visitDate,
@@ -447,7 +493,8 @@ const PublicPreBooking = () => {
           visitorName: '',
           mobileNumber: '',
           email: '',
-          companyName: 'Forge India Connect Private Limited',
+          companyName: targetCompany?.companyName || '',
+          companyId: targetCompany?.companyId || '',
           hostName: '',
           assignedHr: '',
           selectedHostLabel: '',
@@ -455,7 +502,7 @@ const PublicPreBooking = () => {
           visitDate: getNextAllowedVisitDate(),
           expectedArrivalTime: '10:00',
           vehicleNumber: '',
-          branch: 'Head Office(KRISHNAGIRI)',
+          branch: availableBranches[0] || '',
           idType: '',
           idProofUrl: '',
         });
@@ -532,6 +579,69 @@ const PublicPreBooking = () => {
   const inputClassName = "block w-full pl-10 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[var(--color-brand-yellow)]/60 focus:border-[var(--color-brand-indigo)] outline-none bg-gray-50/50 hover:bg-gray-50/80 transition-all duration-300 text-gray-800 placeholder-gray-400 font-medium";
   const selectClassName = "block w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[var(--color-brand-yellow)]/60 focus:border-[var(--color-brand-indigo)] outline-none bg-gray-50/50 hover:bg-gray-50/80 transition-all duration-300 text-gray-700 font-semibold";
 
+  if (isValidatingCompany) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="text-center space-y-3">
+          <div className="w-12 h-12 border-4 border-[#1E1B6E] border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-sm font-semibold text-gray-600">Verifying company pre-booking link...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (companyError) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-3xl shadow-xl border border-indigo-100 p-8 text-center animate-in fade-in zoom-in-95 duration-300">
+          <div className="w-16 h-16 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-4 text-[#1E1B6E]">
+            <Building size={32} />
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Company Pre-Booking</h2>
+          <p className="text-xs text-gray-500 mb-6">{companyError}</p>
+
+          <form 
+            onSubmit={(e) => {
+              e.preventDefault();
+              const clean = manualCode.trim().toUpperCase();
+              if (clean) navigate(`/pre-booking/${clean}`);
+            }} 
+            className="mb-6 space-y-3"
+          >
+            <label className="text-xs font-bold text-gray-700 block text-left uppercase tracking-wider">
+              Enter Your Company ID to Open Pass Form:
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={manualCode}
+                onChange={(e) => setManualCode(e.target.value.toUpperCase())}
+                placeholder="e.g. PO0347 or FIC001"
+                className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-mono uppercase focus:ring-2 focus:ring-indigo-500 outline-none bg-slate-50"
+              />
+              <button
+                type="submit"
+                className="px-5 py-2.5 bg-[#1E1B6E] hover:bg-indigo-900 text-white text-xs font-bold rounded-xl transition-all shadow-md shrink-0 cursor-pointer"
+              >
+                Proceed
+              </button>
+            </div>
+            <p className="text-[11px] text-gray-400 text-left">
+              Contact your host or company administrator if you don't know your Company ID.
+            </p>
+          </form>
+
+          <button 
+            onClick={() => navigate('/')}
+            className="text-xs font-semibold text-gray-500 hover:text-gray-900 transition-colors cursor-pointer"
+          >
+            ← Return to Home
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-moving-gradient relative overflow-x-hidden flex flex-col justify-between py-12 px-4 sm:px-6 lg:px-8">
       {/* White background overlay */}
@@ -545,8 +655,14 @@ const PublicPreBooking = () => {
       {/* Header Bar */}
       <div className="max-w-3xl w-full mx-auto flex items-center justify-center mb-8 z-10">
         <div className="flex items-center gap-2">
-          <img src={logoImg} alt="Forge India Logo" className="h-14 w-14 object-contain" />
-          <span className="font-black text-gray-950 text-base tracking-tight">Forge India Connect</span>
+          {targetCompany?.branding?.logoUrl ? (
+            <img src={targetCompany.branding.logoUrl} alt="Company Logo" className="h-14 w-14 object-contain rounded-xl" />
+          ) : (
+            <img src={logoImg} alt="Forge India Logo" className="h-14 w-14 object-contain" />
+          )}
+          <span className="font-black text-gray-950 text-base tracking-tight">
+            {targetCompany?.companyName || 'Forge India Connect'}
+          </span>
         </div>
       </div>
 
@@ -696,7 +812,7 @@ const PublicPreBooking = () => {
                   <input
                     type="text"
                     name="companyName"
-                    value={formData.companyName || "Forge India Connect Private Limited"}
+                    value={formData.companyName || targetCompany?.companyName || "Company Pre-Booking"}
                     readOnly
                     className={`block w-full pl-10 pr-3 py-2.5 border rounded-xl text-sm font-semibold select-none ${
                       returningVisitor && !activeBooking
@@ -713,24 +829,23 @@ const PublicPreBooking = () => {
                 <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wider">Host Employee to Meet *</label>
                 <select
                   name="assignedHr"
-                  value={formData.selectedHostLabel || ""}
+                  value={formData.assignedHr || formData.selectedHostLabel || ""}
                   onChange={(e) => {
-                    const label = e.target.value;
-                    const option = hostOptions.find(o => o.label === label);
-                    const resolvedId = getHrId(option ? option.dbName : '');
+                    const selectedVal = e.target.value;
+                    const option = availableHosts.find(o => String(o.id) === selectedVal || o.name === selectedVal);
                     setFormData(prev => ({
                       ...prev,
-                      selectedHostLabel: label,
-                      assignedHr: resolvedId,
-                      hostName: option ? option.name : ''
+                      assignedHr: option?.id || null,
+                      hostName: option ? option.name : selectedVal,
+                      selectedHostLabel: option ? option.label : selectedVal
                     }));
                   }}
                   className={selectClassName}
                   required
                 >
-                  <option value="">Select Host</option>
-                  {hostOptions.map((opt, idx) => (
-                    <option key={idx} value={opt.label}>{opt.label}</option>
+                  <option value="">Select Host Employee</option>
+                  {availableHosts.map((opt, idx) => (
+                    <option key={idx} value={opt.id || opt.name}>{opt.label}</option>
                   ))}
                 </select>
               </div>
@@ -793,9 +908,13 @@ const PublicPreBooking = () => {
                   onChange={handleChange}
                   className={selectClassName}
                 >
-                  {branchesList.map((b, idx) => (
-                    <option key={idx} value={b}>{b}</option>
-                  ))}
+                  {availableBranches.length === 0 ? (
+                    <option value="">No branch available</option>
+                  ) : (
+                    availableBranches.map((b, idx) => (
+                      <option key={idx} value={b}>{b}</option>
+                    ))
+                  )}
                 </select>
               </div>
             </div>
@@ -941,13 +1060,13 @@ const PublicPreBooking = () => {
                     visitorName: '',
                     mobileNumber: '',
                     email: '',
-                    companyName: 'Forge India Connect Private Limited',
+                    companyName: targetCompany?.companyName || '',
                     hostName: '',
                     purpose: 'Business Meeting',
                     visitDate: new Date().toISOString().split('T')[0],
                     expectedArrivalTime: '10:00 AM',
                     vehicleNumber: '',
-                    branch: 'Head Office(KRISHNAGIRI)',
+                    branch: availableBranches?.[0] || '',
                   });
                 }}
                 className="px-5 py-2.5 rounded-xl bg-[var(--color-brand-indigo)] hover:bg-[var(--color-brand-indigo-light)] text-white font-semibold text-xs transition-colors shadow-md"

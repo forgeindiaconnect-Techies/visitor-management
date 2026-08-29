@@ -4,101 +4,174 @@ exports.getNotifications = async (req, res) => {
   try {
     const role = req.userRole || req.user?.role || 'User';
     const userId = req.userId || req.user?.id || req.user?._id;
-    const userCompanyId = req.companyId || req.user?.companyId || 'FIC001';
+    const userCompanyId = req.companyId || req.user?.companyId || '';
+    if (!userCompanyId && role !== 'SaaS Super Admin') {
+      return res.status(200).json({ success: true, notifications: [] });
+    }
 
     const isSuperOrAdmin = ['Super Admin', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'MD'].includes(role);
+    const isSaaSAdmin = role === 'SaaS Super Admin' || userCompanyId === 'SYSTEM';
     const companyRegex = new RegExp(`^${userCompanyId}$`, 'i');
 
-    // All dashboards have complete company notification visibility from starting to ending
-    const query = {
-      $or: [
-        { companyId: companyRegex },
-        { companyId: 'SYSTEM' },
-        { companyId: null },
-        { companyId: { $exists: false } }
-      ]
-    };
-    // Auto-create/sync missing registration notifications for pending prebookings & direct visits
-    try {
-      const PreBooking = require('../models/PreBooking');
-      const Visitor = require('../models/Visitor');
-      
-      const [pendingPBs, pendingVis] = await Promise.all([
-        PreBooking.find({ status: { $in: ['PENDING', 'Pending', 'PENDING APPROVAL', 'Pending Approval'] } }).lean(),
-        Visitor.find({ status: { $in: ['PENDING', 'Pending', 'PENDING APPROVAL', 'Pending Approval'] } }).lean()
-      ]);
+    let query;
 
-      const syncPromises = [];
-      const testRegex = /^(test|test 1|test 3|lokeee)$/i;
+    if (isSaaSAdmin) {
+      // 1. SaaS Super Admin ONLY receives platform-level tenant events:
+      // Company created, updated, deleted, expired, subscriptions, payments
+      // SaaS Super Admin NEVER receives visitor/pre-booking notifications
+      query = {
+        $or: [
+          { companyId: 'SYSTEM' },
+          { module: { $in: ['Tenant Management', 'Subscription', 'Company', 'Payment', 'System'] } },
+          { type: { $in: ['Company', 'Tenant Management', 'Subscription', 'Payment', 'System', 'TENANT_CREATED', 'COMPANY_CREATED', 'EXPIRY', 'SUBSCRIPTION_UPGRADE', 'SUBSCRIPTION_EXPIRED', 'info', 'success', 'warning'] } }
+        ],
+        module: { $nin: ['PreBooking', 'Visitors', 'Visitor', 'Tracking', 'Attendance', 'Blacklist'] },
+        type: { $nin: ['Visitor', 'PREBOOKING_REGISTERED', 'PREBOOKING_APPROVED', 'PREBOOKING_REJECTED', 'VISITOR_REGISTERED', 'VISITOR_CHECKED_IN', 'VISITOR_CHECKED_OUT', 'PREBOOKING_CHECKIN', 'PREBOOKING_CHECKOUT', 'PREBOOKING_RESCHEDULED'] }
+      };
 
-      for (const pb of (pendingPBs || [])) {
-        const nameCap = pb.fullName || pb.visitorName || 'Visitor';
-        if (testRegex.test(nameCap)) continue;
+      // Check and generate subscription expiry warnings for SaaS Admin
+      try {
+        const Company = require('../models/Company');
+        const now = new Date();
+        const in7Days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-        const isRet = Boolean(pb.isReturning || pb.returningVisitor);
-        const eventId = `PREBOOK_REGISTERED_${pb._id}`;
-        
-        syncPromises.push(
-          Notification.findOneAndUpdate(
-            { eventId: { $in: [eventId, `REGISTERED_${pb._id}`, `VISITOR_REGISTERED_${pb._id}`] } },
-            {
-              $setOnInsert: {
-                eventId,
-                companyId: pb.companyId || userCompanyId || 'FIC001',
-                branchId: pb.branchLocation || pb.branch,
-                roles: ['Super Admin', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'MD', 'Senior HR', 'HR', 'Security', 'Receptionist'],
-                visitorId: pb.visitorId || null,
-                visitorName: nameCap,
-                preBookingId: pb._id,
-                type: 'Visitor',
-                module: 'PreBooking',
-                title: isRet ? 'Returning Visitor Request Received' : 'New Pre-Booking',
-                message: `${nameCap} is waiting for approval.`,
-                isRead: false,
-                createdAt: pb.createdAt || new Date()
-              }
-            },
-            { upsert: true }
-          )
-        );
-      }
+        const expiringCompanies = await Company.find({
+          status: { $in: ['Active', 'Expired'] },
+          subscriptionExpiresAt: { $lte: in7Days }
+        }).lean();
 
-      for (const v of (pendingVis || [])) {
-        const nameCap = v.visitorName || v.fullName || 'Visitor';
-        if (testRegex.test(nameCap)) continue;
+        for (const comp of expiringCompanies) {
+          const isExpired = new Date(comp.subscriptionExpiresAt) < now;
+          const eventId = isExpired ? `EXPIRY_${comp.code}_EXPIRED` : `EXPIRY_${comp.code}_WARNING`;
+          const title = isExpired ? `⚠️ Subscription Expired: ${comp.name}` : `⏳ Subscription Expiring Soon: ${comp.name}`;
+          const message = isExpired
+            ? `${comp.name} (${comp.code}) subscription expired on ${new Date(comp.subscriptionExpiresAt).toLocaleDateString('en-GB')}.`
+            : `${comp.name} (${comp.code}) subscription will expire on ${new Date(comp.subscriptionExpiresAt).toLocaleDateString('en-GB')}.`;
 
-        const isRet = Boolean(v.isReturning || v.returningVisitor);
-        const eventId = `DIRECT_VISIT_CREATED_${v._id}`;
-        
-        syncPromises.push(
-          Notification.findOneAndUpdate(
+          await Notification.findOneAndUpdate(
             { eventId },
             {
               $setOnInsert: {
                 eventId,
-                companyId: v.companyId || userCompanyId || 'FIC001',
-                branchId: v.branchLocation || v.branch,
-                roles: ['Super Admin', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'MD', 'Senior HR', 'HR', 'Security', 'Receptionist'],
-                visitorId: v.visitorId || v.visitId || null,
-                visitorName: nameCap,
-                type: 'Visitor',
-                module: 'Visitors',
-                title: isRet ? 'Returning Visitor Request Received' : 'New Pre-Booking',
-                message: `${nameCap} is waiting for approval.`,
+                companyId: 'SYSTEM',
+                type: 'Subscription',
+                module: 'Tenant Management',
+                title,
+                message,
                 isRead: false,
-                createdAt: v.createdAt || new Date()
+                createdAt: new Date()
               }
             },
             { upsert: true }
-          )
-        );
+          );
+        }
+      } catch (expErr) {
+        console.warn('Expiry check warning for SaaS Admin:', expErr.message);
       }
+    } else {
+      // 2. Company Super Admin & Staff ONLY receive notifications for their own company
+      // Must NOT see notifications of other companies or SaaS platform events
+      query = {
+        companyId: companyRegex,
+        module: { $nin: ['Tenant Management'] },
+        type: { $nin: ['Tenant Management'] },
+        $or: [
+          { recipient: userId },
+          { "recipients.user": userId },
+          { "recipients.userId": String(userId) },
+          { roles: role },
+          {
+            recipient: { $exists: false },
+            roles: { $size: 0 }
+          },
+          {
+            roles: { $exists: false }
+          }
+        ]
+      };
 
-      if (syncPromises.length > 0) {
-        await Promise.all(syncPromises);
+      // Auto-create/sync missing registration notifications strictly for this company's visitors
+      try {
+        const PreBooking = require('../models/PreBooking');
+        const Visitor = require('../models/Visitor');
+        
+        const [pendingPBs, pendingVis] = await Promise.all([
+          PreBooking.find({ companyId: companyRegex, status: { $in: ['PENDING', 'Pending', 'PENDING APPROVAL', 'Pending Approval'] } }).lean(),
+          Visitor.find({ companyId: companyRegex, status: { $in: ['PENDING', 'Pending', 'PENDING APPROVAL', 'Pending Approval'] } }).lean()
+        ]);
+
+        const syncPromises = [];
+        const testRegex = /^(test|test 1|test 3|lokeee)$/i;
+
+        for (const pb of (pendingPBs || [])) {
+          const nameCap = pb.fullName || pb.visitorName || 'Visitor';
+          if (testRegex.test(nameCap)) continue;
+
+          const isRet = Boolean(pb.isReturning || pb.returningVisitor);
+          const eventId = `PREBOOK_REGISTERED_${pb._id}`;
+          
+          syncPromises.push(
+            Notification.findOneAndUpdate(
+              { eventId: { $in: [eventId, `REGISTERED_${pb._id}`, `VISITOR_REGISTERED_${pb._id}`] } },
+              {
+                $setOnInsert: {
+                  eventId,
+                  companyId: userCompanyId,
+                  branchId: pb.branchLocation || pb.branch,
+                  roles: ['Super Admin', 'Company Admin', 'Admin', 'MD', 'HR', 'Senior HR', 'Receptionist', 'Security'],
+                  visitorId: pb.visitorId || null,
+                  visitorName: nameCap,
+                  preBookingId: pb._id,
+                  type: 'Visitor',
+                  module: 'PreBooking',
+                  title: isRet ? 'Returning Visitor Request Received' : 'New Pre-Booking',
+                  message: `${nameCap} is waiting for approval.`,
+                  isRead: false,
+                  createdAt: pb.createdAt || new Date()
+                }
+              },
+              { upsert: true }
+            )
+          );
+        }
+
+        for (const v of (pendingVis || [])) {
+          const nameCap = v.visitorName || v.fullName || 'Visitor';
+          if (testRegex.test(nameCap)) continue;
+
+          const isRet = Boolean(v.isReturning || v.returningVisitor);
+          const eventId = `DIRECT_VISIT_CREATED_${v._id}`;
+          
+          syncPromises.push(
+            Notification.findOneAndUpdate(
+              { eventId },
+              {
+                $setOnInsert: {
+                  eventId,
+                  companyId: userCompanyId,
+                  branchId: v.branchLocation || v.branch,
+                  roles: ['Super Admin', 'Company Admin', 'Admin', 'MD', 'HR', 'Senior HR', 'Receptionist', 'Security'],
+                  visitorId: v.visitorId || v.visitId || null,
+                  visitorName: nameCap,
+                  type: 'Visitor',
+                  module: 'Visitors',
+                  title: isRet ? 'Returning Visitor Request Received' : 'New Pre-Booking',
+                  message: `${nameCap} is waiting for approval.`,
+                  isRead: false,
+                  createdAt: v.createdAt || new Date()
+                }
+              },
+              { upsert: true }
+            )
+          );
+        }
+
+        if (syncPromises.length > 0) {
+          await Promise.all(syncPromises);
+        }
+      } catch (syncErr) {
+        console.warn('Sync pending notifications warning:', syncErr.message);
       }
-    } catch (syncErr) {
-      console.warn('Sync pending notifications warning:', syncErr.message);
     }
 
     const notifications = await Notification.find(query)
@@ -134,7 +207,19 @@ exports.getNotifications = async (req, res) => {
 
     const cleanedNotifications = await Promise.all(
       (Array.isArray(notifications) ? notifications : []).map(async (n) => {
-        if (n && typeof n.message === 'string') {
+        if (!n) return n;
+
+        // Skip non-visitor notifications (Subscription, Company, Tenant Management, System)
+        const isVisitorNotif = 
+          ['PreBooking', 'Visitors', 'Visitor'].includes(n.module) ||
+          ['Visitor', 'PREBOOKING_REGISTERED', 'PREBOOKING_APPROVED', 'PREBOOKING_REJECTED', 'VISITOR_REGISTERED', 'VISITOR_CHECKED_IN', 'VISITOR_CHECKED_OUT'].includes(n.type) ||
+          Boolean(n.preBookingId || n.visitorId);
+
+        if (!isVisitorNotif) {
+          return n;
+        }
+
+        if (typeof n.message === 'string') {
           n.message = n.message
             .replace(/vaideeswari[\.\s]*2007/gi, 'Vaideeswari')
             .replace(/([\w\s]+)\.\s*\d{4}(\s+has|\s+was|\s+is|\.)/gi, (match, p1, p2) => `${p1.trim()}${p2}`);
@@ -283,9 +368,29 @@ exports.getNotifications = async (req, res) => {
       })
     );
 
+    let finalNotifications = cleanedNotifications;
+
+    if (isSaaSAdmin) {
+      // SaaS Super Admin NEVER receives visitor/pre-booking notifications
+      finalNotifications = cleanedNotifications.filter(n => {
+        const isVisitor = 
+          ['PreBooking', 'Visitors', 'Visitor'].includes(n.module) ||
+          ['Visitor', 'PREBOOKING_REGISTERED', 'PREBOOKING_APPROVED', 'PREBOOKING_REJECTED', 'VISITOR_REGISTERED', 'VISITOR_CHECKED_IN', 'VISITOR_CHECKED_OUT', 'PREBOOKING_CHECKIN', 'PREBOOKING_CHECKOUT', 'PREBOOKING_RESCHEDULED'].includes(n.type) ||
+          Boolean(n.preBookingId || n.visitorId) ||
+          /pre-booking|visitor|checked in|checked out|waiting for approval/i.test(n.title || '') ||
+          /waiting for approval|checked in|checked out/i.test(n.message || '');
+        return !isVisitor;
+      });
+    } else {
+      // Company users strictly receive their own company's notifications
+      finalNotifications = cleanedNotifications.filter(n => {
+        return n.companyId && n.companyId.toUpperCase() === userCompanyId.toUpperCase();
+      });
+    }
+
     res.status(200).json({
       success: true,
-      notifications: cleanedNotifications
+      notifications: finalNotifications
     });
   } catch (error) {
     console.error('Error fetching notifications:', error);

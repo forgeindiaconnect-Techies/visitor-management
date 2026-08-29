@@ -15,7 +15,13 @@ export const BlacklistProvider = ({ children }) => {
     try {
       const response = await fetch(API_URL, { 
         cache: 'no-store',
-        headers: currentUser?.token ? { 'Authorization': `Bearer ${currentUser.token}` } : {}
+        headers: {
+          'Content-Type': 'application/json',
+          ...(currentUser?.token && { 'Authorization': `Bearer ${currentUser.token}` }),
+          'X-Company-Id': currentUser?.companyId || '',
+          'X-User-Id': currentUser?.id || currentUser?._id || '',
+          'X-User-Role': currentUser?.role || ''
+        }
       });
       if (response.ok) {
         const data = await response.json();
@@ -32,7 +38,7 @@ export const BlacklistProvider = ({ children }) => {
     fetchBlacklist();
     const interval = setInterval(fetchBlacklist, 10000); // Auto-refresh every 10 seconds
     return () => clearInterval(interval);
-  }, []);
+  }, [currentUser, activeBranch]);
 
   const blacklisted = React.useMemo(() => {
     if (activeBranch === 'All Branches') return allBlacklisted;
@@ -42,7 +48,7 @@ export const BlacklistProvider = ({ children }) => {
   const addToBlacklist = async (data) => {
     const userBranch = currentUser && !['Super Admin'].includes(currentUser.role) 
       ? currentUser.branch 
-      : (activeBranch === 'All Branches' ? 'Head Office(KRISHNAGIRI)' : activeBranch);
+      : (activeBranch === 'All Branches' ? '' : activeBranch);
     try {
       const response = await fetch(API_URL, {
         method: 'POST',

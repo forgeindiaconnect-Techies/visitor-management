@@ -216,19 +216,7 @@ export const VisitorProvider = ({ children }) => {
           setVisitors([]);
         }
       } else {
-        // Fallback dummy data if nothing exists
-        setVisitors([{
-          id: '1',
-          visitorName: 'John Doe',
-          mobileNumber: '1234567890',
-          email: 'john@example.com',
-          companyName: 'Acme Corp',
-          hostName: 'Jane Smith',
-          purpose: 'Meeting',
-          visitDate: new Date().toISOString().split('T')[0],
-          status: 'Pending',
-          branch: 'Head Office(KRISHNAGIRI)',
-        }]);
+        setVisitors([]);
       }
     } finally {
       setLoading(false);
@@ -274,7 +262,7 @@ export const VisitorProvider = ({ children }) => {
     if (!userBranch) {
       userBranch = currentUser && !['Super Admin'].includes(currentUser.role) 
         ? currentUser.branch 
-        : (activeBranch === 'All Branches' ? 'Head Office(KRISHNAGIRI)' : activeBranch);
+        : (activeBranch === 'All Branches' ? '' : activeBranch);
     }
     
     const newVisitor = {

@@ -22,6 +22,14 @@ const UserList = () => {
   // Exclude 'All Branches' from the selectable list for individual users
   const assignableBranches = branches.filter(b => b !== 'All Branches');
 
+  const getHeaders = () => ({
+    'Authorization': `Bearer ${localStorage.getItem('token')}`,
+    'X-Company-Id': currentUser?.companyId || '',
+    'X-User-Id': currentUser?._id || currentUser?.id || '',
+    'X-User-Role': currentUser?.role || 'User',
+    'X-Branch-Id': currentUser?.branch || 'All Branches'
+  });
+
   useEffect(() => {
     fetchUsers();
     fetchBranchSummary();
@@ -30,7 +38,9 @@ const UserList = () => {
   const fetchBranchSummary = async () => {
     if (activeBranch && activeBranch !== 'All Branches') {
       try {
-        const res = await fetch(`${API_URL}/branch-summary?branch=${activeBranch}`);
+        const res = await fetch(`${API_URL}/branch-summary?branch=${activeBranch}`, {
+          headers: getHeaders()
+        });
         if (res.ok) {
           const data = await res.json();
           setBranchStats(data);
@@ -52,10 +62,13 @@ const UserList = () => {
         fetchUrl = `${API_URL}?branch=${encodeURIComponent(activeBranch)}`;
       }
 
-      const response = await fetch(fetchUrl);
+      const response = await fetch(fetchUrl, {
+        headers: getHeaders()
+      });
       if (response.ok) {
         const data = await response.json();
-        setUsers(data);
+        const userList = Array.isArray(data) ? data : (data?.data || []);
+        setUsers(userList);
       }
     } catch (err) {
       console.error('Failed to fetch users:', err);
@@ -67,7 +80,10 @@ const UserList = () => {
   const deleteUser = async (id) => {
     if (!window.confirm('Are you sure you want to delete this user?')) return;
     try {
-      const response = await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
+      const response = await fetch(`${API_URL}/${id}`, { 
+        method: 'DELETE',
+        headers: getHeaders()
+      });
       if (response.ok) {
         setUsers(users.filter(u => u.id !== id));
       }
@@ -80,7 +96,10 @@ const UserList = () => {
     try {
       const response = await fetch(`${API_URL}/${id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          ...getHeaders(),
+          'Content-Type': 'application/json' 
+        },
         body: JSON.stringify(updates)
       });
       if (response.ok) {
@@ -109,7 +128,10 @@ const UserList = () => {
     try {
       const response = await fetch(`${API_URL}/${userId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          ...getHeaders(),
+          'Content-Type': 'application/json' 
+        },
         body: JSON.stringify({ status: newStatus })
       });
       if (response.ok) {

@@ -145,11 +145,16 @@ router.post('/login', loginLimiter, async (req, res) => {
       branding: company?.branding || { logoUrl: '', primaryColor: '#1E1B6E' }
     };
 
-    // Generate Access Token (15m)
+    // Generate Access Token (8h)
     const token = jwt.sign(
-      { userId: u.id, companyId: responsePayload.companyId, role: responsePayload.role },
+      { 
+        userId: u.id, 
+        role: responsePayload.role, 
+        companyId: responsePayload.companyId, 
+        branchId: responsePayload.branch || responsePayload.branchId || 'All Branches'
+      },
       process.env.JWT_SECRET || 'fallback_secret_key_123',
-      { expiresIn: '15m' }
+      { expiresIn: '8h' }
     );
 
     // Generate Refresh Token (7d)
@@ -199,145 +204,66 @@ router.post('/login', loginLimiter, async (req, res) => {
 // POST register-company (SaaS signup)
 router.post('/register-company', async (req, res) => {
   try {
-    const { companyName, adminName, email, mobileNumber, password, plan } = req.body;
-
-    if (!companyName || !adminName || !email || !password) {
-      return res.status(400).json({ message: 'Company name, admin name, email, and password are required' });
-    }
-
-    // Check if email already exists
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
-    if (existingUser) {
-      return res.status(400).json({ message: 'Email address is already registered' });
-    }
-
-    // Generate unique company code
     const Company = require('../models/Company');
-    const cleanName = companyName.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
-    const prefix = cleanName.length >= 3 ? cleanName : 'COM';
-    let code = '';
-    let isUnique = false;
-    let attempts = 0;
-    while (!isUnique && attempts < 10) {
-      const rand = Math.floor(100 + Math.random() * 900);
-      code = `${prefix}${rand}`;
-      const existingCompany = await Company.findOne({ code });
-      if (!existingCompany) {
-        isUnique = true;
+    const User = require('../models/User');
+    const jwt = require('jsonwebtoken');
+
+    // Backwards compatibility mappings for existing frontend payload
+    if (!req.body.companyCode) {
+      const cleanName = (req.body.companyName || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
+      const prefix = cleanName.length >= 3 ? cleanName : 'COM';
+      req.body.companyCode = `${prefix}${Math.floor(100 + Math.random() * 900)}`;
+    }
+    if (!req.body.subscription && req.body.plan) {
+      req.body.subscription = req.body.plan;
+    }
+    if (!req.body.adminEmail && req.body.email) {
+      req.body.adminEmail = req.body.email;
+    }
+    if (!req.body.adminPassword && req.body.password) {
+      req.body.adminPassword = req.body.password;
+    }
+    if (!req.body.subscriptionExpiresAt) {
+      const expiry = new Date();
+      expiry.setDate(expiry.getDate() + (req.body.subscription === 'One Day Trial' ? 1 : 30));
+      req.body.subscriptionExpiresAt = expiry;
+    }
+
+    const company = await Company.create({
+      name: req.body.companyName,
+      code: req.body.companyCode.trim().toUpperCase(),
+      subscription: req.body.subscription,
+      status: "Active",
+      subscriptionExpiresAt: req.body.subscriptionExpiresAt,
+      features: {
+        preBookingEnabled: true
       }
-      attempts++;
-    }
-
-    // Fallback if loop failed
-    if (!isUnique) {
-      code = `COM${Date.now().toString().slice(-4)}`;
-    }
-
-    // Set expiration date
-    const expiry = new Date();
-    if (plan === 'One Day Trial') {
-      expiry.setDate(expiry.getDate() + 1);
-    } else {
-      expiry.setDate(expiry.getDate() + 30);
-    }
-
-    // Standard or Enterprise starts Inactive until payment succeeds. Free plans start Active.
-    const companyStatus = (plan === 'Basic' || plan === 'One Day Trial' || !plan) ? 'Active' : 'Inactive';
-
-    const company = new Company({
-      name: companyName,
-      code,
-      subscription: plan || 'Basic',
-      status: companyStatus,
-      subscriptionExpiresAt: expiry
     });
-    await company.save();
 
-    // Hash the password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    const hashedPassword = await bcrypt.hash(req.body.adminPassword, 12);
 
-    // Create the Company Admin
-    const user = new User({
-      companyId: code,
-      name: adminName,
-      email: email.toLowerCase(),
-      mobileNumber,
+    const companyAdmin = await User.create({
+      name: req.body.adminName,
+      email: req.body.adminEmail.trim().toLowerCase(),
       password: hashedPassword,
-      plainPassword: password,
-      role: 'Company Admin', // Updated to new role
-      branchId: 'All Branches',
-      status: 'Active',
-      createdBy: 'Self-Registration'
-    });
-    await user.save();
-
-    // Trigger Notification for New Tenant
-    const Notification = require('../models/Notification');
-    const newNotification = await Notification.create({
-      companyId: 'SYSTEM', // System-level notification for SaaS Super Admin
-      type: 'success',
-      module: 'Company',
-      title: '🏢 New Tenant Added',
-      message: `${companyName} has been added to the platform.`,
-      createdBy: 'System'
+      role: "Company Admin",
+      companyId: company.code,
+      branch: "All Branches",
+      status: "Active"
     });
 
-    // 1. Send real-time dashboard notification using Socket.IO
-    const io = req.app.get('io');
-    
-    if (io) {
-      io.emit('new_notification', newNotification);
-    }
-    
-    // 2. Find SaaS Super Admin mobile tokens
-    const saasAdmins = await User.find({
-      role: 'SaaS Super Admin',
-      fcmToken: {
-        $exists: true,
-        $ne: ''
-      }
-    });
-    
-    const adminTokens = saasAdmins
-      .map(admin => admin.fcmToken)
-      .filter(Boolean);
-    
-    console.log('SaaS Admin push tokens:', adminTokens);
-    
-    // 3. Send mobile push notification
-    if (adminTokens.length > 0) {
-      await sendPushNotification(
-        adminTokens,
-        newNotification.title,
-        newNotification.message,
-        {
-          notificationId: newNotification._id.toString(),
-          type: newNotification.type,
-          module: newNotification.module
-        }
-      );
-    
-      console.log('Mobile push notification sent');
-    } else {
-      console.log('No SaaS Super Admin mobile token found');
-    }
+    const token = jwt.sign(
+      {
+        userId: companyAdmin._id,
+        role: companyAdmin.role,
+        companyId: companyAdmin.companyId,
+        branchId: companyAdmin.branch
+      },
+      process.env.JWT_SECRET || 'fallback_secret_key_123',
+      { expiresIn: "8h" }
+    );
 
-    // Log the action
-    await logAction(req, 'Company Created', 'Tenant Management', {
-      companyId: 'SYSTEM',
-      companyName: 'System Administration',
-      userId: user._id,
-      userName: adminName,
-      role: 'SaaS Super Admin',
-      description: `Company ${companyName} (${code}) was created by self-registration`,
-      status: 'Success'
-    });
-
-    // Send mock email
-    await sendEmail(email.toLowerCase(), EmailTemplates.welcome(companyName, adminName).subject, EmailTemplates.welcome(companyName, adminName).body);
-
-    const sanitizedUser = user.toJSON();
+    const sanitizedUser = companyAdmin.toJSON();
     delete sanitizedUser.password;
 
     res.status(201).json({
@@ -349,7 +275,8 @@ router.post('/register-company', async (req, res) => {
         status: company.status,
         subscriptionExpiresAt: company.subscriptionExpiresAt
       },
-      user: sanitizedUser
+      user: sanitizedUser,
+      token: token
     });
   } catch (err) {
     console.error('Company registration error:', err);

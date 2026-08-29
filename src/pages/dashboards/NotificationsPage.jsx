@@ -43,7 +43,7 @@ const NotificationsPage = () => {
   const dates = ['All', 'Today', 'Yesterday', 'Last Week', 'Last Month'];
 
   const getHeaders = () => ({
-    'X-Company-Id': user?.companyId || 'FIC001',
+    'X-Company-Id': user?.companyId || '',
     'X-User-Id': user?._id || user?.id || 'bootstrap',
     'X-User-Role': user?.role || 'User',
     'X-Branch-Id': user?.branch || 'All Branches',
@@ -82,9 +82,20 @@ const NotificationsPage = () => {
             `${item.type || ''}_${item.preBookingId || ''}_${item.message || ''}`;
 
           if (seen.has(key)) return false;
-
           seen.add(key);
-          return true;
+
+          // Role-specific filtering:
+          if (user?.role === 'SaaS Super Admin') {
+            const isVisitor =
+              ['PreBooking', 'Visitors', 'Visitor'].includes(item.module) ||
+              ['Visitor', 'PREBOOKING_REGISTERED', 'PREBOOKING_APPROVED', 'PREBOOKING_REJECTED', 'VISITOR_REGISTERED', 'VISITOR_CHECKED_IN', 'VISITOR_CHECKED_OUT', 'PREBOOKING_CHECKIN', 'PREBOOKING_CHECKOUT', 'PREBOOKING_RESCHEDULED'].includes(item.type) ||
+              Boolean(item.preBookingId || item.visitorId) ||
+              /pre-booking|visitor|checked in|checked out|waiting for approval/i.test(item.title || '') ||
+              /waiting for approval|checked in|checked out/i.test(item.message || '');
+            return !isVisitor;
+          } else {
+            return item.companyId && item.companyId.toUpperCase() === (user?.companyId || '').toUpperCase();
+          }
         });
 
         setNotifications(uniqueList);

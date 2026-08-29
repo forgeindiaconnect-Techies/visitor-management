@@ -43,7 +43,7 @@ const Login = () => {
         setTimeout(() => {
           setIsExiting(true);
           setTimeout(() => {
-            navigate('/');
+            navigate('/dashboard');
           }, 500);
         }, 1000);
       } else {

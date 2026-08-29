@@ -70,7 +70,7 @@ const PreBookingForm = () => {
     idProofUrl: '',
     registrationType: 'Pre-Booking',
     status: 'Pre-Booked',
-    branch: (user?.role === 'Super Admin' && activeBranch !== 'All Branches') ? activeBranch : (user?.branch || 'Head Office(KRISHNAGIRI)')
+    branch: (user?.role === 'Super Admin' && activeBranch !== 'All Branches') ? activeBranch : (user?.branch && user?.branch !== 'All Branches' ? user.branch : '')
   });
 
   const [uploadingDoc, setUploadingDoc] = useState(false);

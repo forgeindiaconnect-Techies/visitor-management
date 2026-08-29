@@ -20,29 +20,38 @@ router.get('/companies', async (req, res) => {
   try {
     const companies = await Company.find().sort({ createdAt: -1 });
     const BranchSetting = require('../models/BranchSetting');
+    const PreBooking = require('../models/PreBooking');
     const planLimits = require('../config/plans');
 
-    const enriched = [];
-    for (const comp of companies) {
-      const adminUser = await User.findOne({ companyId: comp.code, role: { $in: ['Super Admin', 'Company Admin'] } });
-      const userCount = await User.countDocuments({ companyId: comp.code });
-      const securityCount = await User.countDocuments({ companyId: comp.code, role: 'Security' });
-      const visitorCount = await Visitor.countDocuments({ companyId: comp.code });
-      const branchCount = await BranchSetting.countDocuments({ companyId: comp.code });
+    const enriched = await Promise.all(companies.map(async (comp) => {
+      const [adminUser, userCount, securityCount, visitorCount, branchCount, preBookingCount] = await Promise.all([
+        User.findOne({ companyId: comp.code, role: { $in: ['Super Admin', 'Company Admin'] } }).select('email'),
+        User.countDocuments({ companyId: comp.code }),
+        User.countDocuments({ companyId: comp.code, role: 'Security' }),
+        Visitor.countDocuments({ companyId: comp.code }),
+        BranchSetting.countDocuments({ companyId: comp.code }),
+        PreBooking.countDocuments({ companyId: comp.code })
+      ]);
       const limits = planLimits[comp.subscription] || planLimits['Basic'];
 
-      enriched.push({
+      return {
         ...comp.toJSON(),
         _id: comp._id.toString(),  // Explicitly include _id for frontend operations
+        companyId: comp.code,
+        companyName: comp.name,
+        adminEmail: adminUser ? adminUser.email : 'N/A',
+        plan: comp.subscription,
+        status: comp.status,
+        expiryDate: comp.subscriptionExpiresAt,
+        branchCount,
         userCount,
         securityCount,
         visitorCount,
-        branchCount,
-        limits,
-        adminEmail: adminUser ? adminUser.email : 'N/A',
-        adminPassword: adminUser ? (adminUser.plainPassword || 'Hidden') : 'N/A'
-      });
-    }
+        preBookingCount,
+        limits
+      };
+    }));
+
     res.json(enriched);
   } catch (err) {
     res.status(500).json({ message: err.message });

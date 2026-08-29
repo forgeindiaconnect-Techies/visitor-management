@@ -16,6 +16,10 @@ router.get('/', async (req, res) => {
   try {
     let query = { companyId: req.companyId };
     
+    if (req.userRole === 'Security') {
+      query.securityId = req.userId;
+    }
+    
     // Enforce strict branch isolation based on role
     if (req.userRole === 'Security' || req.userRole === 'Branch Admin' || req.userRole === 'Receptionist') {
        query.branch = req.branchId;
@@ -50,7 +54,11 @@ router.get('/', async (req, res) => {
 // POST Check In
 router.post('/checkin', async (req, res) => {
   try {
-    const { securityId, securityName, branch, date, checkInTime, checkInPhoto, checkInLocation } = req.body;
+    const { date, checkInTime, checkInPhoto, checkInLocation, securityName: bodySecurityName } = req.body;
+    
+    const securityId = req.userId;
+    const branch = req.branchId || 'All Branches';
+    const securityName = req.userName || req.user?.name || bodySecurityName || 'Security';
     
     // Check if already checked in today
     const existing = await SecurityAttendance.findOne({ companyId: req.companyId, securityId, date });
@@ -101,8 +109,13 @@ router.patch('/checkout/:id', async (req, res) => {
   try {
     const { checkOutTime, workingHours, checkOutPhoto, checkOutLocation } = req.body;
     
+    let query = { _id: req.params.id, companyId: req.companyId };
+    if (req.userRole === 'Security') {
+      query.securityId = req.userId;
+    }
+    
     const attendance = await SecurityAttendance.findOneAndUpdate(
-      { _id: req.params.id, companyId: req.companyId },
+      query,
       { 
         checkOutTime, 
         checkOutPhoto,

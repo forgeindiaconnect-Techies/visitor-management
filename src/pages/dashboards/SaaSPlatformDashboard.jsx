@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Building, Users, UserCheck, CreditCard, Calendar, Activity, Check, X, ShieldAlert, Sparkles, Plus, AlertCircle, RefreshCw, Eye, EyeOff, Download } from 'lucide-react';
+import { Building, Users, UserCheck, CreditCard, Calendar, Activity, Check, X, ShieldAlert, Sparkles, Plus, AlertCircle, RefreshCw, Eye, EyeOff, Download, Copy, ExternalLink } from 'lucide-react';
 import { exportToCSV } from '../../utils/exportUtils';
 import SendNotificationModal from '../../components/superadmin/SendNotificationModal';
 
@@ -84,6 +84,7 @@ const SaaSPlatformDashboard = () => {
   const getHeaders = () => {
     return {
       'Content-Type': 'application/json',
+      ...(user?.token && { 'Authorization': `Bearer ${user.token}` }),
       'X-Company-Id': user?.companyId || 'SYSTEM',
       'X-User-Id': user?.id || 'bootstrap-saas',
       'X-User-Role': user?.role || 'SaaS Super Admin'
@@ -465,12 +466,7 @@ const SaaSPlatformDashboard = () => {
           >
             Payments
           </button>
-          <button 
-            onClick={() => setActiveTab('Audit Logs')}
-            className={`px-6 py-4 font-semibold text-sm border-b-2 transition-colors ${activeTab === 'Audit Logs' ? 'border-[#1E1B6E] text-[#1E1B6E]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-slate-100'}`}
-          >
-            Audit Logs
-          </button>
+
           <button 
             onClick={() => setActiveTab('Upgrade Requests')}
             className={`px-6 py-4 font-semibold text-sm border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'Upgrade Requests' ? 'border-[#1E1B6E] text-[#1E1B6E]' : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-slate-100'}`}
@@ -511,40 +507,59 @@ const SaaSPlatformDashboard = () => {
               <table className="w-full text-left border-collapse min-w-max">
                 <thead>
                   <tr className="bg-slate-50 text-gray-500 text-[11px] uppercase tracking-wider">
-                    <th className="px-6 py-4 font-medium">Company Name</th>
-                    <th className="px-6 py-4 font-medium">Company Details</th>
-                    <th className="px-6 py-4 font-medium text-center">Branches</th>
-                    <th className="px-6 py-4 font-medium text-center">Security Users</th>
-                    <th className="px-6 py-4 font-medium text-center">Visitors</th>
-                    <th className="px-6 py-4 font-medium">Status</th>
-                    <th className="px-6 py-4 font-medium text-right">Actions</th>
+                    <th className="px-5 py-3.5 font-medium">Company Name</th>
+                    <th className="px-5 py-3.5 font-medium">Company ID</th>
+                    <th className="px-5 py-3.5 font-medium">Admin Email</th>
+                    <th className="px-5 py-3.5 font-medium">Plan</th>
+                    <th className="px-5 py-3.5 font-medium">Status</th>
+                    <th className="px-5 py-3.5 font-medium">Expiry Date</th>
+                    <th className="px-4 py-3.5 font-medium text-center">Branches</th>
+                    <th className="px-4 py-3.5 font-medium text-center">Users</th>
+                    <th className="px-4 py-3.5 font-medium text-center">Visitors</th>
+                    <th className="px-4 py-3.5 font-medium text-center">Pre-Bookings</th>
+                    <th className="px-5 py-3.5 font-medium text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-gray-100 text-xs">
                   {companies.map((comp) => (
                     <tr key={comp._id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-6 py-4 font-semibold text-gray-900">{comp.name}</td>
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col gap-1.5">
-                          <span className="font-mono text-xs bg-slate-100 text-gray-700 px-2.5 py-1 rounded border border-slate-200 font-semibold w-max">
-                            {comp.code}
+                      <td className="px-5 py-4 font-semibold text-gray-900">{comp.name}</td>
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono text-xs bg-slate-100 text-gray-700 px-2 py-0.5 rounded border border-slate-200 font-semibold">
+                            {comp.code || comp.companyId}
                           </span>
-                          <div className="text-[10px] text-gray-500 flex flex-col">
-                            <span><strong className="text-gray-700">ID:</strong> {comp.adminEmail}</span>
-                            <span><strong className="text-gray-700">PWD:</strong> {comp.adminPassword}</span>
-                          </div>
+                          <button
+                            title="Copy Pre-Booking Link"
+                            onClick={() => {
+                              const link = `${window.location.origin}/pre-booking/${comp.code || comp.companyId}`;
+                              navigator.clipboard.writeText(link);
+                              showToast(`Copied pre-booking link for ${comp.name}!`, 'success');
+                            }}
+                            className="p-1 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors cursor-pointer"
+                          >
+                            <Copy size={13} />
+                          </button>
+                          <a
+                            title="Open Pre-Booking Link"
+                            href={`/pre-booking/${comp.code || comp.companyId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                          >
+                            <ExternalLink size={13} />
+                          </a>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-center font-semibold text-gray-700 text-xs">
-                        {comp.branchCount || 0} / {comp.limits?.branches === -1 ? 'Unlimited' : comp.limits?.branches}
+                      <td className="px-5 py-4 text-gray-600 font-medium">
+                        {comp.adminEmail}
                       </td>
-                      <td className="px-6 py-4 text-center font-semibold text-gray-700 text-xs">
-                        {comp.securityCount || 0} / {comp.limits?.securityUsers === -1 ? 'Unlimited' : comp.limits?.securityUsers}
+                      <td className="px-5 py-4">
+                        <span className="font-semibold px-2.5 py-0.5 bg-purple-50 text-purple-700 rounded-full border border-purple-100 text-[11px]">
+                          {comp.subscription || comp.plan}
+                        </span>
                       </td>
-                      <td className="px-6 py-4 text-center font-semibold text-gray-700 text-xs">
-                        {comp.visitorCount || 0} / {comp.limits?.visitors === -1 ? 'Unlimited' : comp.limits?.visitors}
-                      </td>
-                      <td className="px-6 py-4">
+                      <td className="px-5 py-4">
                         <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                           comp.status === 'Active' ? 'bg-green-100 text-green-700' : 
                           comp.status === 'Expired' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'
@@ -552,28 +567,43 @@ const SaaSPlatformDashboard = () => {
                           {comp.status}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-right">
+                      <td className="px-5 py-4 text-gray-600 whitespace-nowrap">
+                        {comp.subscriptionExpiresAt ? new Date(comp.subscriptionExpiresAt).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'}
+                      </td>
+                      <td className="px-4 py-4 text-center font-bold text-gray-700">
+                        {comp.branchCount || 0}
+                      </td>
+                      <td className="px-4 py-4 text-center font-bold text-gray-700">
+                        {comp.userCount || 0}
+                      </td>
+                      <td className="px-4 py-4 text-center font-bold text-gray-700">
+                        {comp.visitorCount || 0}
+                      </td>
+                      <td className="px-4 py-4 text-center font-bold text-[#1E1B6E]">
+                        {comp.preBookingCount || 0}
+                      </td>
+                      <td className="px-5 py-4 text-right whitespace-nowrap">
                         <button 
                           onClick={() => { setEditCompany({ ...comp }); setShowEditModal(true); }}
-                          className="px-3 py-1.5 bg-blue-50 text-blue-600 text-xs font-semibold rounded hover:bg-blue-100 mr-2 border border-blue-200"
+                          className="px-2.5 py-1 bg-blue-50 text-blue-600 text-xs font-semibold rounded hover:bg-blue-100 mr-1.5 border border-blue-200"
                         >
                           Edit
                         </button>
                         <button 
                           onClick={() => { setNotificationCompany({ ...comp }); setShowNotificationModal(true); }}
-                          className="px-3 py-1.5 bg-indigo-50 text-indigo-600 text-xs font-semibold rounded hover:bg-indigo-100 mr-2 border border-indigo-200"
+                          className="px-2.5 py-1 bg-indigo-50 text-indigo-600 text-xs font-semibold rounded hover:bg-indigo-100 mr-1.5 border border-indigo-200"
                         >
                           Notify
                         </button>
                         <button 
                           onClick={() => handleToggleStatus(comp._id, comp.status)}
-                          className="px-3 py-1.5 bg-slate-100 text-gray-700 text-xs font-semibold rounded hover:bg-slate-200 mr-2 border border-slate-200"
+                          className="px-2.5 py-1 bg-slate-100 text-gray-700 text-xs font-semibold rounded hover:bg-slate-200 mr-1.5 border border-slate-200"
                         >
                           {comp.status === 'Active' ? 'Deactivate' : 'Activate'}
                         </button>
                         <button 
                           onClick={() => setDeleteConfirm({ id: comp._id, name: comp.name, code: comp.code })}
-                          className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-semibold rounded border border-red-200"
+                          className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-semibold rounded border border-red-200"
                         >
                           Delete
                         </button>
@@ -582,7 +612,7 @@ const SaaSPlatformDashboard = () => {
                   ))}
                   {companies.length === 0 && !loading && (
                     <tr>
-                      <td colSpan="6" className="px-6 py-12 text-center text-gray-500 font-medium bg-slate-50/50">
+                      <td colSpan="11" className="px-6 py-12 text-center text-gray-500 font-medium bg-slate-50/50">
                         No tenant companies found.
                       </td>
                     </tr>
@@ -749,136 +779,7 @@ const SaaSPlatformDashboard = () => {
           </>
         )}
 
-        {activeTab === 'Audit Logs' && (
-          <>
-            <div className="p-6 border-b border-gray-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div>
-                <h3 className="text-lg font-bold text-gray-900">Platform Audit Logs</h3>
-                <p className="text-xs text-gray-500 mt-0.5">System-wide monitoring of critical administrative actions</p>
-              </div>
-              <button 
-                onClick={handleExportAuditLogs}
-                className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-colors"
-              >
-                <Download size={14} /> Export CSV
-              </button>
-            </div>
 
-            {/* Filters */}
-            <div className="bg-slate-50 p-4 border-b border-gray-200 flex flex-col md:flex-row gap-4 items-center flex-wrap">
-              <input
-                type="text"
-                className="flex-1 min-w-[200px] px-3 py-2 border border-gray-200 rounded-lg focus:ring-[#1E1B6E] focus:border-[#1E1B6E] text-sm"
-                placeholder="Search action or user..."
-                value={auditLogFilters.search}
-                onChange={(e) => setAuditLogFilters({...auditLogFilters, search: e.target.value})}
-              />
-              <input
-                type="text"
-                className="w-40 px-3 py-2 border border-gray-200 rounded-lg focus:ring-[#1E1B6E] focus:border-[#1E1B6E] text-sm"
-                placeholder="Filter company..."
-                value={auditLogFilters.company}
-                onChange={(e) => setAuditLogFilters({...auditLogFilters, company: e.target.value})}
-              />
-              <input 
-                type="date"
-                className="w-40 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-[#1E1B6E]"
-                value={auditLogFilters.date}
-                onChange={(e) => setAuditLogFilters({...auditLogFilters, date: e.target.value})}
-              />
-              <select
-                value={auditLogFilters.module}
-                onChange={(e) => setAuditLogFilters({...auditLogFilters, module: e.target.value})}
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-[#1E1B6E]"
-              >
-                <option value="All">All Modules</option>
-                <option value="Authentication">Auth</option>
-                <option value="Visitor">Visitor</option>
-                <option value="User Management">Users</option>
-                <option value="Tenant Management">Tenants</option>
-                <option value="Subscription">Subscription</option>
-                <option value="Settings">Settings</option>
-              </select>
-              <select
-                value={auditLogFilters.status}
-                onChange={(e) => setAuditLogFilters({...auditLogFilters, status: e.target.value})}
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-[#1E1B6E]"
-              >
-                <option value="All">All Statuses</option>
-                <option value="Success">Success</option>
-                <option value="Failure">Failure</option>
-                <option value="Pending">Pending</option>
-              </select>
-            </div>
-
-            <div className="overflow-x-auto pb-2">
-              <table className="w-full text-left border-collapse min-w-max">
-                <thead>
-                  <tr className="bg-slate-50 text-gray-500 text-[11px] uppercase tracking-wider">
-                    <th className="px-6 py-4 font-medium">Date & Time</th>
-                    <th className="px-6 py-4 font-medium">Company</th>
-                    <th className="px-6 py-4 font-medium">User & Role</th>
-                    <th className="px-6 py-4 font-medium">Action</th>
-                    <th className="px-6 py-4 font-medium">Module</th>
-                    <th className="px-6 py-4 font-medium text-center">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 text-sm">
-                  {filteredAuditLogs.map((log) => (
-                    <tr key={`saas-audit-${log._id}`} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap text-gray-500">
-                        <div className="flex flex-col">
-                          <span className="font-semibold text-gray-800">
-                            {new Date(log.createdAt).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })}
-                          </span>
-                          <span className="text-[11px]">
-                            {new Date(log.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="font-semibold text-gray-900">{log.companyName || 'Unknown'}</div>
-                        <div className="text-[10px] text-gray-500 font-normal tracking-wider">{log.companyId}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="font-semibold text-gray-900">{log.userName}</div>
-                        <div className="text-[10px] text-gray-500 font-normal uppercase tracking-wider">{log.role}</div>
-                      </td>
-                      <td className="px-6 py-4 font-medium text-gray-800">
-                        <div className="flex items-center gap-2">
-                          <Activity size={14} className="text-[#1E1B6E]" />
-                          <span>{log.action}</span>
-                        </div>
-                        {log.description && (
-                          <p className="text-[11px] text-gray-500 mt-1 font-normal max-w-xs truncate" title={log.description}>{log.description}</p>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-gray-700">
-                          {log.module}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                          log.status === 'Success' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
-                        }`}>
-                          {log.status || 'Success'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                  {filteredAuditLogs.length === 0 && !loading && (
-                    <tr>
-                      <td colSpan="6" className="px-6 py-12 text-center text-gray-500 font-medium bg-slate-50/50">
-                        No audit logs available matching filters.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
 
         {activeTab === 'Upgrade Requests' && (
           <>

@@ -18,7 +18,9 @@ import {
   XCircle, 
   CalendarClock, 
   ShieldCheck,
-  Sparkles
+  Sparkles,
+  Building,
+  CreditCard
 } from 'lucide-react';
 import { io } from 'socket.io-client';
 import { useNavigate } from 'react-router-dom';
@@ -33,6 +35,25 @@ const API_URL = `${rawApi}/api/notifications`;
 
 const getNotificationMeta = (title = '', type = '') => {
   const t = (title || type || '').toLowerCase();
+
+  if (t.includes('subscription') || t.includes('plan') || t.includes('upgrade') || t.includes('expiry') || t.includes('expired')) {
+    return {
+      icon: <CreditCard size={15} className="text-purple-600" />,
+      badge: 'Subscription',
+      badgeClass: 'bg-purple-50 text-purple-700 border-purple-200/70',
+      iconBg: 'bg-purple-50 border-purple-100',
+      accentBorder: 'bg-purple-500'
+    };
+  }
+  if (t.includes('company') || t.includes('tenant')) {
+    return {
+      icon: <Building size={15} className="text-indigo-600" />,
+      badge: 'Company',
+      badgeClass: 'bg-indigo-50 text-indigo-700 border-indigo-200/70',
+      iconBg: 'bg-indigo-50 border-indigo-100',
+      accentBorder: 'bg-indigo-500'
+    };
+  }
 
   if (t.includes('checked in') || t.includes('checkin') || t.includes('arrived')) {
     return {
@@ -88,12 +109,21 @@ const getNotificationMeta = (title = '', type = '') => {
       accentBorder: 'bg-teal-500'
     };
   }
+  if (t.includes('pre-booking') || t.includes('visitor')) {
+    return {
+      icon: <UserCheck size={15} className="text-amber-600" />,
+      badge: 'Pre-Booking',
+      badgeClass: 'bg-amber-50 text-amber-700 border-amber-200/70',
+      iconBg: 'bg-amber-50 border-amber-100',
+      accentBorder: 'bg-amber-500'
+    };
+  }
   return {
-    icon: <UserCheck size={15} className="text-amber-600" />,
-    badge: 'Pre-Booking',
-    badgeClass: 'bg-amber-50 text-amber-700 border-amber-200/70',
-    iconBg: 'bg-amber-50 border-amber-100',
-    accentBorder: 'bg-amber-500'
+    icon: <Bell size={15} className="text-indigo-600" />,
+    badge: 'Notification',
+    badgeClass: 'bg-indigo-50 text-indigo-700 border-indigo-200/70',
+    iconBg: 'bg-indigo-50 border-indigo-100',
+    accentBorder: 'bg-indigo-500'
   };
 };
 
@@ -108,7 +138,7 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
   const dropdownRef = useRef(null);
 
   const getHeaders = () => ({
-    'X-Company-Id': user?.companyId || 'FIC001',
+    'X-Company-Id': user?.companyId || '',
     'X-User-Id': user?._id || user?.id || 'bootstrap',
     'X-User-Role': user?.role || 'User',
     'X-Branch-Id': user?.branch || 'All Branches',
@@ -140,9 +170,20 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
             `${item.type || ''}_${item.preBookingId || ''}_${item.message || ''}`;
 
           if (seen.has(key)) return false;
-
           seen.add(key);
-          return true;
+
+          // Role-specific filtering:
+          if (user?.role === 'SaaS Super Admin') {
+            const isVisitor =
+              ['PreBooking', 'Visitors', 'Visitor'].includes(item.module) ||
+              ['Visitor', 'PREBOOKING_REGISTERED', 'PREBOOKING_APPROVED', 'PREBOOKING_REJECTED', 'VISITOR_REGISTERED', 'VISITOR_CHECKED_IN', 'VISITOR_CHECKED_OUT', 'PREBOOKING_CHECKIN', 'PREBOOKING_CHECKOUT', 'PREBOOKING_RESCHEDULED'].includes(item.type) ||
+              Boolean(item.preBookingId || item.visitorId) ||
+              /pre-booking|visitor|checked in|checked out|waiting for approval/i.test(item.title || '') ||
+              /waiting for approval|checked in|checked out/i.test(item.message || '');
+            return !isVisitor;
+          } else {
+            return item.companyId && item.companyId.toUpperCase() === (user?.companyId || '').toUpperCase();
+          }
         });
 
         setNotifications(uniqueList);
@@ -160,9 +201,20 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
     socket.on('new_notification', (notification) => {
       if (!notification) return;
 
-      // Filter by company tenant if applicable
-      if (user?.role !== 'SaaS Super Admin' && notification.companyId && notification.companyId !== 'SYSTEM' && notification.companyId.toUpperCase() !== (user?.companyId || 'FIC001').toUpperCase()) {
-        return;
+      // Filter by role:
+      if (user?.role === 'SaaS Super Admin') {
+        // SaaS Super Admin NEVER receives visitor/pre-booking notifications
+        if (
+          ['PreBooking', 'Visitors', 'Visitor'].includes(notification.module) ||
+          ['Visitor', 'PREBOOKING_REGISTERED', 'PREBOOKING_APPROVED', 'PREBOOKING_REJECTED', 'VISITOR_REGISTERED', 'VISITOR_CHECKED_IN', 'VISITOR_CHECKED_OUT'].includes(notification.type)
+        ) {
+          return;
+        }
+      } else {
+        // Company staff ONLY receives their own company's notifications
+        if (!notification.companyId || notification.companyId === 'SYSTEM' || notification.companyId.toUpperCase() !== (user?.companyId || '').toUpperCase()) {
+          return;
+        }
       }
 
       const cleanedNotif = normalizeNotifications([notification])[0] || notification;

@@ -89,17 +89,23 @@ notificationSchema.post('save', async function(doc) {
       const User = mongoose.model('User');
       const sendPushNotification = require('../utils/pushNotificationService');
       
-      let query = { fcmToken: { $exists: true, $ne: '' } };
+      let query = { 
+        fcmToken: { $exists: true, $ne: '' },
+        status: 'Active'
+      };
       
       if (doc.recipient) {
         query._id = doc.recipient;
       } else {
         if (doc.type === 'Attendance') {
-          query.role = 'Super Admin';
+          query.role = { $in: ['Super Admin', 'Company Admin'] };
         }
         
         if (doc.companyId && doc.companyId !== 'SYSTEM') {
-          query.companyId = doc.companyId;
+          query.companyId = new RegExp(`^${doc.companyId}$`, 'i');
+          if (doc.roles && doc.roles.length > 0) {
+            query.role = { $in: doc.roles };
+          }
           if (doc.branchId && doc.branchId !== 'All Branches') {
             query.$or = [
               { branch: doc.branchId },

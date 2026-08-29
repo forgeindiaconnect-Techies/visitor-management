@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useBranch } from '../../context/BranchContext';
+import { useAuth } from '../../context/AuthContext';
 import { useNotification } from '../../context/NotificationContext';
 import { Save, MapPin, Clock, Shield } from 'lucide-react';
 
@@ -7,11 +8,23 @@ const API_URL = `${import.meta.env.VITE_API_URL || (window.location.hostname ===
 
 const BranchSettings = () => {
   const { branches } = useBranch();
+  const { user: currentUser } = useAuth();
   const { addNotification } = useNotification();
   
   const [selectedBranch, setSelectedBranch] = useState(branches.length > 1 ? branches[1] : 'new');
   const [newBranchName, setNewBranchName] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const getHeaders = () => {
+    const token = localStorage.getItem('token') || currentUser?.token;
+    return {
+      'Authorization': `Bearer ${token}`,
+      'X-Company-Id': currentUser?.companyId || '',
+      'X-User-Id': currentUser?._id || currentUser?.id || '',
+      'X-User-Role': currentUser?.role || 'User',
+      'X-Branch-Id': currentUser?.branch || 'All Branches'
+    };
+  };
   
   const [formData, setFormData] = useState({
     latitude: '',
@@ -40,7 +53,9 @@ const BranchSettings = () => {
   const fetchBranchSettings = async (branchName) => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/${encodeURIComponent(branchName)}`);
+      const res = await fetch(`${API_URL}/${encodeURIComponent(branchName)}`, {
+        headers: getHeaders()
+      });
       if (res.ok) {
         const data = await res.json();
         setFormData({
@@ -86,12 +101,15 @@ const BranchSettings = () => {
     try {
       const res = await fetch(API_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          ...getHeaders(),
+          'Content-Type': 'application/json' 
+        },
         body: JSON.stringify({
           branchName: branchToSave,
-          latitude: parseFloat(formData.latitude),
-          longitude: parseFloat(formData.longitude),
-          radius: parseInt(formData.radius, 10),
+          latitude: parseFloat(formData.latitude) || 0,
+          longitude: parseFloat(formData.longitude) || 0,
+          radius: parseInt(formData.radius, 10) || 50,
           checkInStart: formData.checkInStart,
           checkInEnd: formData.checkInEnd,
           checkOutTime: formData.checkOutTime

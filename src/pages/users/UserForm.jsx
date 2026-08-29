@@ -46,8 +46,18 @@ const UserForm = () => {
     try {
       const response = await fetch(API_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(submissionData)
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'X-Company-Id': currentUser?.companyId || '',
+          'X-User-Id': currentUser?._id || currentUser?.id || '',
+          'X-User-Role': currentUser?.role || 'User',
+          'X-Branch-Id': currentUser?.branch || 'All Branches'
+        },
+        body: JSON.stringify({
+          ...submissionData,
+          companyId: currentUser?.companyId
+        })
       });
 
       if (response.ok) {

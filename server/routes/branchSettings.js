@@ -9,10 +9,20 @@ router.use(authMiddleware);
 // GET all branch settings
 router.get('/', async (req, res) => {
   try {
-    const settings = await BranchSetting.find({ companyId: req.companyId });
-    res.json(settings);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
+    const branches = await BranchSetting.find({
+      companyId: req.companyId
+    }).sort({ createdAt: -1 });
+
+    return res.json({
+      success: true,
+      count: branches.length,
+      data: branches
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Unable to fetch branches"
+    });
   }
 });
 
@@ -36,6 +46,10 @@ router.get('/:branchName', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const { branchName, latitude, longitude, radius, checkInStart, checkInEnd, checkOutTime } = req.body;
+
+    if (!branchName) {
+      return res.status(400).json({ success: false, message: 'Branch name is required' });
+    }
 
     // Check plan limits
     const Company = require('../models/Company');
@@ -64,15 +78,16 @@ router.post('/', async (req, res) => {
       branchName: { $regex: new RegExp(`^${branchName}$`, 'i') }
     });
 
-    // Upsert the setting
+    // Upsert the setting with the logged-in company
     const setting = await BranchSetting.findOneAndUpdate(
       {
         companyId: req.companyId,
         branchName: { $regex: new RegExp(`^${branchName}$`, 'i') }
       },
       {
-        companyId: req.companyId,
+        ...req.body,
         branchName,
+        companyId: req.companyId,
         latitude,
         longitude,
         radius,
@@ -98,14 +113,12 @@ router.post('/', async (req, res) => {
       if (io) {
         io.emit('new_notification', newNotification);
       }
-      // Audit log
       await logAction(req, `Branch Added`, 'Settings', {
         userId: req.user ? req.user._id : undefined,
         description: `Branch ${branchName} was created successfully`,
         status: 'Success'
       });
     } else {
-      // Audit log
       await logAction(req, `Branch Settings Updated`, 'Settings', {
         userId: req.user ? req.user._id : undefined,
         description: `Settings for branch ${branchName} were updated`,
@@ -113,9 +126,17 @@ router.post('/', async (req, res) => {
       });
     }
 
-    res.json(setting);
-  } catch (err) {
-    res.status(400).json({ message: err.message });
+    return res.status(201).json({
+      success: true,
+      message: "Branch created successfully",
+      data: setting,
+      ...setting.toJSON()
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Unable to create branch"
+    });
   }
 });
 

@@ -8,11 +8,16 @@ const logAction = require('../utils/auditLogger');
 // Public route to fetch HR users for dropdown (accessible without login)
 router.get('/hr', async (req, res) => {
   try {
-    const hrUsers = await User.find({
-      role: { $in: ['HR', 'MD', 'Admin', 'Company Admin', 'Employee'] },
+    const targetCompanyId = (req.query.companyId || req.headers['x-company-id'] || '').trim().toUpperCase();
+    const query = {
+      role: { $in: ['HR', 'MD', 'Admin', 'Company Admin', 'Super Admin', 'Senior HR', 'Employee'] },
       status: 'Active',
       name: { $nin: [/monika/i, /adithya/i, /adithiya/i, /test/i] }
-    }, 'name email role');
+    };
+    if (targetCompanyId) {
+      query.companyId = targetCompanyId;
+    }
+    const hrUsers = await User.find(query, 'name email role companyId');
     res.json({ success: true, data: hrUsers, users: hrUsers });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -59,20 +64,30 @@ router.get('/fix-branches', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     let query = { companyId: req.companyId };
-    if (req.query.branch) {
+    if (req.query.branch && req.query.branch !== 'All Branches') {
       query.branch = req.query.branch;
     }
-    const users = await User.find(query).sort({ createdAt: -1 });
-    // Remove passwords before sending to frontend
+    const users = await User.find(query)
+      .select("-password")
+      .sort({ createdAt: -1 });
+
     const sanitizedUsers = users.map(user => {
-      const u = user.toJSON();
+      const u = user.toJSON ? user.toJSON() : user;
       delete u.password;
-      u.branch = u.branchId;
+      u.branch = u.branchId || u.branch;
       return u;
     });
-    res.json(sanitizedUsers);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
+
+    return res.json({
+      success: true,
+      count: sanitizedUsers.length,
+      data: sanitizedUsers
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Unable to fetch users"
+    });
   }
 });
 
@@ -84,7 +99,7 @@ router.get('/:id', async (req, res) => {
 
     const u = user.toJSON();
     delete u.password;
-    u.branch = u.branchId;
+    u.branch = u.branchId || u.branch;
     res.json(u);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -94,39 +109,74 @@ router.get('/:id', async (req, res) => {
 // POST new user
 router.post('/', async (req, res) => {
   try {
-    // Check if email already exists
-    const existingUser = await User.findOne({ email: req.body.email });
+    const loggedInCompanyId =
+      req.companyId || req.user?.companyId;
+
+    if (
+      !loggedInCompanyId ||
+      loggedInCompanyId === "SYSTEM"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Unable to identify the company"
+      });
+    }
+
+    const {
+      name,
+      email,
+      password,
+      role,
+      department,
+      branch,
+      mobileNumber,
+      createdBy
+    } = req.body;
+
+    const normalizedEmail = (email || '').trim().toLowerCase();
+
+    // Check if email already exists in this company
+    const existingUser = await User.findOne({
+      companyId: loggedInCompanyId,
+      email: normalizedEmail
+    });
+
     if (existingUser) {
-      return res.status(400).json({ message: 'Email already exists' });
+      return res.status(409).json({
+        success: false,
+        message: "This email already exists in your company"
+      });
     }
 
     // Force branch if creator role is passed and not Super Admin
-    let userBranch = req.body.branch;
+    let userBranch = branch;
     if (req.body.createdByRole && req.body.createdByRole !== 'Super Admin') {
-      userBranch = req.body.creatorBranch || req.body.branch;
+      userBranch = req.body.creatorBranch || branch;
     }
 
     // Enforce Plan Limits for Security and Admin Staff
-    if (['Security', 'Admin', 'Branch Admin', 'MD', 'Company Admin'].includes(req.body.role)) {
+    if (['Security', 'Admin', 'Branch Admin', 'MD', 'Company Admin'].includes(role)) {
       const Company = require('../models/Company');
       const planLimits = require('../config/plans');
-      const company = await Company.findOne({ code: req.companyId });
+      const company = await Company.findOne({ code: loggedInCompanyId });
       if (company && company.subscription) {
         const limits = planLimits[company.subscription];
 
-        if (req.body.role === 'Security' && limits && limits.securityUsers !== -1) {
-          const count = await User.countDocuments({ companyId: req.companyId, role: 'Security' });
+        if (role === 'Security' && limits && limits.securityUsers !== -1) {
+          const count = await User.countDocuments({ companyId: loggedInCompanyId, role: 'Security' });
           if (count >= limits.securityUsers) {
             return res.status(403).json({
+              success: false,
               message: `Maximum security users reached. Your current plan (${company.subscription}) only allows up to ${limits.securityUsers} security staff members. Please upgrade your plan.`
             });
           }
         }
 
-        if (['Admin', 'Branch Admin', 'MD', 'Company Admin'].includes(req.body.role) && limits && limits.admins !== -1) {
-          const count = await User.countDocuments({ companyId: req.companyId, role: { $in: ['Admin', 'Branch Admin', 'MD', 'Company Admin'] } });
+        if (['Admin', 'Branch Admin', 'MD', 'Company Admin'].includes(role) && limits && limits.admins !== -1) {
+          const count = await User.countDocuments({ companyId: loggedInCompanyId, role: { $in: ['Admin', 'Branch Admin', 'MD', 'Company Admin'] } });
           if (count >= limits.admins) {
             return res.status(403).json({
+              success: false,
               message: `Maximum admin users reached. Your current plan (${company.subscription}) only allows up to ${limits.admins} admin members. Please upgrade your plan.`
             });
           }
@@ -134,53 +184,106 @@ router.post('/', async (req, res) => {
       }
     }
 
-    const user = new User({
-      companyId: req.companyId,
-      name: req.body.name,
-      email: req.body.email,
-      mobileNumber: req.body.mobileNumber,
-      password: req.body.password, // Plain text as requested for testing
-      role: req.body.role,
+    const bcrypt = require("bcryptjs");
+    const hashedPassword = await bcrypt.hash(password || "123456", 12);
+
+    const user = await User.create({
+      name,
+      email: normalizedEmail,
+      mobileNumber: mobileNumber || '',
+      password: hashedPassword,
+      plainPassword: password,
+      role,
+      department,
       branch: userBranch,
+      branchId: userBranch,
+      companyId: loggedInCompanyId,
       status: req.body.status || 'Active',
-      createdBy: req.body.createdBy
+      createdBy: createdBy || req.userName || 'Company Admin'
     });
 
-    const newUser = await user.save();
+    const safeUser = user.toObject();
+    delete safeUser.password;
+    safeUser.branch = safeUser.branchId || safeUser.branch;
 
-    // Trigger Notification for User added
-    if (newUser.role === 'Admin' || newUser.role === 'Branch Admin' || newUser.role === 'Security') {
+    // Trigger Notification for User added to this company
+    try {
       const Notification = require('../models/Notification');
-      const typeStr = newUser.role === 'Security' ? 'Security' : 'Admin';
-      const titleStr = newUser.role === 'Security' ? '👮 Security Added' : '👤 Admin Added';
+      const COMPANY_DASHBOARD_ROLES = [
+        "Super Admin",
+        "Company Admin",
+        "Admin",
+        "MD",
+        "HR",
+        "Senior HR",
+        "Receptionist",
+        "Security"
+      ];
+
       const newNotification = await Notification.create({
-        companyId: req.companyId,
-        branchId: newUser.branch,
-        type: 'success',
-        module: 'Users',
-        title: titleStr,
-        message: `${newUser.name} was added as ${newUser.role} for ${newUser.branchId} Branch.`,
-        createdBy: req.body.createdBy || 'System'
+        companyId: loggedInCompanyId,
+        branchId: user.branch || "All Branches",
+        type: "USER_CREATED",
+        module: "User Management",
+        title: "New User Created",
+        message: `${user.name} was added as ${user.role}.`,
+        createdBy: req.userId || req.user?._id || 'System',
+        roles: COMPANY_DASHBOARD_ROLES
       });
+
       const io = req.app.get('io');
       if (io) {
         io.emit('new_notification', newNotification);
       }
+
+      // Send Firebase Push Notification to active company team members
+      try {
+        const sendPushNotification = require('../utils/pushNotificationService');
+        const activeUsers = await User.find({
+          companyId: new RegExp(`^${loggedInCompanyId}$`, 'i'),
+          status: 'Active',
+          role: { $in: COMPANY_DASHBOARD_ROLES },
+          fcmToken: { $exists: true, $ne: '' }
+        }).select('fcmToken');
+
+        const tokens = activeUsers.map(u => u.fcmToken).filter(Boolean);
+        if (tokens.length > 0) {
+          await sendPushNotification(
+            tokens,
+            newNotification.title,
+            newNotification.message,
+            {
+              notificationId: newNotification._id.toString(),
+              module: 'Users',
+              companyId: loggedInCompanyId
+            }
+          );
+        }
+      } catch (fcmErr) {
+        console.warn('FCM Push Notification failed in user creation:', fcmErr.message);
+      }
+    } catch (notifErr) {
+      console.warn('Could not create notification for new user:', notifErr.message);
     }
 
     // Audit Log
     await logAction(req, `Added User`, 'User Management', {
       userId: req.user ? req.user._id : undefined,
-      description: `User ${newUser.name} was added as ${newUser.role}`,
+      description: `User ${user.name} was added as ${user.role}`,
       status: 'Success'
     });
 
-    const u = newUser.toJSON();
-    delete u.password;
-    u.branch = u.branchId;
-    res.status(201).json(u);
-  } catch (err) {
-    res.status(400).json({ message: err.message });
+    return res.status(201).json({
+      success: true,
+      message: "User created successfully",
+      data: safeUser,
+      ...safeUser
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Unable to create user: " + error.message
+    });
   }
 });
 
@@ -195,7 +298,7 @@ router.patch('/:id', async (req, res) => {
     const updatedUser = await User.findOneAndUpdate(
       { _id: req.params.id, companyId: req.companyId },
       { $set: req.body },
-      { new: true }
+      { new: true, runValidators: true }
     );
 
     // Audit & Notifications

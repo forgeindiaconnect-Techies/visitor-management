@@ -52,11 +52,11 @@ const PreBookingRegistration = () => {
     visitorName: '',
     email: '',
     mobileNumber: '',
-    companyName: 'Forge India Connect Private Limited',
+    companyName: user?.companyName || '',
     purpose: 'Business Meeting',
     visitDate: new Date().toISOString().split('T')[0],
     visitTime: '10:00 AM',
-    branch: user?.branch && user.branch !== 'All Branches' ? user.branch : 'Head Office(KRISHNAGIRI)',
+    branch: user?.branch && user.branch !== 'All Branches' ? user.branch : '',
     dob: '',
     hostEmployee: '',
     notes: ''

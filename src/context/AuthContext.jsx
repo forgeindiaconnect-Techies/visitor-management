@@ -33,8 +33,12 @@ export const AuthProvider = ({ children }) => {
       // Handle 401 Unauthorized - Attempt Silent Refresh
       if (response.status === 401) {
         const refreshUrl = `${import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com')}/api/auth/refresh`;
-        // Prevent infinite loops if the refresh itself is 401
-        if (args[0] !== refreshUrl) {
+        const logoutUrl = `${import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com')}/api/auth/logout`;
+        
+        const requestUrl = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
+        
+        // Prevent infinite loops if the refresh itself is 401, or if it's a logout call
+        if (requestUrl !== refreshUrl && !requestUrl.includes('/auth/logout')) {
           try {
             const refreshRes = await originalFetch(refreshUrl, {
               method: 'POST',

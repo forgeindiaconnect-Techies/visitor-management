@@ -89,10 +89,14 @@ const AppRoutes = () => {
       <Route path="/landing" element={<LandingPage />} />
       <Route path="/login" element={<Login />} />
       <Route path="/prebook" element={<PublicPreBooking />} />
+      <Route path="/prebook/:companyId" element={<PublicPreBooking />} />
+      <Route path="/pre-booking" element={<PublicPreBooking />} />
+      <Route path="/pre-booking/:companyId" element={<PublicPreBooking />} />
       <Route path="/visitor-status/:token" element={<VisitorStatus />} />
       <Route path="/pass/:visitId" element={<VisitorPass />} />
       <Route path="/visitor-pass/:qrToken" element={<VisitorPass />} />
       <Route path="/pre-register" element={<PreRegister />} />
+      <Route path="/pre-register/:companyId" element={<PreRegister />} />
       <Route path="/visitor-invitation/:token" element={<VisitorInvitation />} />
 
       {/* Main Authenticated Layout */}
@@ -110,21 +114,21 @@ const AppRoutes = () => {
         <Route path="visitors" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin', 'Security', 'HR', 'Receptionist']}><VisitorList /></ProtectedRoute>} />
         <Route path="visitors/new" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin', 'Security', 'HR', 'Receptionist']}><VisitorForm /></ProtectedRoute>} />
         <Route path="visitors/pre-booking" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin', 'HR', 'Receptionist', 'Employee']}><PreBookingForm /></ProtectedRoute>} />
-        <Route path="invitations" element={<ProtectedRoute allowedRoles={['SaaS Super Admin', 'Super Admin', 'Company Admin', 'MD', 'Admin', 'HR', 'Receptionist']}><PreBookingRegistration /></ProtectedRoute>} />
+        <Route path="invitations" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin', 'HR', 'Receptionist']}><PreBookingRegistration /></ProtectedRoute>} />
         <Route path="visitors/security" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin', 'Security', 'Receptionist']}><SecurityCheckIn /></ProtectedRoute>} />
         <Route path="visitors/returning" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin', 'Security', 'HR', 'Receptionist']}><ReturningVisitor /></ProtectedRoute>} />
         
         {/* Approvals & Pre-Bookings Module */}
-        <Route path="pre-bookings" element={<ProtectedRoute allowedRoles={['SaaS Super Admin', 'Super Admin', 'Company Admin', 'MD', 'Admin', 'HR', 'Receptionist', 'Security']}><SuperAdminPreBookings /></ProtectedRoute>} />
-        <Route path="super-admin/pre-bookings" element={<ProtectedRoute allowedRoles={['SaaS Super Admin', 'Super Admin', 'Company Admin', 'MD', 'Admin', 'HR', 'Receptionist', 'Security']}><SuperAdminPreBookings /></ProtectedRoute>} />
+        <Route path="pre-bookings" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin', 'HR', 'Receptionist', 'Security']}><SuperAdminPreBookings /></ProtectedRoute>} />
+        <Route path="super-admin/pre-bookings" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin', 'HR', 'Receptionist', 'Security']}><SuperAdminPreBookings /></ProtectedRoute>} />
         <Route path="approvals" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin', 'HR', 'Receptionist']}><ApprovalList /></ProtectedRoute>} />
         <Route path="approvals/:id" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin', 'HR', 'Receptionist']}><ApprovalDetails /></ProtectedRoute>} />
         
         {/* Tracking & Zones */}
         <Route path="zones" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin']}><ZoneList /></ProtectedRoute>} />
-        <Route path="tracking" element={<ProtectedRoute allowedRoles={['Super Admin', 'SaaS Super Admin', 'Company Admin', 'MD', 'Admin', 'Branch Admin', 'Security', 'HR', 'Receptionist']}><LiveMonitoring /></ProtectedRoute>} />
-        <Route path="live-monitoring" element={<ProtectedRoute allowedRoles={['Super Admin', 'SaaS Super Admin', 'Company Admin', 'MD', 'Admin', 'Branch Admin', 'Security', 'HR', 'Receptionist']}><LiveMonitoring /></ProtectedRoute>} />
-        <Route path="attendance" element={<ProtectedRoute allowedRoles={['Super Admin', 'SaaS Super Admin', 'MD']}><AttendanceLog /></ProtectedRoute>} />
+        <Route path="tracking" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin', 'Branch Admin', 'Security', 'HR', 'Receptionist']}><LiveMonitoring /></ProtectedRoute>} />
+        <Route path="live-monitoring" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin', 'Branch Admin', 'Security', 'HR', 'Receptionist']}><LiveMonitoring /></ProtectedRoute>} />
+        <Route path="attendance" element={<ProtectedRoute allowedRoles={['Super Admin', 'MD']}><AttendanceLog /></ProtectedRoute>} />
         <Route path="logs" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin']}><EntryExitLogs /></ProtectedRoute>} />
         <Route path="audit-logs" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin']}><AuditLogs /></ProtectedRoute>} />
         

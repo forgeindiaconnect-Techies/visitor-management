@@ -2,7 +2,7 @@ import React from 'react';
 import { useVisitors } from '../../context/VisitorContext';
 import { useBranch } from '../../context/BranchContext';
 import { useZones } from '../../context/ZoneContext';
-import { Users, UserCheck, Clock, Ban, Building, MapPin, ShieldAlert, Activity, CreditCard } from 'lucide-react';
+import { Users, UserCheck, Clock, Ban, Building, MapPin, ShieldAlert, Activity, CreditCard, Copy, ExternalLink } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import TodaysVisitorsCard from '../../components/dashboard/TodaysVisitorsCard';
@@ -34,15 +34,29 @@ const SuperAdminDashboard = () => {
   const { user: currentUser, hasApprovalPermission } = useAuth();
   const navigate = useNavigate();
   const [usageStats, setUsageStats] = React.useState(null);
+  const [dashboardStats, setDashboardStats] = React.useState(null);
 
   React.useEffect(() => {
     if (currentUser?.role !== 'SaaS Super Admin') {
-      fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/company/usage`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-      })
-      .then(res => res.json())
-      .then(data => setUsageStats(data))
-      .catch(console.error);
+      const token = localStorage.getItem('token') || currentUser?.token;
+      const headers = { 
+        Authorization: `Bearer ${token}`,
+        'X-Company-Id': currentUser?.companyId || ''
+      };
+
+      fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/company/usage`, { headers })
+        .then(res => res.json())
+        .then(data => setUsageStats(data))
+        .catch(console.error);
+
+      fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/dashboard/stats`, { headers })
+        .then(res => res.json())
+        .then(resData => {
+          if (resData.success && resData.data) {
+            setDashboardStats(resData.data);
+          }
+        })
+        .catch(console.error);
     }
   }, [currentUser]);
 
@@ -164,6 +178,49 @@ const SuperAdminDashboard = () => {
         </div>
       </div>
 
+      {/* Company Pre-Booking Share Link Banner */}
+      {currentUser?.companyId && currentUser?.companyId !== 'SYSTEM' && (
+        <div className="bg-gradient-to-r from-[#1E1B6E] via-[#28228C] to-[#3B34AC] text-white p-5 rounded-2xl shadow-xl border border-indigo-400/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="space-y-1.5 flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="bg-amber-400 text-[#1E1B6E] text-[11px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
+                Your Public Pre-Booking Link
+              </span>
+              <span className="text-xs font-semibold text-indigo-200">
+                Company ID: <strong className="text-white font-mono bg-white/15 px-2 py-0.5 rounded">{currentUser.companyId}</strong>
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm text-indigo-100 font-medium">
+              Share this dedicated link with visitors to allow them to pre-register before visiting {currentUser?.companyName || 'your company'}:
+            </p>
+            <div className="flex items-center gap-2 max-w-full">
+              <div className="text-xs font-mono bg-black/35 border border-white/10 px-3.5 py-2 rounded-xl text-amber-300 select-all truncate max-w-full">
+                {window.location.origin}/pre-booking/{currentUser.companyId}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(`${window.location.origin}/pre-booking/${currentUser.companyId}`);
+                alert(`Copied pre-booking link for ${currentUser.companyName || currentUser.companyId}!`);
+              }}
+              className="px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-[#1E1B6E] font-black text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+            >
+              <Copy size={15} /> Copy Link
+            </button>
+            <a
+              href={`/pre-booking/${currentUser.companyId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-4 py-2.5 bg-white/15 hover:bg-white/25 text-white font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 border border-white/25"
+            >
+              <ExternalLink size={15} /> Open Form
+            </a>
+          </div>
+        </div>
+      )}
+
       {currentUser?.role !== 'SaaS Super Admin' && (
         <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6 flex flex-col md:flex-row justify-between items-center gap-6 border-l-4 border-l-[#1E1B6E] mb-6">
           <div className="flex items-center space-x-4">
@@ -269,12 +326,12 @@ const SuperAdminDashboard = () => {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-        <DashboardCard onClick={() => navigate('/visitors')} title="Direct Visits" value={totalDirectVisits} icon={Users} colorClass="bg-blue-100 text-blue-600" />
-        <DashboardCard onClick={() => navigate('/pre-bookings')} title="Pre-Bookings" value={totalPreBookings} icon={Users} colorClass="bg-indigo-100 text-indigo-600" />
-        <DashboardCard onClick={() => navigate('/tracking')} title="Visitors Inside" value={insideVisitors.length} icon={UserCheck} colorClass="bg-green-100 text-green-600" />
-        <DashboardCard onClick={() => navigate('/approvals')} title="Pending Approvals" value={pendingApprovals} icon={Clock} colorClass="bg-orange-100 text-orange-600" />
-        <DashboardCard onClick={() => navigate('/blacklist')} title="Blocked Visitors" value={blockedVisitors} icon={Ban} colorClass="bg-red-100 text-red-600" />
-        <DashboardCard onClick={() => navigate('/settings')} title="Total Branches" value={totalBranches} icon={Building} colorClass="bg-purple-100 text-purple-600" />
+        <DashboardCard onClick={() => navigate('/visitors')} title="Direct Visits" value={dashboardStats ? Math.max(0, dashboardStats.totalVisitors - dashboardStats.totalPreBookings) : totalDirectVisits} icon={Users} colorClass="bg-blue-100 text-blue-600" />
+        <DashboardCard onClick={() => navigate('/pre-bookings')} title="Pre-Bookings" value={dashboardStats ? dashboardStats.totalPreBookings : totalPreBookings} icon={Users} colorClass="bg-indigo-100 text-indigo-600" />
+        <DashboardCard onClick={() => navigate('/tracking')} title="Visitors Inside" value={dashboardStats ? dashboardStats.visitorsInside : insideVisitors.length} icon={UserCheck} colorClass="bg-green-100 text-green-600" />
+        <DashboardCard onClick={() => navigate('/approvals')} title="Pending Approvals" value={dashboardStats ? dashboardStats.pendingApprovals : pendingApprovals} icon={Clock} colorClass="bg-orange-100 text-orange-600" />
+        <DashboardCard onClick={() => navigate('/blacklist')} title="Blocked Visitors" value={dashboardStats ? dashboardStats.blockedVisitors : blockedVisitors} icon={Ban} colorClass="bg-red-100 text-red-600" />
+        <DashboardCard onClick={() => navigate('/settings')} title="Total Branches" value={dashboardStats ? dashboardStats.totalBranches : totalBranches} icon={Building} colorClass="bg-purple-100 text-purple-600" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
@@ -411,6 +468,9 @@ const SuperAdminDashboard = () => {
         <div className="bg-white rounded-xl shadow-md border border-gray-200 p-6 flex flex-col">
           <h3 className="text-[11px] font-bold text-gray-500 mb-6 uppercase tracking-wider">Branch Performance</h3>
           <div className="flex-1 space-y-6 flex flex-col justify-start mt-2">
+            {chartBranches.length === 0 && (
+              <p className="text-gray-500 text-sm text-center py-4">No branches created yet. Add your first branch in Branch Setup.</p>
+            )}
             {branchData.map((branch, index) => (
               <div key={index}>
                 <div className="flex justify-between text-sm mb-1">

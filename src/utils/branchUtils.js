@@ -34,7 +34,7 @@ export const isBranchMatch = (visitorBranch, filterBranch) => {
  * Returns distinct list of normalized branch names from branches and visitors.
  */
 export const getDistinctBranches = (branches = [], visitors = []) => {
-  const discovered = new Set(['Krishnagiri', 'Bangalore']);
+  const discovered = new Set();
   
   (branches || []).forEach(b => {
     if (b && b !== 'All Branches') {

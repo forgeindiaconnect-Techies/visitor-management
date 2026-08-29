@@ -6,7 +6,7 @@ const BranchContext = createContext(null);
 
 export const BranchProvider = ({ children }) => {
   const { user } = useAuth();
-  const [branches, setBranches] = useState(['All Branches']);
+  const [branches, setBranches] = useState([]);
   const [activeBranch, setActiveBranch] = useState('All Branches');
   const [loadingBranches, setLoadingBranches] = useState(true);
 
@@ -26,7 +26,7 @@ export const BranchProvider = ({ children }) => {
         const response = await fetch(`${API_URL}/api/branch-settings`, {
           headers: {
             'Content-Type': 'application/json',
-            'X-Company-Id': user?.companyId || 'FIC001',
+            'X-Company-Id': user?.companyId || '',
             'X-User-Id': user?._id || user?.id || 'bootstrap',
             'X-User-Role': user?.role || 'User',
             ...(token && { 'Authorization': `Bearer ${token}` })
@@ -36,12 +36,13 @@ export const BranchProvider = ({ children }) => {
         let dynamicBranches = [];
         if (response.ok) {
           const data = await response.json();
-          const list = Array.isArray(data) ? data : (data && Array.isArray(data.branches) ? data.branches : []);
+          const list = Array.isArray(data) 
+            ? data 
+            : (data && Array.isArray(data.data) ? data.data : (data && Array.isArray(data.branches) ? data.branches : []));
           dynamicBranches = list.map(b => b.branchName).filter(Boolean);
         }
 
-        // Include normalized branches, avoiding case duplicates like 'KRISHNAGIRI' and 'Krishnagiri'
-        const branchSet = new Set(['Krishnagiri', 'Bangalore']);
+        const branchSet = new Set();
         dynamicBranches.forEach(b => {
           if (b && b !== 'All Branches') {
             const norm = normalizeBranchName(b);
@@ -49,11 +50,11 @@ export const BranchProvider = ({ children }) => {
           }
         });
 
-        const allB = ['All Branches', ...Array.from(branchSet)];
+        const allB = branchSet.size > 0 ? ['All Branches', ...Array.from(branchSet)] : ['All Branches'];
         setBranches(allB);
         
         // Roles that can view All Branches.
-        if (!['Super Admin', 'MD', 'Senior HR', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'HR', 'Security', 'Receptionist'].includes(user.role)) {
+        if (!['Super Admin', 'Company Admin', 'MD', 'Senior HR', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'HR', 'Security', 'Receptionist'].includes(user.role)) {
           const userBranchNorm = user.branch ? normalizeBranchName(user.branch) : Array.from(branchSet)[0];
           setActiveBranch(userBranchNorm || 'All Branches');
         } else {
@@ -61,7 +62,7 @@ export const BranchProvider = ({ children }) => {
         }
       } catch (err) {
         console.error('Error fetching branches:', err);
-        setBranches(['All Branches', 'Krishnagiri', 'Bangalore']);
+        setBranches(['All Branches']);
       } finally {
         setLoadingBranches(false);
       }

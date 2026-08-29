@@ -60,6 +60,56 @@ const createPreBooking = async (req, res) => {
       });
     }
 
+    // Resolve and validate the company from the public pre-booking link
+    const Company = require("../models/Company");
+
+    const targetCompanyId = String(
+      req.body.companyId || ""
+    ).trim().toUpperCase();
+
+    // companyId is compulsory. Do not silently use FIC001.
+    if (!targetCompanyId) {
+      return res.status(400).json({
+        success: false,
+        message: "Company ID is required. Please use the company's official pre-booking link."
+      });
+    }
+
+    const targetCompany = await Company.findOne({
+      code: targetCompanyId
+    });
+
+    if (!targetCompany) {
+      return res.status(404).json({
+        success: false,
+        message: "This pre-booking link is invalid or unavailable. Company is not registered."
+      });
+    }
+
+    if (targetCompany.status !== "Active") {
+      return res.status(403).json({
+        success: false,
+        message: "This company account is currently inactive. Pre-booking cannot be submitted."
+      });
+    }
+
+    if (
+      targetCompany.subscriptionExpiresAt &&
+      new Date(targetCompany.subscriptionExpiresAt) < new Date()
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "This company's subscription has expired. Pre-booking is unavailable."
+      });
+    }
+
+    if (targetCompany.features?.preBookingEnabled === false) {
+      return res.status(403).json({
+        success: false,
+        message: "Pre-booking is unavailable for this company. Please contact the administrator."
+      });
+    }
+
     // Weekday validation: only Monday (1), Wednesday (3), Saturday (6) allowed
     const cleanDateStr = String(visitDate).split('T')[0];
     const selectedDate = new Date(`${cleanDateStr}T00:00:00`);
@@ -114,12 +164,14 @@ const createPreBooking = async (req, res) => {
 
     if (duplicateOrConditions.length > 0) {
       const existingPreBooking = await PreBooking.findOne({
+        companyId: targetCompany.code,
         status: { $in: activeStatuses },
         $or: duplicateOrConditions
       });
 
       const Visitor = require("../models/Visitor");
       const existingVisitor = existingPreBooking ? null : await Visitor.findOne({
+        companyId: targetCompany.code,
         status: { $in: activeStatuses },
         $or: duplicateOrConditions
       });
@@ -138,6 +190,7 @@ const createPreBooking = async (req, res) => {
       const User = require("../models/User");
       hrUser = await User.findOne({
         _id: assignedHr,
+        companyId: targetCompany.code,
         status: "Active"
       });
 
@@ -159,10 +212,12 @@ const createPreBooking = async (req, res) => {
     const Visitor = require("../models/Visitor");
     const hasCompletedPastVisit = Boolean(
       (await PreBooking.exists({
+        companyId: targetCompany.code,
         mobileNumber: normalizedMobile || mobileNumber,
         status: { $in: completedStatuses }
       })) ||
       (await Visitor.exists({
+        companyId: targetCompany.code,
         mobileNumber: normalizedMobile || mobileNumber,
         status: { $in: completedStatuses }
       }))
@@ -177,6 +232,7 @@ const createPreBooking = async (req, res) => {
     );
 
     const preBooking = await PreBooking.create({
+      companyId: targetCompany.code,
       visitorId,
       fullName,
       mobileNumber: normalizedMobile || mobileNumber,
@@ -215,7 +271,7 @@ const createPreBooking = async (req, res) => {
         expectedArrivalTime: preBooking.expectedTime,
         hostName: preBooking.hostEmployee,
         hostId: preBooking.assignedHr, // Map assigned HR as the explicit host if provided
-        companyId: preBooking.companyId || 'FIC001',
+        companyId: preBooking.companyId || targetCompany.code,
         branch: preBooking.branchLocation,
         email: preBooking.email,
         isReturning: isReturning,
@@ -268,9 +324,29 @@ const createPreBooking = async (req, res) => {
 
 const getAllPreBookings = async (req, res) => {
   try {
-    const filter = {};
+    const companyId = req.companyId;
+    if (!companyId || companyId === 'SYSTEM') {
+      return res.json({
+        success: true,
+        count: 0,
+        data: []
+      });
+    }
+
+    const filter = {
+      companyId: companyId
+    };
+
+    if (
+      req.branchId &&
+      req.branchId !== "All Branches"
+    ) {
+      filter.branchLocation = req.branchId;
+    } else if (req.query.branch && req.query.branch !== "All Branches") {
+      filter.branchLocation = req.query.branch;
+    }
+
     const normalizedRole = (req.userRole || '').toUpperCase().trim();
-    // Return all prebooking records for Super Admin (matching Reports data)
     // Role-based filtering: HR/Employee users only see their assigned visitors or where they are the host
     if (normalizedRole === 'HR' || normalizedRole === 'EMPLOYEE') {
       const mongoose = require('mongoose');
@@ -295,21 +371,18 @@ const getAllPreBookings = async (req, res) => {
     filter.fullName = { $not: /^(test|test 1|test 2|test 3|lokeee|testing)$/i };
 
     const preBookings = await PreBooking.find(filter)
-      .populate('assignedHr', 'name email')
+      .populate("assignedHr", "name email role companyId")
       .sort({ createdAt: -1 });
 
-    return res.status(200).json({
+    return res.json({
       success: true,
       count: preBookings.length,
-      data: preBookings,
+      data: preBookings
     });
   } catch (error) {
-    console.error("Get Pre-Bookings Error:", error);
-
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch Pre-Bookings.",
-      error: error.message,
+      message: "Unable to fetch pre-bookings"
     });
   }
 };
@@ -319,16 +392,19 @@ const approvePreBooking = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const preBooking = await PreBooking.findById(id);
+    const preBooking = await PreBooking.findOne({
+      _id: id,
+      companyId: req.companyId
+    });
 
     if (!preBooking) {
       return res.status(404).json({
         success: false,
-        message: "Pre-Booking not found.",
+        message: "Pre-booking not found in your company"
       });
     }
 
-    const company = await require('../models/Company').findOne({ code: req.companyId || 'FIC001' });
+    const company = await require('../models/Company').findOne({ code: req.companyId });
     
     // Check if the user is authorized to approve
     const rawRole = (req.user && req.user.role) ? req.user.role : req.userRole;
@@ -397,11 +473,12 @@ const approvePreBooking = async (req, res) => {
       const User = require("../models/User");
       const Notification = require("../models/Notification");
 
-      // 1. Find all dashboard users
+      // 1. Find all dashboard users of this specific tenant company
       const companyRegex = new RegExp(`^${preBooking.companyId || 'FIC001'}$`, 'i');
       const dashboardUsers = await User.find({
-        role: { $in: ['Super Admin', 'SaaS Super Admin', 'Security', 'HR', 'Senior HR', 'MD', 'IT', 'Admin', 'Branch Admin', 'Receptionist'] },
-        $or: [{ companyId: companyRegex }, { companyId: 'SYSTEM' }, { companyId: null }]
+        role: { $in: ["Super Admin", "Company Admin", "Admin", "MD", "HR", "Receptionist", "Security"] },
+        companyId: companyRegex,
+        status: "Active"
       });
 
       const approverName = formatDisplayName(req.userName || req.userRole || "Authorized Personnel");
@@ -430,7 +507,7 @@ const approvePreBooking = async (req, res) => {
               userId: String(id),
               user: id
             })),
-            roles: ['Super Admin', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'MD', 'Senior HR', 'HR', 'Security', 'Receptionist'],
+            roles: ["Super Admin", "Company Admin", "Admin", "MD", "HR", "Receptionist", "Security"],
             visitorId: preBooking.visitorId,
             visitorType: 'PRE_BOOKING',
             preBookingId: preBooking._id,
@@ -480,12 +557,15 @@ const rejectPreBooking = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const preBooking = await PreBooking.findById(id);
+    const preBooking = await PreBooking.findOne({
+      _id: id,
+      companyId: req.companyId
+    });
 
     if (!preBooking) {
       return res.status(404).json({
         success: false,
-        message: "Pre-Booking not found.",
+        message: "Pre-booking not found in your company"
       });
     }
 
@@ -536,11 +616,12 @@ const rejectPreBooking = async (req, res) => {
       const User = require("../models/User");
       const Notification = require("../models/Notification");
 
-      // 1. Find all dashboard users
+      // 1. Find all dashboard users of this specific tenant company
       const companyRegex = new RegExp(`^${preBooking.companyId || 'FIC001'}$`, 'i');
       const dashboardUsers = await User.find({
-        role: { $in: ['Super Admin', 'SaaS Super Admin', 'Security', 'HR', 'Senior HR', 'MD', 'IT', 'Admin', 'Branch Admin', 'Receptionist'] },
-        $or: [{ companyId: companyRegex }, { companyId: 'SYSTEM' }, { companyId: null }]
+        role: { $in: ["Super Admin", "Company Admin", "Admin", "MD", "HR", "Receptionist", "Security"] },
+        companyId: companyRegex,
+        status: "Active"
       });
 
       const rejectorName = formatDisplayName(req.userName || req.userRole || "Authorized Personnel");
@@ -563,6 +644,7 @@ const rejectPreBooking = async (req, res) => {
               userId: String(id),
               user: id
             })),
+            roles: ["Super Admin", "Company Admin", "Admin", "MD", "HR", "Receptionist", "Security"],
             visitorId: preBooking.visitorId,
             visitorType: "PRE_BOOKING",
             preBookingId: preBooking._id,
@@ -873,7 +955,23 @@ const getPreBookingByQR = async (req, res) => {
 const deletePreBooking = async (req, res) => {
   try {
     const { id } = req.params;
-    await PreBooking.findByIdAndDelete(id);
+    const mongoose = require('mongoose');
+    const query = {
+      companyId: req.companyId
+    };
+    if (mongoose.isValidObjectId(id)) {
+      query._id = id;
+    } else {
+      query.$or = [{ visitorId: id }, { visitId: id }];
+    }
+
+    const deleted = await PreBooking.findOneAndDelete(query);
+    if (!deleted) {
+      return res.status(404).json({
+        success: false,
+        message: "Pre-booking not found in your company"
+      });
+    }
     return res.status(200).json({ success: true, message: "Pre-Booking deleted successfully." });
   } catch (error) {
     return res.status(500).json({ success: false, message: "Failed to delete Pre-Booking.", error: error.message });
@@ -902,19 +1000,24 @@ const checkInPreBooking = async (req, res) => {
     const searchRegex = new RegExp(`^${rawId.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')}$`, 'i');
 
     const preBooking = await PreBooking.findOne({
-      $or: [
-        { visitorId: searchRegex },
-        { visitorId: rawId.toUpperCase() },
-        { mobileNumber: rawId },
-        { qrToken: rawId },
-        ...(isValidObjectId ? [{ _id: rawId }] : [])
+      $and: [
+        {
+          $or: [
+            { visitorId: searchRegex },
+            { visitorId: rawId.toUpperCase() },
+            { mobileNumber: rawId },
+            { qrToken: rawId },
+            ...(isValidObjectId ? [{ _id: rawId }] : [])
+          ]
+        },
+        { companyId: req.companyId }
       ]
     });
 
     if (!preBooking) {
       return res.status(404).json({
         success: false,
-        message: "Visitor not found."
+        message: "Pre-booking not found in your company"
       });
     }
 
@@ -1069,19 +1172,24 @@ const checkOutPreBooking = async (req, res) => {
     const searchRegex = new RegExp(`^${rawId.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')}$`, 'i');
 
     const preBooking = await PreBooking.findOne({
-      $or: [
-        { visitorId: searchRegex },
-        { visitorId: rawId.toUpperCase() },
-        { mobileNumber: rawId },
-        { qrToken: rawId },
-        ...(isValidObjectId ? [{ _id: rawId }] : [])
+      $and: [
+        {
+          $or: [
+            { visitorId: searchRegex },
+            { visitorId: rawId.toUpperCase() },
+            { mobileNumber: rawId },
+            { qrToken: rawId },
+            ...(isValidObjectId ? [{ _id: rawId }] : [])
+          ]
+        },
+        { companyId: req.companyId }
       ]
     });
 
     if (!preBooking) {
       return res.status(404).json({
         success: false,
-        message: "Visitor not found."
+        message: "Pre-booking not found in your company"
       });
     }
 
@@ -1210,6 +1318,7 @@ const getMyPreBookings = async (req, res) => {
 
     // Strict host name match: only return pre-bookings where hostEmployee matches this HR's name
     const filter = {
+      companyId: req.companyId,
       hostEmployee: new RegExp(hrName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
     };
 
@@ -1242,14 +1351,19 @@ const getPreBookingReports = async (req, res) => {
       });
     }
 
-
-    const reports = await PreBooking.find({
+    const reportsQuery = {
+      companyId: req.companyId,
       hostEmployee: { $not: /direct\s*visit/i },
       visitPurpose: { $not: /direct\s*visit/i },
       registrationType: { $not: /direct/i },
       visitType: { $not: /direct/i },
       visitorType: { $not: /direct|NEW_VISITOR/i }
-    })
+    };
+    if (req.userRole === 'SaaS Super Admin') {
+      delete reportsQuery.companyId;
+    }
+
+    const reports = await PreBooking.find(reportsQuery)
       .populate("assignedHr", "name email")
       .sort({ createdAt: -1 });
 
@@ -1284,13 +1398,16 @@ const reschedulePreBooking = async (req, res) => {
     }
 
     const preBooking = await PreBooking.findOne({
-      $or: searchConditions
+      $and: [
+        { $or: searchConditions },
+        { companyId: req.companyId }
+      ]
     });
 
     if (!preBooking) {
       return res.status(404).json({
         success: false,
-        message: "Pre-Booking not found."
+        message: "Pre-booking not found in your company"
       });
     }
 
@@ -1461,7 +1578,8 @@ const reApprovePreBooking = async (req, res) => {
         mongoose.isValidObjectId(id)
           ? { $or: [{ _id: id }, { visitorId: id }, { visitId: id }] }
           : { $or: [{ visitorId: id }, { visitId: id }] },
-        { status: { $in: ["REJECTED", "Rejected"] } }
+        { status: { $in: ["REJECTED", "Rejected"] } },
+        { companyId: req.companyId }
       ]
     };
 
@@ -1487,12 +1605,11 @@ const reApprovePreBooking = async (req, res) => {
           }
         },
         $push: {
-          statusHistory: {
-            status: "APPROVED",
-            changedBy: req.userId,
-            changedByRole: req.userRole || rawRole || "Super Admin",
-            changedAt: new Date(),
-            reason: "Re-approved by Super Admin"
+          reApprovalHistory: {
+            reApprovedBy: req.userId,
+            reApprovedByRole: req.userRole || rawRole || "Super Admin",
+            reApprovedAt: new Date(),
+            previousStatus: "REJECTED"
           }
         }
       },
@@ -1502,9 +1619,9 @@ const reApprovePreBooking = async (req, res) => {
     );
 
     if (!updatedPreBooking) {
-      return res.status(400).json({
+      return res.status(404).json({
         success: false,
-        message: "This visitor is not rejected or has already been re-approved."
+        message: "Pre-booking not found in your company or not in rejected status."
       });
     }
 
@@ -1515,7 +1632,7 @@ const reApprovePreBooking = async (req, res) => {
       const { sendEmail } = require("../utils/emailService");
 
       const dashboardUsers = await User.find({
-        companyId: updatedPreBooking.companyId || "FIC001",
+        companyId: updatedPreBooking.companyId,
         role: {
           $in: [
             "Super Admin",
@@ -1769,9 +1886,14 @@ const updatePreBooking = async (req, res) => {
       searchConditions.push({ _id: id });
     }
 
-    const preBooking = await PreBooking.findOne({ $or: searchConditions });
+    const preBooking = await PreBooking.findOne({
+      $and: [
+        { $or: searchConditions },
+        { companyId: req.companyId }
+      ]
+    });
     if (!preBooking) {
-      return res.status(404).json({ success: false, message: "Pre-Booking not found." });
+      return res.status(404).json({ success: false, message: "Pre-booking not found in your company" });
     }
 
     if (fullName !== undefined) preBooking.fullName = fullName;

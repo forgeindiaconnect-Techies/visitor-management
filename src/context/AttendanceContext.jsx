@@ -31,7 +31,16 @@ export const AttendanceProvider = ({ children }) => {
         queryUrl = queryBranch ? `${API_URL}?branch=${encodeURIComponent(queryBranch)}` : API_URL;
       }
       
-      const response = await fetch(queryUrl, { cache: 'no-store' });
+      const response = await fetch(queryUrl, { 
+        cache: 'no-store',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(user?.token && { 'Authorization': `Bearer ${user.token}` }),
+          'X-Company-Id': user?.companyId || '',
+          'X-User-Id': user?.id || user?._id || '',
+          'X-User-Role': user?.role || ''
+        }
+      });
       if (response.ok) {
         const data = await response.json();
         

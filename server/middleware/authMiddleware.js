@@ -1,11 +1,30 @@
 const Company = require('../models/Company');
+const jwt = require('jsonwebtoken');
 
 module.exports = async (req, res, next) => {
   try {
     let companyId = req.headers['x-company-id'];
-    const userId = req.headers['x-user-id'];
+    let userId = req.headers['x-user-id'];
     let userRole = req.headers['x-user-role'];
     let branchId = req.headers['x-branch-id'] || 'All Branches';
+
+    // Decode JWT Bearer Token if present
+    const authHeader = req.headers['authorization'];
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const tokenString = authHeader.split(' ')[1];
+        const decoded = jwt.verify(tokenString, process.env.JWT_SECRET || 'fallback_secret_key_123');
+        if (decoded) {
+          userId = decoded.userId || decoded.id || userId;
+          userRole = decoded.role || userRole;
+          companyId = decoded.companyId || companyId;
+          branchId = decoded.branchId || branchId;
+          req.user = decoded;
+        }
+      } catch (tokenErr) {
+        // Token verification failed or expired, fall back to headers or return 401 if strict
+      }
+    }
 
     // 1. Check for bootstrap administrator accounts (e.g., "bootstrap", "bootstrap-admin", etc.)
     const isBootstrap = userId && (
@@ -86,8 +105,10 @@ module.exports = async (req, res, next) => {
         req.companyId = companyId.toUpperCase();
       }
     } else {
-      // Default fallback for legacy endpoints or unconfigured requests
-      req.companyId = 'FIC001';
+      return res.status(401).json({
+        success: false,
+        message: "Company information is missing. Please log in again."
+      });
     }
 
     req.userId = userId || null;

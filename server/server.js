@@ -165,6 +165,36 @@ mongoose.connect(process.env.MONGO_URI)
       if (duplicateIdsToDelete.length > 0) {
         await Notification.deleteMany({ _id: { $in: duplicateIdsToDelete } });
       }
+
+      // Purge any visitor / pre-booking notifications that were erroneously saved under SYSTEM
+      await Notification.deleteMany({
+        companyId: 'SYSTEM',
+        $or: [
+          { module: { $in: ['PreBooking', 'Visitors', 'Visitor', 'Tracking'] } },
+          { type: { $in: ['Visitor', 'PREBOOKING_REGISTERED', 'PREBOOKING_APPROVED', 'PREBOOKING_REJECTED', 'VISITOR_REGISTERED', 'VISITOR_CHECKED_IN', 'VISITOR_CHECKED_OUT', 'PREBOOKING_CHECKIN', 'PREBOOKING_CHECKOUT'] } },
+          { title: { $regex: /pre-booking|visitor|appointment|approval|checked/i } },
+          { message: { $regex: /waiting for approval|checked in|checked out/i } }
+        ]
+      });
+
+      // Correct Vaidee's companyId if mistakenly saved under FIC001
+      const poojaCompany = await mongoose.model('Company').findOne({
+        $or: [{ name: /pooja/i }, { code: 'PO0347' }]
+      });
+      if (poojaCompany) {
+        await User.updateMany(
+          {
+            $or: [
+              { email: 'poojatamilarasan28@gmail.com' },
+              { name: new RegExp('^Vaidee$', 'i') }
+            ],
+            companyId: { $ne: poojaCompany.code }
+          },
+          { $set: { companyId: poojaCompany.code } }
+        );
+        console.log(`✅ Corrected Vaidee's companyId to ${poojaCompany.code}`);
+      }
+
       console.log('🧹 Cleaned up test records, notifications, and legacy visitor data before Aug 26.');
     } catch (err) {
       console.error('Error initializing default approval permissions or cleanup:', err);
@@ -294,6 +324,8 @@ app.use('/api/company', companyRouter);
 app.use('/api/audit-logs', auditLogsRouter);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/approval-permissions', approvalPermissionRoutes);
+const dashboardRouter = require('./routes/dashboard');
+app.use('/api/dashboard', dashboardRouter);
 
 app.all('/api/cleanup-test-data', async (req, res) => {
   try {

@@ -48,13 +48,23 @@ const notifyVisitorEvent = async ({
           .map(p => mapPermissionRoleToUserRole(p.role))
       );
       
-      const defaultRoles = ['Super Admin', 'SaaS Super Admin', 'MD', 'HR', 'Admin', 'Branch Admin', 'Senior HR', 'Receptionist', 'Security'];
+      const defaultRoles = [
+        "Super Admin",
+        "Company Admin",
+        "Admin",
+        "MD",
+        "HR",
+        "Senior HR",
+        "Receptionist",
+        "Security"
+      ];
       const eligibleRoles = defaultRoles.filter(role => !disabledRoles.has(role));
 
-      const companyRegex = new RegExp(`^${visitor.companyId || 'FIC001'}$`, 'i');
+      const companyRegex = new RegExp(`^${visitor.companyId}$`, 'i');
       const users = await User.find({
         role: { $in: eligibleRoles },
-        $or: [{ companyId: companyRegex }, { companyId: 'SYSTEM' }, { companyId: null }]
+        companyId: companyRegex,
+        status: "Active"
       }).select('_id');
       
       return users.map(u => u._id.toString());
@@ -122,7 +132,7 @@ const notifyVisitorEvent = async ({
           'Visitor';
 
         notificationMessage =
-          `${actualVisitorName} is waiting for approval.`;
+          `${actualVisitorName} submitted a pre-booking`;
         sendEmailToVisitor = true;
 
         notifyRecipients = await getDashboardUserIds();
@@ -312,10 +322,19 @@ const notifyVisitorEvent = async ({
         },
         $setOnInsert: {
           eventId: notificationEventId,
-          companyId: visitor.companyId || 'FIC001',
+          companyId: visitor.companyId,
           branchId: visitor.branch || visitor.branchLocation,
           recipients: formattedRecipients,
-          roles: ['Super Admin', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'MD', 'Senior HR', 'HR', 'Security', 'Receptionist'],
+          roles: [
+            "Super Admin",
+            "Company Admin",
+            "Admin",
+            "MD",
+            "HR",
+            "Senior HR",
+            "Receptionist",
+            "Security"
+          ],
           visitorId: visitor.visitorId || null,
           preBookingId: visitor._id,
           createdBy: reschedulerName || 'Authorized Personnel',
@@ -333,10 +352,47 @@ const notifyVisitorEvent = async ({
 
     // --- Emit Socket.IO Event for App Notification ---
     if (io && notificationDoc) {
-      // Broadcast to everyone; client filters via `recipients` array
       io.emit('new_notification', notificationDoc);
     }
     
+    // --- Send Firebase Push Notifications to active company recipients ---
+    try {
+      const sendPushNotification = require('../utils/pushNotificationService');
+      const companyRegex = new RegExp(`^${visitor.companyId}$`, 'i');
+      const targetRoles = [
+        "Super Admin",
+        "Company Admin",
+        "Admin",
+        "MD",
+        "HR",
+        "Senior HR",
+        "Receptionist",
+        "Security"
+      ];
+      const usersWithToken = await User.find({
+        companyId: companyRegex,
+        status: "Active",
+        role: { $in: targetRoles },
+        fcmToken: { $exists: true, $ne: '' }
+      }).select('fcmToken');
+
+      const tokens = usersWithToken.map(u => u.fcmToken).filter(Boolean);
+      if (tokens.length > 0) {
+        await sendPushNotification(
+          tokens,
+          notificationTitle,
+          notificationMessage,
+          {
+            notificationId: notificationDoc ? notificationDoc._id.toString() : '',
+            module: 'PreBooking',
+            companyId: visitor.companyId || 'FIC001'
+          }
+        );
+      }
+    } catch (pushErr) {
+      console.warn('Visitor push notification warning:', pushErr.message);
+    }
+
     // --- Emit Socket.IO Event for Tracking Page / Real-Time UI ---
     if (io) {
       const vid = visitor._id || visitor.id || visitor.visitorId;

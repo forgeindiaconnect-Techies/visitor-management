@@ -2,6 +2,12 @@ const mongoose = require("mongoose");
 
 const preBookingSchema = new mongoose.Schema(
   {
+    companyId: {
+      type: String,
+      required: true,
+      default: "FIC001",
+      index: true,
+    },
     visitorId: {
       type: String,
       unique: true,

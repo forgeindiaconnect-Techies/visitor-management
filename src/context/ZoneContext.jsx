@@ -15,7 +15,13 @@ export const ZoneProvider = ({ children }) => {
   const fetchZones = async () => {
     try {
       const response = await fetch(API_URL, {
-        headers: currentUser?.token ? { 'Authorization': `Bearer ${currentUser.token}` } : {}
+        headers: {
+          'Content-Type': 'application/json',
+          ...(currentUser?.token && { 'Authorization': `Bearer ${currentUser.token}` }),
+          'X-Company-Id': currentUser?.companyId || '',
+          'X-User-Id': currentUser?.id || currentUser?._id || '',
+          'X-User-Role': currentUser?.role || ''
+        }
       });
       if (response.ok) {
         const data = await response.json();
@@ -31,7 +37,9 @@ export const ZoneProvider = ({ children }) => {
 
   useEffect(() => {
     fetchZones();
-  }, []);
+    const interval = setInterval(fetchZones, 10000);
+    return () => clearInterval(interval);
+  }, [currentUser, activeBranch]);
 
   const zones = React.useMemo(() => {
     const safeAll = Array.isArray(allZones) ? allZones : [];
@@ -42,7 +50,7 @@ export const ZoneProvider = ({ children }) => {
   const addZone = async (zoneData) => {
     const userBranch = currentUser && !['Super Admin'].includes(currentUser.role) 
       ? currentUser.branch 
-      : (activeBranch === 'All Branches' ? 'Head Office(KRISHNAGIRI)' : activeBranch);
+      : (activeBranch === 'All Branches' ? '' : activeBranch);
     const newZone = { ...zoneData, branch: userBranch };
     try {
       const response = await fetch(API_URL, {
