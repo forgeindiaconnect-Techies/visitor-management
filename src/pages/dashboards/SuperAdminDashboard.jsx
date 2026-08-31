@@ -195,14 +195,14 @@ const SuperAdminDashboard = () => {
             </p>
             <div className="flex items-center gap-2 max-w-full">
               <div className="text-xs font-mono bg-black/35 border border-white/10 px-3.5 py-2 rounded-xl text-amber-300 select-all truncate max-w-full">
-                {window.location.origin}/pre-booking/{currentUser.companyId}
+                {'https://visitor-management-indol.vercel.app'}/pre-booking/{currentUser.companyId}
               </div>
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => {
-                navigator.clipboard.writeText(`${window.location.origin}/pre-booking/${currentUser.companyId}`);
+                navigator.clipboard.writeText(`https://visitor-management-indol.vercel.app/pre-booking/${currentUser.companyId}`);
                 alert(`Copied pre-booking link for ${currentUser.companyName || currentUser.companyId}!`);
               }}
               className="px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-[#1E1B6E] font-black text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
@@ -274,11 +274,11 @@ const SuperAdminDashboard = () => {
         </div>
       )}
 
-      {pendingApprovals > 0 && hasApprovalPermission && (
+      {(pendingApprovals > 0 || (dashboardStats && dashboardStats.pendingApprovals > 0)) && (
         <div className="bg-orange-50 border border-orange-200 rounded-xl p-6 shadow-sm mb-6">
           <div className="flex items-center gap-3 mb-4">
             <Clock className="text-orange-600" size={24} />
-            <h2 className="text-lg font-bold text-orange-900">Action Required: Pending Approvals ({pendingApprovals})</h2>
+            <h2 className="text-lg font-bold text-orange-900">Action Required: Pending Approvals ({Math.max(pendingApprovals, dashboardStats?.pendingApprovals || 0)})</h2>
           </div>
           <div className="overflow-x-auto pb-2">
             <table className="w-full text-left bg-white rounded-lg overflow-hidden shadow-sm min-w-max">
@@ -292,7 +292,7 @@ const SuperAdminDashboard = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-orange-100">
-                {safeVisitors.filter(v => v.status?.toUpperCase() === 'PENDING').map(v => (
+                {safeVisitors.filter(v => ['PENDING', 'PENDING APPROVAL'].includes(v.status?.toUpperCase())).map(v => (
                   <tr key={v._id || v.id}>
                     <td className="px-4 py-3 font-medium text-gray-900">{v.visitorName}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{v.hostName}</td>

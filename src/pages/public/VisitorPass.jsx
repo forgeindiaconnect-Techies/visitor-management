@@ -53,20 +53,23 @@ const VisitorPass = () => {
       const targetId = visitor.visitorId || visitor.visitId || visitor._id || visitor.id;
       const now = new Date();
       const timeString = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-      
+
       let response;
 
       if (action === 'checkIn') {
         // 1. Try Pre-Booking Check-In
-        response = await fetch(`${baseUrl}/api/prebookings/visitor/${encodeURIComponent(targetId)}/check-in`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' }
+        response = await fetch(`${baseUrl}/api/prebookings/${encodeURIComponent(targetId)}/check-in`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'X-Company-Id': visitor.companyId || 'FIC001'
+          }
         });
 
         // 2. If it fails (Not Found / 404), fallback to normal Visitor check-in
         if (!response.ok && response.status === 404) {
-          response = await fetch(`${baseUrl}/api/visitors/${targetId}/zone`, {
-            method: 'PATCH',
+          response = await fetch(`${baseUrl}/api/visitors/${encodeURIComponent(targetId)}/check-in`, {
+            method: 'POST',
             headers: { 
               'Content-Type': 'application/json',
               'X-Company-Id': visitor.companyId || 'FIC001'
@@ -81,16 +84,19 @@ const VisitorPass = () => {
         }
       } else if (action === 'checkOut') {
         // 1. Try Pre-Booking Check-Out
-        response = await fetch(`${baseUrl}/api/prebookings/visitor/${encodeURIComponent(targetId)}/check-out`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ exitNotes: notes, checkOutNotes: notes })
+        response = await fetch(`${baseUrl}/api/prebookings/${encodeURIComponent(targetId)}/check-out`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'X-Company-Id': visitor.companyId || 'FIC001'
+          },
+          body: JSON.stringify({ exitNotes: notes || 'Check out from gate', checkOutNotes: notes || 'Check out from gate' })
         });
 
         // 2. If it fails, fallback to normal Visitor check-out
         if (!response.ok && response.status === 404) {
-          response = await fetch(`${baseUrl}/api/visitors/${targetId}/zone`, {
-            method: 'PATCH',
+          response = await fetch(`${baseUrl}/api/visitors/${encodeURIComponent(targetId)}/check-out`, {
+            method: 'POST',
             headers: { 
               'Content-Type': 'application/json',
               'X-Company-Id': visitor.companyId || 'FIC001'
@@ -98,8 +104,9 @@ const VisitorPass = () => {
             body: JSON.stringify({
               status: 'Exited',
               exitTime: timeString,
-              remarks: notes,
-              purpose: purpose
+              remarks: notes || 'Check out from gate',
+              purpose: purpose,
+              exitNotes: notes || 'Check out from gate'
             })
           });
         }
@@ -303,7 +310,7 @@ const VisitorPass = () => {
               <div className="flex justify-center mb-6">
                 <div className="bg-white p-4 rounded-xl shadow-inner border border-gray-100">
                   <QRCodeSVG 
-                    value={`${window.location.origin}/pass/${visitor.qrToken || visitor.visitorId || visitor.visitId || ''}`}
+                    value={`https://visitor-management-indol.vercel.app/pass/${visitor.qrToken || visitor.visitorId || visitor.visitId || ''}`}
                     size={180} 
                     level={"H"}
                     includeMargin={true}
@@ -381,3 +388,4 @@ const VisitorPass = () => {
 };
 
 export default VisitorPass;
+

@@ -9,7 +9,7 @@ const isBrevoSmtpKey = (process.env.BREVO_API_KEY && process.env.BREVO_API_KEY.s
 const SMTP_HOST = process.env.SMTP_HOST || (isBrevoSmtpKey ? 'smtp-relay.brevo.com' : 'smtp.gmail.com');
 const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587', 10);
 const SMTP_USER = process.env.SMTP_USER || process.env.BREVO_SENDER_EMAIL || 'forgeindiaconnectfic@gmail.com';
-const SMTP_PASS = process.env.SMTP_PASS || (isBrevoSmtpKey ? process.env.BREVO_API_KEY : 'nuyy dzpp ysfp tcdl');
+const SMTP_PASS = process.env.SMTP_PASS || (isBrevoSmtpKey ? process.env.BREVO_API_KEY : '');
 
 // High-performance pooled transporter with fast connection timeout
 const transporter = nodemailer.createTransport({
@@ -299,3 +299,4 @@ module.exports = {
   sendRejectionEmail,
   EmailTemplates
 };
+

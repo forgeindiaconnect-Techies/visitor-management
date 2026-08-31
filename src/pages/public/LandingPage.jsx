@@ -1218,7 +1218,7 @@ const LandingPage = () => {
                     {/* Centered Large QR Code */}
                     <div id="landing-qr-code" className="p-5 bg-white rounded-3xl shadow-xl flex flex-col items-center justify-center landing-qr-box">
                       <QRCodeSVG 
-                        value={window.location.hostname === 'localhost' ? `http://${import.meta.env.VITE_NETWORK_IP || '192.168.1.10'}:5173/pass/${preBookResult.visitId}` : `${window.location.origin}/pass/${preBookResult.visitId}`}
+                        value={`https://visitor-management-indol.vercel.app/pass/${preBookResult.visitId}`}
                         size={180} 
                       />
                       <span className="text-[11px] font-mono text-slate-800 mt-3 font-bold uppercase tracking-wider">

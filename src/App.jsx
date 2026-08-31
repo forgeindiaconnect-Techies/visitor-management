@@ -140,7 +140,7 @@ const AppRoutes = () => {
         <Route path="blacklist" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin', 'Security', 'Receptionist']}><BlacklistList /></ProtectedRoute>} />
         
         {/* Reports & Settings */}
-        <Route path="reports" element={<ProtectedRoute allowedRoles={['Super Admin', 'SaaS Super Admin', 'MD']}><ReportsDashboard /></ProtectedRoute>} />
+        <Route path="reports" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'SaaS Super Admin', 'MD']}><ReportsDashboard /></ProtectedRoute>} />
         <Route path="subscription" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin']}><Subscription /></ProtectedRoute>} />
 
         <Route path="settings" element={<ProtectedRoute allowedRoles={['Super Admin', 'Company Admin', 'MD', 'Admin', 'Visitor', 'HR', 'Receptionist', 'Employee']}><Settings /></ProtectedRoute>} />

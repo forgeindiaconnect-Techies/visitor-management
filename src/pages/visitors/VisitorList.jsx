@@ -68,12 +68,8 @@ const VisitorList = () => {
   };
 
   const formatVisitorId = (rawId, index = 0) => {
-    if (!rawId) return `VIS-${1001 + index}`;
-    const str = String(rawId).trim();
-    if (str.startsWith('VIS-') || str.startsWith('VISIT-') || str.startsWith('VIS')) {
-      return str.toUpperCase();
-    }
-    return `VIS-${str}`;
+    if (!rawId) return `ID-${1001 + index}`;
+    return String(rawId).trim().toUpperCase();
   };
 
   const [reportSearchQuery, setReportSearchQuery] = useState('');
@@ -310,7 +306,7 @@ const VisitorList = () => {
             { key: 'Rejected', label: 'Rejected', count: statusCounts.rejected },
             { key: 'Checked In', label: 'Checked In', count: statusCounts.checkedIn },
             { key: 'Checked Out', label: 'Checked Out', count: statusCounts.checkedOut },
-            ...((['Super Admin', 'SaaS Super Admin', 'MD'].includes(user?.role)) ? [{ key: 'Reports', label: '📊 Reports', count: statusCounts.all }] : [])
+            ...((['Super Admin', 'Company Admin', 'SaaS Super Admin', 'MD'].includes(user?.role)) ? [{ key: 'Reports', label: '📊 Reports', count: statusCounts.all }] : [])
           ].map(tab => (
             <button
               key={tab.key}
@@ -325,7 +321,7 @@ const VisitorList = () => {
             </button>
           ))}
         </div>
-        {(statusFilter === 'Reports' && ['Super Admin', 'SaaS Super Admin', 'MD'].includes(user?.role)) ? (
+        {(statusFilter === 'Reports' && ['Super Admin', 'Company Admin', 'SaaS Super Admin', 'MD'].includes(user?.role)) ? (
 
           /* REPORTS DASHBOARD VIEW MATCHING SCREENSHOT 2 */
           <div className="p-4 space-y-6">
@@ -595,6 +591,9 @@ const VisitorList = () => {
                       <div>
                         <div className="flex items-center gap-2">
                           <p className="font-medium text-gray-900">{visitor.visitorName || 'Unknown'}</p>
+                          <span className="text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded font-mono font-bold tracking-wider">
+                            {formatVisitorId(visitor.visitorId || visitor.visitId || visitor.id, 0)}
+                          </span>
                           {isReturningVisitor(visitor) ? (
                             <span className="text-[9px] bg-blue-50 text-blue-600 border border-blue-200 px-1.5 py-0.5 rounded uppercase font-bold tracking-wider">Returning</span>
                           ) : (
@@ -771,7 +770,7 @@ const VisitorList = () => {
             
             <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm inline-block mb-6">
               <QRCodeSVG 
-                value={window.location.hostname === 'localhost' ? `http://${networkIp}:${window.location.port}/pass/${selectedVisitorQR.visitId || selectedVisitorQR.id}` : `${window.location.origin}/pass/${selectedVisitorQR.visitId || selectedVisitorQR.id}`} 
+                value={`https://visitor-management-indol.vercel.app/pass/${selectedVisitorQR.visitId || selectedVisitorQR.id}`} 
                 size={200}
                 level="H"
                 includeMargin={true}
@@ -1085,7 +1084,7 @@ const VisitorList = () => {
             <div className="p-4 bg-slate-900 rounded-2xl flex items-center justify-between">
               <div className="bg-white p-2 rounded-xl shadow-md">
                 <QRCodeSVG 
-                  value={window.location.hostname === 'localhost' ? `http://${import.meta.env.VITE_NETWORK_IP || '192.168.1.10'}:5173/pass/${selectedVisitorDetails.visitId || selectedVisitorDetails.id}` : `${window.location.origin}/pass/${selectedVisitorDetails.visitId || selectedVisitorDetails.id}`} 
+                  value={`https://visitor-management-indol.vercel.app/pass/${selectedVisitorDetails.visitId || selectedVisitorDetails.id}`} 
                   size={70} 
                 />
               </div>

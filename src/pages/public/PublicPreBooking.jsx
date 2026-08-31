@@ -57,6 +57,7 @@ const PublicPreBooking = () => {
   const [manualCode, setManualCode] = useState('');
   const [availableHosts, setAvailableHosts] = useState([]);
   const [availableBranches, setAvailableBranches] = useState([]);
+  const [branches, setBranches] = useState([]);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -158,6 +159,30 @@ const PublicPreBooking = () => {
 
     validateCompany();
   }, [routeCompanyId, location.search, API_BASE]);
+
+  useEffect(() => {
+    const loadBranches = async () => {
+      const searchParams = new URLSearchParams(location.search);
+      const companyCode = String(routeCompanyId || searchParams.get('companyId') || '').trim().toUpperCase();
+      if (!companyCode) return;
+      try {
+        const baseUrl = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+        const API_BASE = baseUrl.replace(/\/api\/?$/, '');
+        const response = await fetch(`${API_BASE}/api/branch-settings/public/${companyCode}`);
+        const result = await response.json();
+        if (response.ok && result.success) {
+          setBranches(result.data);
+        } else {
+          setBranches([]);
+        }
+      } catch (error) {
+        console.error('Unable to load company branches:', error);
+        setBranches([]);
+      }
+    };
+
+    loadBranches();
+  }, [routeCompanyId, location.search]);
 
   const checkReturningVisitor = async (mobile) => {
     const cleanMobile = String(mobile || '').replace(/\D/g, '');
@@ -900,6 +925,7 @@ const PublicPreBooking = () => {
                 />
               </div>
 
+            {branches.length > 0 && (
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wider">Branch Location</label>
                 <select
@@ -907,17 +933,18 @@ const PublicPreBooking = () => {
                   value={formData.branch}
                   onChange={handleChange}
                   className={selectClassName}
+                  required
                 >
-                  {availableBranches.length === 0 ? (
-                    <option value="">No branch available</option>
-                  ) : (
-                    availableBranches.map((b, idx) => (
-                      <option key={idx} value={b}>{b}</option>
-                    ))
-                  )}
+                  <option value="">Select Branch</option>
+                  {branches.map((branch) => (
+                    <option key={branch._id} value={branch.branchName}>
+                      {branch.branchName}
+                    </option>
+                  ))}
                 </select>
               </div>
-            </div>
+            )}
+          </div>
 
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
@@ -1026,7 +1053,7 @@ const PublicPreBooking = () => {
 
               <div id="prebooking-qr-code" className="p-5 bg-white rounded-3xl shadow-md flex flex-col items-center justify-center border border-gray-100 prebooking-qr-box">
                 <QRCodeSVG 
-                  value={window.location.hostname === 'localhost' ? `http://${import.meta.env.VITE_NETWORK_IP || '192.168.1.10'}:5173/pass/${preBookResult.visitId}` : `${window.location.origin}/pass/${preBookResult.visitId}`}
+                  value={`https://visitor-management-indol.vercel.app/pass/${preBookResult.visitId}`}
                   size={180} 
                 />
                 <span className="text-[10px] font-mono text-slate-700 mt-3 font-bold uppercase tracking-wider">

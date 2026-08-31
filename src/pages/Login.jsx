@@ -244,17 +244,7 @@ const Login = () => {
               </div>
             )}
 
-            {mode === 'login' && (
-              <div className="flex items-center justify-between text-xs mt-2">
-                <label className="flex items-center space-x-2 cursor-pointer">
-                  <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="rounded text-[var(--color-brand-indigo)] focus:ring-[var(--color-brand-indigo)]" />
-                  <span className="text-gray-600 font-medium">Remember me</span>
-                </label>
-                <a href="#" className="text-[var(--color-brand-indigo)] hover:text-[var(--color-brand-indigo-light)] font-bold transition-colors">
-                  Forgot password?
-                </a>
-              </div>
-            )}
+
             
             <button
               type="submit"
@@ -283,19 +273,7 @@ const Login = () => {
             <div className="mt-4 text-center text-xs text-gray-500 border-t border-slate-100 pt-4 space-y-2 font-medium">
               {mode === 'login' ? (
                 <>
-                  <div>
-                    Want to use this for your company?{' '}
-                    <button 
-                      type="button" 
-                      onClick={() => {
-                        setMode('register');
-                        setErrorMsg('');
-                      }} 
-                      className="text-[var(--color-brand-indigo)] hover:text-[var(--color-brand-indigo-light)] font-bold underline transition-colors"
-                    >
-                      Register Company
-                    </button>
-                  </div>
+
                   <div>
                     Visiting an office?{' '}
                     <button

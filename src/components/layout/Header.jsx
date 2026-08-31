@@ -137,6 +137,44 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
 
+  const [dashboardBranches, setDashboardBranches] = useState([]);
+  const [selectedBranch, setSelectedBranch] = useState(
+    localStorage.getItem('selectedBranch') || 'All Branches'
+  );
+
+  useEffect(() => {
+    const loadBranches = async () => {
+      try {
+        const token = localStorage.getItem('token') || localStorage.getItem('adminToken');
+        const companyId = localStorage.getItem('companyId') || user?.companyId;
+
+        const baseUrl =
+          import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+        const _apiBase = baseUrl.replace(/\/api\/?$/, '');
+
+        const response = await fetch(
+          `${_apiBase}/api/branch-settings`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'X-Company-Id': companyId || ''
+            }
+          }
+        );
+
+        const result = await response.json();
+
+        if (response.ok) {
+          setDashboardBranches(result.data || []);
+        }
+      } catch (error) {
+        console.error('Unable to load dashboard branches:', error);
+      }
+    };
+
+    loadBranches();
+  }, [user]);
+
   const getHeaders = () => ({
     'X-Company-Id': user?.companyId || '',
     'X-User-Id': user?._id || user?.id || 'bootstrap',
@@ -147,72 +185,97 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
 
   const fetchNotifications = async () => {
     try {
-      const res = await fetch(API_URL, { 
+      const token =
+        localStorage.getItem("token") ||
+        localStorage.getItem("adminToken");
+
+      const response = await fetch(API_URL, {
         cache: 'no-store',
-        headers: getHeaders()
+        headers: {
+          ...getHeaders(),
+          Authorization: `Bearer ${token}`
+        }
       });
-      if (res.ok) {
-        const data = await res.json();
 
-        const rawList = Array.isArray(data)
-          ? data
-          : Array.isArray(data.notifications)
-            ? data.notifications
-            : [];
+      const result = await response.json();
 
-        const normalizedList = normalizeNotifications(rawList);
-
-        const seen = new Set();
-
-        const uniqueList = normalizedList.filter((item) => {
-          const key =
-            item.eventId ||
-            `${item.type || ''}_${item.preBookingId || ''}_${item.message || ''}`;
-
-          if (seen.has(key)) return false;
-          seen.add(key);
-
-          // Role-specific filtering:
-          if (user?.role === 'SaaS Super Admin') {
-            const isVisitor =
-              ['PreBooking', 'Visitors', 'Visitor'].includes(item.module) ||
-              ['Visitor', 'PREBOOKING_REGISTERED', 'PREBOOKING_APPROVED', 'PREBOOKING_REJECTED', 'VISITOR_REGISTERED', 'VISITOR_CHECKED_IN', 'VISITOR_CHECKED_OUT', 'PREBOOKING_CHECKIN', 'PREBOOKING_CHECKOUT', 'PREBOOKING_RESCHEDULED'].includes(item.type) ||
-              Boolean(item.preBookingId || item.visitorId) ||
-              /pre-booking|visitor|checked in|checked out|waiting for approval/i.test(item.title || '') ||
-              /waiting for approval|checked in|checked out/i.test(item.message || '');
-            return !isVisitor;
-          } else {
-            return item.companyId && item.companyId.toUpperCase() === (user?.companyId || '').toUpperCase();
-          }
-        });
-
-        setNotifications(uniqueList);
+      if (response.ok && result.success) {
+        setNotifications(result.data || []);
       }
-    } catch (err) {
-      console.error('Failed to fetch notifications', err);
+    } catch (error) {
+      console.error("Unable to load notifications:", error);
     }
   };
+
+  useEffect(() => {
+    if (showDropdown) {
+      fetchNotifications();
+    }
+  }, [showDropdown]);
 
   useEffect(() => {
     fetchNotifications();
     
     const socket = io(rawApi);
     
+    if (user) {
+      socket.emit('join-notification-room', {
+        userId: user._id || user.id,
+        role: user.role,
+        companyId: user.companyId
+      });
+    }
+    
     socket.on('new_notification', (notification) => {
       if (!notification) return;
 
-      // Filter by role:
-      if (user?.role === 'SaaS Super Admin') {
-        // SaaS Super Admin NEVER receives visitor/pre-booking notifications
-        if (
-          ['PreBooking', 'Visitors', 'Visitor'].includes(notification.module) ||
-          ['Visitor', 'PREBOOKING_REGISTERED', 'PREBOOKING_APPROVED', 'PREBOOKING_REJECTED', 'VISITOR_REGISTERED', 'VISITOR_CHECKED_IN', 'VISITOR_CHECKED_OUT'].includes(notification.type)
-        ) {
+      // Strict company isolation for live notifications
+      const notificationCompanyId = String(
+        notification.companyId || ''
+      ).trim().toUpperCase();
+
+      const loggedInCompanyId = String(
+        user?.companyId || ''
+      ).trim().toUpperCase();
+
+      const loggedInRole = user?.role;
+
+      // SaaS receives only SYSTEM notifications
+      if (loggedInRole === 'SaaS Super Admin') {
+        if (notificationCompanyId !== 'SYSTEM') {
           return;
         }
       } else {
-        // Company staff ONLY receives their own company's notifications
-        if (!notification.companyId || notification.companyId === 'SYSTEM' || notification.companyId.toUpperCase() !== (user?.companyId || '').toUpperCase()) {
+        // Company users receive only their own company notifications
+        if (
+          !loggedInCompanyId ||
+          !notificationCompanyId ||
+          notificationCompanyId === 'SYSTEM' ||
+          notificationCompanyId !== loggedInCompanyId
+        ) {
+          return;
+        }
+
+        // Respect notification roles
+        if (
+          Array.isArray(notification.roles) &&
+          notification.roles.length > 0 &&
+          !notification.roles.includes(loggedInRole)
+        ) {
+          return;
+        }
+
+        // Respect a notification intended for one specific user
+        const recipientId =
+          notification.recipient?._id ||
+          notification.recipient;
+
+        const loggedInUserId = user?._id || user?.id;
+
+        if (
+          recipientId &&
+          String(recipientId) !== String(loggedInUserId)
+        ) {
           return;
         }
       }
@@ -250,15 +313,15 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
         headers: getHeaders()
       });
       if (res.ok) {
-        setNotifications(prev => (Array.isArray(prev) ? prev : []).map(n => n._id === id ? { ...n, isRead: true } : n));
+        await fetchNotifications();
       }
     } catch (err) {
       console.error('Failed to mark read', err);
     }
   };
 
-  const handleNotificationClick = (notification) => {
-    setNotifications(prev => (Array.isArray(prev) ? prev : []).map(n => n.id === notification.id ? { ...n, isRead: true } : n));
+  const handleNotificationClick = async (notification) => {
+    markAsRead(notification._id || notification.id);
     setShowDropdown(false);
     
     const preBookingId = notification.preBookingId?._id || notification.preBookingId;
@@ -278,15 +341,20 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
         headers: getHeaders()
       });
       if (res.ok) {
-        setNotifications(prev => (Array.isArray(prev) ? prev : []).map(n => ({ ...n, isRead: true })));
+        await fetchNotifications();
       }
     } catch (err) {
       console.error('Failed to mark all read', err);
     }
   };
 
+  const currentUserId = user?._id || user?.id;
   const safeNotifications = Array.isArray(notifications) ? notifications : [];
-  const unreadCount = safeNotifications.filter(n => !n.isRead).length;
+  const unreadCount = safeNotifications.filter((notification) => {
+    return !notification.readBy?.some(
+      (entry) => String(entry.userId) === String(currentUserId)
+    );
+  }).length;
 
   return (
     <header className={`h-16 bg-white border-b border-gray-200 fixed top-0 right-0 left-0 ${isSidebarOpen ? 'md:left-64' : ''} flex items-center justify-between px-4 sm:px-6 z-10 shadow-sm transition-all duration-300`}>
@@ -305,22 +373,37 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
           </h2>
         </div>
         
-        <div className="flex items-center space-x-1 sm:space-x-2 bg-slate-50 px-2 sm:px-3 py-1.5 rounded-lg border border-gray-200">
-          <MapPin size={16} className="text-[var(--color-brand-indigo)] shrink-0" />
-          {['Super Admin', 'MD', 'Senior HR', 'SaaS Super Admin', 'Admin', 'Branch Admin', 'HR'].includes(user?.role) ? (
-            <select 
-              value={activeBranch} 
-              onChange={(e) => setActiveBranch(e.target.value)}
-              className="bg-transparent outline-none text-xs sm:text-sm font-medium text-gray-700 cursor-pointer w-24 sm:w-40"
-            >
-              {Array.from(new Set((branches || []).map(b => normalizeBranchName(b)).filter(Boolean))).map(b => (
-                <option key={b} value={b}>{b}</option>
-              ))}
-            </select>
-          ) : (
-            <span className="text-sm font-medium text-gray-700">{activeBranch}</span>
-          )}
-        </div>
+        {user?.role !== 'SaaS Super Admin' && (
+          <div className="flex items-center space-x-1 sm:space-x-2 bg-slate-50 px-2 sm:px-3 py-1.5 rounded-lg border border-gray-200">
+            <MapPin size={16} className="text-[var(--color-brand-indigo)] shrink-0" />
+            {['Super Admin', 'Company Admin', 'MD', 'Senior HR', 'Admin', 'Branch Admin', 'HR'].includes(user?.role) ? (
+              <select 
+                value={selectedBranch} 
+                onChange={(event) => {
+                  const branch = event.target.value;
+                  setSelectedBranch(branch);
+                  if (setActiveBranch) setActiveBranch(branch);
+                  localStorage.setItem('selectedBranch', branch);
+                  window.dispatchEvent(
+                    new CustomEvent('branchChanged', {
+                      detail: branch
+                    })
+                  );
+                }}
+                className="bg-transparent outline-none text-xs sm:text-sm font-medium text-gray-700 cursor-pointer w-24 sm:w-40"
+              >
+                <option value="All Branches">All Branches</option>
+                {dashboardBranches.map((branch) => (
+                  <option key={branch._id} value={branch.branchName}>
+                    {branch.branchName}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="text-sm font-medium text-gray-700">{selectedBranch}</span>
+            )}
+          </div>
+        )}
       </div>
       
       <div className="flex items-center space-x-4">
@@ -371,7 +454,9 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
                 ) : (
                   notifications.slice(0, 10).map(notification => {
                     const meta = getNotificationMeta(notification.title, notification.type);
-                    const isUnread = !notification.isRead;
+                    const isUnread = !notification.readBy?.some(
+                      (entry) => String(entry.userId) === String(currentUserId)
+                    );
 
                     return (
                       <div 
@@ -439,8 +524,14 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
             {user?.name?.charAt(0) || <User size={18} />}
           </div>
           <div className="hidden sm:flex flex-col">
-            <span className="text-sm font-medium text-gray-700">{formatDisplayName(user?.name, 'Admin')}</span>
-            <span className="text-xs text-gray-500">{user?.role || 'Role'}</span>
+            <span className="text-sm font-medium text-gray-700 font-bold">
+              {user?.companyName || formatDisplayName(user?.name, 'Admin')}
+            </span>
+            <span className="text-xs text-gray-500">
+              {user?.companyName 
+                ? (user?.role === 'Company Admin' || user?.role === 'Admin' ? 'Super Admin' : user?.role)
+                : (user?.role || 'Super Admin')}
+            </span>
           </div>
         </div>
       </div>

@@ -135,14 +135,14 @@ router.get("/visitor/:visitorId", getPreBookingByVisitId);
 router.get("/qr/:token", getPreBookingByQR);
 
 // Check-In Pre-Booking
-router.put("/visitor/:visitorId/check-in", authMiddleware, checkInPreBooking);
-router.post("/visitor/:visitorId/check-in", authMiddleware, checkInPreBooking);
-router.post("/:id/check-in", authMiddleware, checkInPreBooking);
+router.put("/visitor/:visitorId/check-in", checkInPreBooking);
+router.post("/visitor/:visitorId/check-in", checkInPreBooking);
+router.post("/:id/check-in", checkInPreBooking);
 
 // Check-Out Pre-Booking (Requires checkOutNotes)
-router.put("/visitor/:visitorId/check-out", authMiddleware, checkOutPreBooking);
-router.post("/visitor/:visitorId/check-out", authMiddleware, checkOutPreBooking);
-router.post("/:id/check-out", authMiddleware, checkOutPreBooking);
+router.put("/visitor/:visitorId/check-out", checkOutPreBooking);
+router.post("/visitor/:visitorId/check-out", checkOutPreBooking);
+router.post("/:id/check-out", checkOutPreBooking);
 
 // Approve Pre-Booking
 router.put("/:id/approve", authMiddleware, approvePreBooking);
@@ -172,3 +172,5 @@ router.delete("/clear/all", clearAllPreBookings);
 router.delete("/:id", authMiddleware, deletePreBooking);
 
 module.exports = router;
+
+

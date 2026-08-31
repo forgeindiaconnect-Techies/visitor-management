@@ -60,6 +60,12 @@ const SecurityDashboard = () => {
     const socketUrl = API_URL ? API_URL.replace(/\/api\/?$/, '') : (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
     const socket = io(socketUrl, { transports: ['websocket', 'polling'] });
 
+    socket.emit('join-notification-room', {
+      userId: user?.id || user?._id,
+      role: user?.role,
+      companyId: user?.companyId
+    });
+
     socket.on('visitor-status-updated', (data) => {
       console.log('⚡ Real-time visitor status update received:', data);
 
@@ -101,7 +107,7 @@ const SecurityDashboard = () => {
     return () => {
       socket.disconnect();
     };
-  }, []);
+  }, [user?.id, user?._id, user?.role, user?.companyId]);
   const [pbSearchQuery, setPbSearchQuery] = useState('');
   const [pbVisitor, setPbVisitor] = useState(null);
   const [pbSearchLoading, setPbSearchLoading] = useState(false);
@@ -825,9 +831,18 @@ const SecurityDashboard = () => {
 
                   <div>
                     {(pbVisitor.status === 'PENDING' || pbVisitor.status === 'Pending' || pbVisitor.status === 'Pending Approval') && (
-                      <div className="px-6 py-3 bg-amber-50 text-amber-800 border border-amber-300 rounded-xl font-bold text-sm flex items-center gap-2">
-                        <Clock size={18} />
-                        <span>Awaiting Host Approval</span>
+                      <div className="flex gap-2">
+                        <div className="px-6 py-3 bg-amber-50 text-amber-800 border border-amber-300 rounded-xl font-bold text-sm flex items-center gap-2">
+                          <Clock size={18} />
+                          <span>Awaiting Host Approval</span>
+                        </div>
+                        <button
+                          onClick={() => handleVisitorAction('CHECK_IN')}
+                          disabled={actionLoading}
+                          className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-lg transition-transform active:scale-95 text-sm cursor-pointer"
+                        >
+                          {actionLoading ? 'Processing...' : 'FORCE CHECK IN'}
+                        </button>
                       </div>
                     )}
 

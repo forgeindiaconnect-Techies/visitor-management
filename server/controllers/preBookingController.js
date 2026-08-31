@@ -4,23 +4,28 @@ const QRCode = require('qrcode');
 
 const visitorNotificationService = require('../services/visitorNotificationService');
 const logAction = require('../utils/auditLogger');
-const { sendApprovalEmail } = require('../utils/emailService');
+const { sendApprovalEmail, sendPreBookingRequestReceived } = require('../utils/emailService');
 const { formatDisplayName } = require('../utils/nameFormatter');
 
-const createVisitorId = async () => {
-  try {
-    const lastDoc = await PreBooking.findOne().sort({ createdAt: -1 });
-    let nextSeq = 1001;
-    if (lastDoc && lastDoc.visitorId) {
-      const match = lastDoc.visitorId.match(/\d+$/);
-      if (match) {
-        nextSeq = parseInt(match[0], 10) + 1;
-      }
+const createVisitorId = async (companyCode) => {
+  const normalizedCode = String(companyCode).trim().toUpperCase();
+  const prefix = normalizedCode.slice(0, 3);
+
+  const lastVisitor = await PreBooking.findOne({
+    companyId: normalizedCode
+  }).sort({ createdAt: -1 });
+
+  let nextNumber = 1001;
+
+  if (lastVisitor?.visitorId) {
+    const match = lastVisitor.visitorId.match(/(\d+)$/);
+
+    if (match) {
+      nextNumber = Number(match[1]) + 1;
     }
-    return `VIS-${nextSeq}`;
-  } catch (err) {
-    return `VIS-${Math.floor(1000 + Math.random() * 9000)}`;
   }
+
+  return `${prefix}-${nextNumber}`;
 };
 
 // Create Pre-Booking
@@ -202,7 +207,7 @@ const createPreBooking = async (req, res) => {
       }
     }
 
-    const visitorId = await createVisitorId();
+    const visitorId = await createVisitorId(targetCompany.code);
 
     const isNewVisitor = hostEmployee === "New Visitors" || hostEmployee === "New Visitor" || hostEmployee === "Direct Visits" || hostEmployee === "Direct Visit";
     const finalAssignedHr = (isNewVisitor || !assignedHr) ? null : assignedHr;
@@ -261,28 +266,53 @@ const createPreBooking = async (req, res) => {
       trackingTokenExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
     });
 
+    // Send confirmation email immediately after registration
+    if (preBooking.email) {
+      try {
+        const emailSent = await sendPreBookingRequestReceived({
+          visitorName: preBooking.fullName,
+          email: preBooking.email
+        });
+
+        if (emailSent) {
+          console.log(`✅ Registration email sent to ${preBooking.email}`);
+        } else {
+          console.error(`❌ Registration email was not delivered to ${preBooking.email}`);
+        }
+      } catch (emailError) {
+        console.error("❌ Registration email failed:", emailError.message);
+      }
+    }
+
     // Create Notifications via Service
     try {
-      // Map PreBooking model to the common structure expected by the service
-      const visitorObj = {
-        _id: preBooking._id,
-        visitorName: preBooking.fullName,
-        visitDate: preBooking.visitDate,
-        expectedArrivalTime: preBooking.expectedTime,
-        hostName: preBooking.hostEmployee,
-        hostId: preBooking.assignedHr, // Map assigned HR as the explicit host if provided
-        companyId: preBooking.companyId || targetCompany.code,
-        branch: preBooking.branchLocation,
-        email: preBooking.email,
-        isReturning: isReturning,
-        isReturningVisitor: isReturning,
-        returningVisitor: isReturning
-      };
+      const Notification = require("../models/Notification");
 
-      await visitorNotificationService.notifyVisitorEvent({
-        visitor: visitorObj,
-        event: visitorNotificationService.VISITOR_EVENTS.REGISTERED,
-        io: req.app.get('io')
+      await Notification.create({
+        eventId: `PREBOOKING_CREATED_${preBooking._id}`,
+        companyId: preBooking.companyId,
+        branchId: preBooking.branchLocation,
+        preBookingId: preBooking._id,
+        visitorId: preBooking.visitorId,
+        visitorType: "PRE_BOOKING",
+      
+        type: "PREBOOKING_CREATED",
+        module: "PreBooking",
+        title: "New Pre-Booking",
+        message: `${preBooking.fullName} submitted a new pre-booking.`,
+      
+        createdBy: preBooking.fullName,
+      
+        roles: [
+          "Super Admin",
+          "Company Admin",
+          "Admin",
+          "MD",
+          "HR",
+          "Senior HR",
+          "Receptionist",
+          "Security"
+        ]
       });
 
     } catch (notifErr) {
@@ -411,7 +441,7 @@ const approvePreBooking = async (req, res) => {
     const role = rawRole ? rawRole.toUpperCase().replace(/\s+/g, '_') : '';
     const isSaaSAdmin = rawRole === 'SaaS Super Admin' || role === 'SAAS_SUPER_ADMIN' || (req.userId && String(req.userId).startsWith('bootstrap-'));
     
-    const allowedRoles = ['SUPER_ADMIN', 'SAAS_SUPER_ADMIN', 'MD', 'SENIOR_HR', 'ADMIN', 'BRANCH_ADMIN', 'HR'];
+    const allowedRoles = ['SUPER_ADMIN', 'COMPANY_ADMIN', 'SAAS_SUPER_ADMIN', 'MD', 'ADMIN'];
     const isRoleAllowed = allowedRoles.includes(role);
     
     const allowedApprovers = ['sandeep', 'avinash', 'agila', 'jeo', 'joe christo', 'vaideeswari'];
@@ -526,7 +556,7 @@ const approvePreBooking = async (req, res) => {
       // 3. Emit real saved DB notification over socket.io
       const io = req.app.get('io');
       if (io && mainNotification) {
-        io.emit('new_notification', mainNotification);
+        io.to(`company:${mainNotification.companyId}`).emit('new_notification', mainNotification);
       }
     } catch (notifErr) {
       console.error("Error creating approval notifications:", notifErr);
@@ -574,7 +604,7 @@ const rejectPreBooking = async (req, res) => {
     const roleReject = rawRoleReject ? rawRoleReject.toUpperCase().replace(/\s+/g, '_') : '';
     const isSaaSAdminReject = rawRoleReject === 'SaaS Super Admin' || roleReject === 'SAAS_SUPER_ADMIN' || (req.userId && String(req.userId).startsWith('bootstrap-'));
     
-    const allowedRolesReject = ['SUPER_ADMIN', 'SAAS_SUPER_ADMIN', 'MD', 'SENIOR_HR', 'ADMIN', 'BRANCH_ADMIN', 'HR'];
+    const allowedRolesReject = ['SUPER_ADMIN', 'COMPANY_ADMIN', 'SAAS_SUPER_ADMIN', 'MD', 'ADMIN'];
     const isRoleAllowedReject = allowedRolesReject.includes(roleReject);
     
     const allowedApproversReject = ['sandeep', 'avinash', 'agila', 'jeo', 'joe christo', 'vaideeswari'];
@@ -664,7 +694,7 @@ const rejectPreBooking = async (req, res) => {
       // 3. Emit live socket alert to all dashboard users
       const io = req.app.get('io');
       if (io && notification) {
-        io.emit('new_notification', notification);
+        io.to(`company:${notification.companyId}`).emit('new_notification', notification);
       }
     } catch (notifErr) {
       console.error("Error creating rejection notifications:", notifErr);
@@ -999,6 +1029,8 @@ const checkInPreBooking = async (req, res) => {
     const isValidObjectId = require('mongoose').isValidObjectId(rawId);
     const searchRegex = new RegExp(`^${rawId.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')}$`, 'i');
 
+    const companyId = String(req.headers['x-company-id'] || '').trim().toUpperCase();
+
     const preBooking = await PreBooking.findOne({
       $and: [
         {
@@ -1010,7 +1042,7 @@ const checkInPreBooking = async (req, res) => {
             ...(isValidObjectId ? [{ _id: rawId }] : [])
           ]
         },
-        { companyId: req.companyId }
+        { companyId: companyId }
       ]
     });
 
@@ -1101,7 +1133,7 @@ const checkInPreBooking = async (req, res) => {
       const io = req.app.get("io");
 
       if (io && notification) {
-        io.emit("new_notification", notification);
+        io.to(`company:${String(notification.companyId).trim().toUpperCase()}`).emit("new_notification", notification);
       }
     } catch (notifErr) {
       console.error("Error creating check-in notifications:", notifErr);
@@ -1171,6 +1203,8 @@ const checkOutPreBooking = async (req, res) => {
     const isValidObjectId = require('mongoose').isValidObjectId(rawId);
     const searchRegex = new RegExp(`^${rawId.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')}$`, 'i');
 
+    const companyId = String(req.headers['x-company-id'] || '').trim().toUpperCase();
+
     const preBooking = await PreBooking.findOne({
       $and: [
         {
@@ -1182,7 +1216,7 @@ const checkOutPreBooking = async (req, res) => {
             ...(isValidObjectId ? [{ _id: rawId }] : [])
           ]
         },
-        { companyId: req.companyId }
+        { companyId: companyId }
       ]
     });
 
@@ -1262,7 +1296,7 @@ const checkOutPreBooking = async (req, res) => {
       const io = req.app.get("io");
 
       if (io && notification) {
-        io.emit("new_notification", notification);
+        io.to(`company:${String(notification.companyId).trim().toUpperCase()}`).emit("new_notification", notification);
       }
     } catch (notifErr) {
       console.error("Error creating check-out notifications:", notifErr);
@@ -1490,7 +1524,7 @@ const reschedulePreBooking = async (req, res) => {
     // Real-time update for Security/Admin dashboards
     const io = req.app.get('io');
     if (io) {
-      io.emit('visitor-status-updated', {
+      io.to(`company:${String(preBooking.companyId || req.companyId).trim().toUpperCase()}`).emit('visitor-status-updated', {
         visitorId: preBooking._id.toString(),
         visitorType: 'PRE_BOOKING',
         status: preBooking.status,
@@ -1685,9 +1719,10 @@ const reApprovePreBooking = async (req, res) => {
       const io = req.app.get("io");
 
       if (io) {
-        io.emit("new_notification", notification);
+        const companyRoom = `company:${String(updatedPreBooking.companyId || notification.companyId || req.companyId).trim().toUpperCase()}`;
+        io.to(companyRoom).emit("new_notification", notification);
 
-        io.emit("visitor-status-updated", {
+        io.to(companyRoom).emit("visitor-status-updated", {
           visitorId: updatedPreBooking._id.toString(),
           visitorType: "PRE_BOOKING",
           status: "APPROVED",
@@ -1953,4 +1988,3 @@ module.exports = {
   getReturningVisitor,
   updatePreBooking,
 };
-

@@ -9,14 +9,14 @@ export const AuthProvider = ({ children }) => {
     const saved = localStorage.getItem('zmvms_user') || sessionStorage.getItem('zmvms_user');
     return saved ? JSON.parse(saved) : null;
   });
-  
+
   const [approvalRoles, setApprovalRoles] = useState([]);
   const [hasApprovalPermission, setHasApprovalPermission] = useState(false);
 
   // Set current user's approval permissions locally
   useEffect(() => {
     if (user) {
-      const allowedRoles = ['Super Admin', 'SaaS Super Admin', 'MD', 'Admin', 'Branch Admin'];
+      const allowedRoles = ['Super Admin', 'SaaS Super Admin', 'MD', 'Admin'];
       const isAllowed = allowedRoles.includes(user.role);
       setHasApprovalPermission(isAllowed);
     } else {
@@ -29,14 +29,14 @@ export const AuthProvider = ({ children }) => {
     const originalFetch = window.fetch;
     window.fetch = async (...args) => {
       let response = await originalFetch(...args);
-      
+
       // Handle 401 Unauthorized - Attempt Silent Refresh
       if (response.status === 401) {
         const refreshUrl = `${import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com')}/api/auth/refresh`;
         const logoutUrl = `${import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com')}/api/auth/logout`;
-        
+
         const requestUrl = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
-        
+
         // Prevent infinite loops if the refresh itself is 401, or if it's a logout call
         if (requestUrl !== refreshUrl && !requestUrl.includes('/auth/logout')) {
           try {
@@ -44,19 +44,19 @@ export const AuthProvider = ({ children }) => {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               // credentials: 'omit' is default, but cookies must be sent for refresh
-              credentials: 'include' 
+              credentials: 'include'
             });
             if (refreshRes.ok) {
               const refreshData = await refreshRes.json();
               // Update token
               localStorage.setItem('token', refreshData.token);
               updateUser({ token: refreshData.token });
-              
+
               // Retry original request with new token
               const retryOpts = args[1] || {};
               const retryHeaders = new Headers(retryOpts.headers || {});
               retryHeaders.set('Authorization', `Bearer ${refreshData.token}`);
-              
+
               response = await originalFetch(args[0], { ...retryOpts, headers: retryHeaders });
             } else {
               // Refresh failed, force logout
@@ -77,7 +77,7 @@ export const AuthProvider = ({ children }) => {
           if (data.subscriptionExpired) {
             updateUser({ isExpired: true });
           }
-        } catch (err) {}
+        } catch (err) { }
       }
       return response;
     };
@@ -91,7 +91,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const url = `${import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com')}/api/auth/login`;
       console.log('Attempting login to:', url);
-      
+
       let fcmToken = "";
 
       if (window.REACT_NATIVE_PUSH_TOKEN) {
@@ -106,7 +106,7 @@ export const AuthProvider = ({ children }) => {
               fcmToken = await getToken(messaging, { vapidKey }).catch(() => "");
             }
           }
-        } catch (error) {}
+        } catch (error) { }
       }
 
       const response = await fetch(url, {
@@ -138,7 +138,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const url = `${import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com')}/api/auth/logout`;
       await fetch(url, { method: 'POST', credentials: 'include' });
-    } catch(err) {
+    } catch (err) {
       console.error(err);
     }
     setUser(null);

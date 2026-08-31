@@ -43,13 +43,10 @@ export default function SuperAdminPreBookings() {
   const [reportDateFilter, setReportDateFilter] = useState("");
   const [reportHrFilter, setReportHrFilter] = useState("ALL");
   const [hrUsers, setHrUsers] = useState([]);
+
   const formatVisitorId = (rawId, index = 0) => {
-    if (!rawId) return `VIS-${1001 + index}`;
-    const str = String(rawId).trim();
-    if (str.startsWith('VIS-') || str.startsWith('VISIT-') || str.startsWith('VIS')) {
-      return str.toUpperCase();
-    }
-    return `VIS-${str}`;
+    if (!rawId) return `ID-${1001 + index}`;
+    return String(rawId).trim().toUpperCase();
   };
 
   const fetchReports = async () => {
@@ -186,8 +183,15 @@ export default function SuperAdminPreBookings() {
       : (window.location.hostname === 'localhost' ? `http://localhost:5000` : 'https://fic-visitor-1.onrender.com');
     const socket = io(socketUrl);
 
+    socket.emit('join-notification-room', {
+      userId: user?.id || user?._id,
+      role: user?.role,
+      companyId: user?.role === 'SaaS Super Admin' ? 'SYSTEM' : user?.companyId
+    });
+
     socket.on('new_notification', (notification) => {
-      if (notification?.type?.startsWith('PREBOOKING')) {
+      const expectedCompany = user?.role === 'SaaS Super Admin' ? 'SYSTEM' : user?.companyId;
+      if (notification?.companyId === expectedCompany && notification?.type?.startsWith('PREBOOKING')) {
         fetchPreBookings();
       }
     });
@@ -195,7 +199,7 @@ export default function SuperAdminPreBookings() {
     return () => {
       socket.disconnect();
     };
-  }, []);
+  }, [user?.id, user?._id, user?.role, user?.companyId]);
 
   const calculateDuration = (checkIn, checkOut) => {
     if (!checkIn || !checkOut) return 'N/A';
@@ -604,7 +608,7 @@ export default function SuperAdminPreBookings() {
               {tab.label}
             </button>
           ))}
-          {['Super Admin', 'SaaS Super Admin', 'MD'].includes(user?.role) && (
+          {['Super Admin', 'Company Admin', 'SaaS Super Admin', 'MD'].includes(user?.role) && (
             <button
               onClick={() => {
                 setActiveTab('REPORTS');
@@ -1156,7 +1160,7 @@ export default function SuperAdminPreBookings() {
             </p>
 
             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 inline-block my-2">
-              <QRCodeSVG value={`${window.location.origin}/pass/${approvedQR.qrToken || approvedQR.visitorId}`} size={180} level="H" className="mx-auto" />
+              <QRCodeSVG value={`https://visitor-management-indol.vercel.app/pass/${approvedQR.qrToken || approvedQR.visitorId}`} size={180} level="H" className="mx-auto" />
             </div>
 
             <p className="text-xs text-slate-500">QR code token activated. Security can now verify and check in this visitor.</p>

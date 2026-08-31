@@ -22,6 +22,7 @@ module.exports = async (req, res, next) => {
           req.user = decoded;
         }
       } catch (tokenErr) {
+        console.error('JWT Verification Failed:', tokenErr.message);
         // Token verification failed or expired, fall back to headers or return 401 if strict
       }
     }
@@ -105,6 +106,7 @@ module.exports = async (req, res, next) => {
         req.companyId = companyId.toUpperCase();
       }
     } else {
+      console.error(`authMiddleware 401 → ${req.method} ${req.originalUrl} | companyId missing`);
       return res.status(401).json({
         success: false,
         message: "Company information is missing. Please log in again."

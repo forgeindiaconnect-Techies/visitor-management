@@ -284,7 +284,7 @@ const VisitorStatus = () => {
             <h3 className="text-xs font-bold text-indigo-400 tracking-widest mb-6 relative z-10 uppercase">QR Entry Pass</h3>
             <div className="inline-block p-4 bg-white rounded-2xl shadow-md border border-gray-100 relative z-10 transition-transform hover:scale-105 duration-300">
               <QRCodeSVG
-                value={`${window.location.origin}/pass/${visitorData.passId}`}
+                value={`https://visitor-management-indol.vercel.app/pass/${visitorData.passId}`}
                 size={180}
                 level="H"
                 includeMargin={true}

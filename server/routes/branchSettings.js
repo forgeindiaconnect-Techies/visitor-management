@@ -4,6 +4,45 @@ const BranchSetting = require('../models/BranchSetting');
 const authMiddleware = require('../middleware/authMiddleware');
 const logAction = require('../utils/auditLogger');
 
+// Public: Get active company branches for pre-booking dropdown
+router.get('/public/:companyId', async (req, res) => {
+  try {
+    const Company = require('../models/Company');
+
+    const companyId = String(req.params.companyId)
+      .trim()
+      .toUpperCase();
+
+    const company = await Company.findOne({
+      code: companyId,
+      status: 'Active'
+    });
+
+    if (!company) {
+      return res.status(404).json({
+        success: false,
+        message: 'Company is invalid or inactive'
+      });
+    }
+
+    const branches = await BranchSetting.find({
+      companyId
+    })
+      .select('branchName')
+      .sort({ branchName: 1 });
+
+    return res.json({
+      success: true,
+      data: branches
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Unable to load branches'
+    });
+  }
+});
+
 router.use(authMiddleware);
 
 // GET all branch settings
@@ -111,7 +150,7 @@ router.post('/', async (req, res) => {
       });
       const io = req.app.get('io');
       if (io) {
-        io.emit('new_notification', newNotification);
+        io.to(`company:${newNotification.companyId}`).emit('new_notification', newNotification);
       }
       await logAction(req, `Branch Added`, 'Settings', {
         userId: req.user ? req.user._id : undefined,

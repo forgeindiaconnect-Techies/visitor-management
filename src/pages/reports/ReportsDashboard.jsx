@@ -15,19 +15,30 @@ const ReportsDashboard = () => {
   const { user } = useAuth();
   
   // Apply Strict Branch Filtering
-  // If the user is assigned to a specific branch, they should ONLY see that branch's data, regardless of their role.
   const safeAll = Array.isArray(allVisitors) ? allVisitors : [];
-  const baseFilteredVisitors = user?.branch && user?.branch !== 'All' && user?.branch !== 'All Branches'
+  
+  const directFilteredVisitors = user?.branch && user?.branch !== 'All' && user?.branch !== 'All Branches'
     ? safeAll.filter(v => v.branch === user.branch && !v.isPreBooking && v.registrationType !== 'Pre-Booking')
     : safeAll.filter(v => !v.isPreBooking && v.registrationType !== 'Pre-Booking');
 
+  const preBookingFilteredVisitors = user?.branch && user?.branch !== 'All' && user?.branch !== 'All Branches'
+    ? safeAll.filter(v => v.branch === user.branch && (v.isPreBooking || v.registrationType === 'Pre-Booking'))
+    : safeAll.filter(v => v.isPreBooking || v.registrationType === 'Pre-Booking');
+
   const [dateFilter, setDateFilter] = useState('');
-  const [activeTab, setActiveTab] = useState('visitor');
+  const [activeTab, setActiveTab] = useState('direct');
+
+  const filteredDirectVisitors = dateFilter
+    ? directFilteredVisitors.filter(v => v.visitDate === dateFilter)
+    : directFilteredVisitors;
+
+  const filteredPreBookingVisitors = dateFilter
+    ? preBookingFilteredVisitors.filter(v => v.visitDate === dateFilter)
+    : preBookingFilteredVisitors;
 
   const filteredVisitors = dateFilter
-    ? baseFilteredVisitors.filter(v => v.visitDate === dateFilter)
-    : baseFilteredVisitors;
-
+    ? safeAll.filter(v => v.visitDate === dateFilter)
+    : safeAll;
 
   // User-Friendly Excel Exporter
   const exportExcel = (data, filename) => {
@@ -67,25 +78,29 @@ const ReportsDashboard = () => {
     window.print(); // Simple browser print implementation for PDF
   };
 
-  // 1. Visitor Report Data
-  const visitorReportData = filteredVisitors.map(v => {
+  // 1. Direct Visit Report Data
+  const formatVisitorData = (v) => {
     const isCheckedOut = ['Exited', 'Completed'].includes(v.status);
     const rawExit = v.exitTime || v.checkOutTime;
     const displayExitTime = isCheckedOut ? (rawExit ? formatDisplayTime(rawExit) : 'N/A') : 'N/A';
     const rawEntry = v.entryTime || v.checkInTime;
 
     return {
-      "Visitor": v.visitorName,
-      "Host": v.hostName || 'N/A',
-      "Branch": v.branch,
-      "Purpose": v.purpose,
+      "Visitor": v.visitorName || v.fullName,
+      "Host": v.hostName || v.hostEmployee || 'N/A',
+      "Branch": v.branch || v.branchLocation,
+      "Purpose": v.purpose || v.visitPurpose,
+      "Expected Time": v.expectedTime ? formatDisplayTime(v.expectedTime) : 'N/A',
       "Entry": rawEntry ? formatDisplayTime(rawEntry) : 'N/A',
       "Exit": displayExitTime,
       "Time Spent": calculateTimeSpent(v.visitDate, v.entryTime, v.exitTime, v.status),
       "Status": v.status,
       "Notes": [v.hostNotes, v.remarks, v.exitNotes, v.checkOutNotes, v.notes].filter(Boolean).join(' | ') || '-'
     };
-  });
+  };
+
+  const directVisitorReportData = filteredDirectVisitors.map(formatVisitorData);
+  const preBookingReportData = filteredPreBookingVisitors.map(formatVisitorData);
 
   // Zone Report Data removed per request
 
@@ -157,7 +172,8 @@ const ReportsDashboard = () => {
 
   const getActiveData = () => {
     switch (activeTab) {
-      case 'visitor': return visitorReportData;
+      case 'direct': return directVisitorReportData;
+      case 'prebooking': return preBookingReportData;
       case 'branch': return branchReportData;
       default: return [];
     }
@@ -210,10 +226,16 @@ const ReportsDashboard = () => {
         {/* Tabs */}
         <div className="flex border-b border-gray-200 overflow-x-auto print:hidden">
           <button 
-            onClick={() => setActiveTab('visitor')}
-            className={`px-6 py-4 font-medium text-sm flex items-center gap-2 transition-colors border-b-2 whitespace-nowrap ${activeTab === 'visitor' ? 'border-[var(--color-brand-indigo)] text-[var(--color-brand-indigo)]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+            onClick={() => setActiveTab('direct')}
+            className={`px-6 py-4 font-medium text-sm flex items-center gap-2 transition-colors border-b-2 whitespace-nowrap ${activeTab === 'direct' ? 'border-[var(--color-brand-indigo)] text-[var(--color-brand-indigo)]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
           >
-            <Users size={16}/> Visitor Report
+            <Users size={16}/> Direct Visit Report
+          </button>
+          <button 
+            onClick={() => setActiveTab('prebooking')}
+            className={`px-6 py-4 font-medium text-sm flex items-center gap-2 transition-colors border-b-2 whitespace-nowrap ${activeTab === 'prebooking' ? 'border-[var(--color-brand-indigo)] text-[var(--color-brand-indigo)]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          >
+            <CalendarCheck size={16}/> Pre-Booking Report
           </button>
           <button 
             onClick={() => setActiveTab('security')}
@@ -263,11 +285,57 @@ const ReportsDashboard = () => {
           </div>
         )}
 
-        {activeTab === 'visitor' && (
-          <div className="p-0 print:block print:visible print:opacity-100 print:w-full">
-            {renderTable(visitorReportData)}
-          </div>
-        )}
+        {activeTab === 'direct' && (() => {
+          const stats = [
+            { title: 'Total Visitors', count: filteredDirectVisitors.length, color: 'bg-slate-50 text-slate-800 border-slate-200' },
+            { title: 'Pending', count: filteredDirectVisitors.filter(r => (r.status || '').toUpperCase() === 'PENDING').length, color: 'bg-orange-50 text-orange-800 border-orange-200' },
+            { title: 'Approved', count: filteredDirectVisitors.filter(r => ['APPROVED', 'Approved'].includes(r.status)).length, color: 'bg-green-50 text-green-800 border-green-200' },
+            { title: 'Rejected', count: filteredDirectVisitors.filter(r => ['REJECTED', 'Rejected', 'CANCELLED'].includes((r.status || '').toUpperCase())).length, color: 'bg-red-50 text-red-800 border-red-200' },
+            { title: 'Checked In', count: filteredDirectVisitors.filter(r => ['CHECKED_IN', 'Checked In', 'INSIDE', 'Inside'].includes(r.status)).length, color: 'bg-blue-50 text-blue-800 border-blue-200' },
+            { title: 'Checked Out', count: filteredDirectVisitors.filter(r => ['CHECKED_OUT', 'Checked Out', 'EXITED', 'Exited', 'Completed'].includes(r.status)).length, color: 'bg-purple-50 text-purple-800 border-purple-200' },
+          ];
+          return (
+            <div className="p-4 space-y-6">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+                {stats.map((stat, idx) => (
+                  <div key={idx} className={`p-4 rounded-xl border ${stat.color} flex flex-col shadow-sm`}>
+                    <span className="text-xs font-semibold uppercase tracking-wider opacity-85">{stat.title}</span>
+                    <span className="text-2xl font-bold mt-1">{stat.count}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="print:block print:visible print:opacity-100 print:w-full">
+                {renderTable(directVisitorReportData)}
+              </div>
+            </div>
+          );
+        })()}
+
+        {activeTab === 'prebooking' && (() => {
+          const stats = [
+            { title: 'Total Visitors', count: filteredPreBookingVisitors.length, color: 'bg-slate-50 text-slate-800 border-slate-200' },
+            { title: 'Pending', count: filteredPreBookingVisitors.filter(r => (r.status || '').toUpperCase() === 'PENDING').length, color: 'bg-orange-50 text-orange-800 border-orange-200' },
+            { title: 'Approved', count: filteredPreBookingVisitors.filter(r => ['APPROVED', 'Approved'].includes(r.status)).length, color: 'bg-green-50 text-green-800 border-green-200' },
+            { title: 'Rejected', count: filteredPreBookingVisitors.filter(r => ['REJECTED', 'Rejected', 'CANCELLED'].includes((r.status || '').toUpperCase())).length, color: 'bg-red-50 text-red-800 border-red-200' },
+            { title: 'Checked In', count: filteredPreBookingVisitors.filter(r => ['CHECKED_IN', 'Checked In', 'INSIDE', 'Inside'].includes(r.status)).length, color: 'bg-blue-50 text-blue-800 border-blue-200' },
+            { title: 'Checked Out', count: filteredPreBookingVisitors.filter(r => ['CHECKED_OUT', 'Checked Out', 'EXITED', 'Exited', 'Completed'].includes(r.status)).length, color: 'bg-purple-50 text-purple-800 border-purple-200' },
+          ];
+          return (
+            <div className="p-4 space-y-6">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+                {stats.map((stat, idx) => (
+                  <div key={idx} className={`p-4 rounded-xl border ${stat.color} flex flex-col shadow-sm`}>
+                    <span className="text-xs font-semibold uppercase tracking-wider opacity-85">{stat.title}</span>
+                    <span className="text-2xl font-bold mt-1">{stat.count}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="print:block print:visible print:opacity-100 print:w-full">
+                {renderTable(preBookingReportData)}
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

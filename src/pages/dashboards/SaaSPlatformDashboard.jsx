@@ -512,7 +512,7 @@ const SaaSPlatformDashboard = () => {
                           <button
                             title="Copy Pre-Booking Link"
                             onClick={() => {
-                              const link = `${window.location.origin}/pre-booking/${comp.code || comp.companyId}`;
+                              const link = `https://visitor-management-indol.vercel.app/pre-booking/${comp.code || comp.companyId}`;
                               navigator.clipboard.writeText(link);
                               showToast(`Copied pre-booking link for ${comp.name}!`, 'success');
                             }}

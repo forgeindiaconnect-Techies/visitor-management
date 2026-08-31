@@ -1,0 +1,183 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-indigo: #005EB8;
+  --color-brand-indigo-light: #0B66C3;
+  --color-brand-indigo-dark: #003A70;
+  --color-brand-yellow: #FFC20E;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: #f8fafc;
+  color: var(--color-text-primary);
+  font-weight: 600;
+  -webkit-font-smoothing: antialiased;
+}
+
+:root {
+  --color-text-primary: #020617; /* Even darker slate-950 */
+  --color-text-secondary: #334155; /* Darker slate-700 instead of slate-500 */
+}
+
+::view-transition-group(*),
+::view-transition-old(*),
+::view-transition-new(*) {
+  animation-duration: 0.25s;
+  animation-timing-function: cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+/* Hide scrollbar for IE, Edge and Firefox */
+.hide-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.bg-grid-pattern {
+  background-image: radial-gradient(#005EB8 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+@keyframes slideUpFade {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up-fade {
+  animation: slideUpFade 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes floatBackground {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(30px, -30px) scale(1.05);
+  }
+}
+
+.animate-float-bg {
+  animation: floatBackground 12s ease-in-out infinite;
+}
+
+@keyframes floatBackgroundReverse {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(-30px, 30px) scale(0.95);
+  }
+}
+
+.animate-float-bg-reverse {
+  animation: floatBackgroundReverse 15s ease-in-out infinite;
+}
+
+@keyframes logoZoom {
+  from {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.animate-logo-zoom {
+  animation: logoZoom 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+  20%, 40%, 60%, 80% { transform: translateX(4px); }
+}
+.animate-shake {
+  animation: shake 0.5s ease-in-out;
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+.animate-fade-out {
+  animation: fadeOut 0.5s ease-in-out forwards;
+}
+
+@media print {
+  /* Hide sidebar and header during printing */
+  aside, header {
+    display: none !important;
+  }
+  
+  /* Reset margins and layouts for main content and ALL parents */
+  body, html, #app, #root, .min-h-screen, .h-screen, main {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    position: static !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background-color: white !important;
+    color: black !important;
+  }
+  
+  /* Reset specific layout classes that break printing */
+  .md\:ml-64 {
+    margin-left: 0 !important;
+  }
+  
+  /* Ensure all content within the dashboard is visible (excluding hidden) */
+  .animate-in, .fade-in {
+    opacity: 1 !important;
+    animation: none !important;
+    visibility: visible !important;
+  }
+  
+  /* Hide elements that shouldn't be printed (tabs, buttons) */
+  .print\:hidden {
+    display: none !important;
+  }
+  
+  /* Fix table clipping */
+  .overflow-x-auto, .overflow-y-auto, .overflow-hidden {
+    overflow: visible !important;
+  }
+}
+
+/* Remove default MS Edge password reveal icon */
+input::-ms-reveal,
+input::-ms-clear {
+  display: none;
+}
+
+@keyframes gradientAnimation {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.bg-moving-gradient {
+  background: linear-gradient(120deg, #e0f2fe 0%, #fffbeb 25%, #fef9c3 50%, #eff6ff 75%, #fef08a 100%);
+  background-size: 300% 300%;
+  animation: gradientAnimation 14s ease-in-out infinite;
+}

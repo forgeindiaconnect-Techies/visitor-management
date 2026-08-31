@@ -43,12 +43,34 @@ app.set('io', io);
 io.on('connection', (socket) => {
   console.log('⚡ Socket connected:', socket.id);
 
-  socket.on('join-notification-room', ({ userId, role }) => {
-    if (role) {
-      socket.join(`notification:${role}`);
-      console.log(`Socket ${socket.id} joined room: notification:${role}`);
+  socket.on(
+    'join-notification-room',
+    ({ userId, role, companyId }) => {
+      const normalizedRole = String(role || '').trim();
+      const normalizedCompanyId = String(
+        companyId || ''
+      ).trim().toUpperCase();
+
+      if (normalizedRole) {
+        socket.join(`notification:${normalizedRole}`);
+      }
+
+      if (
+        normalizedRole === 'SaaS Super Admin'
+      ) {
+        socket.join('company:SYSTEM');
+      } else if (
+        normalizedCompanyId &&
+        normalizedCompanyId !== 'SYSTEM'
+      ) {
+        socket.join(`company:${normalizedCompanyId}`);
+      }
+
+      console.log(
+        `Socket ${socket.id} joined notification room`
+      );
     }
-  });
+  );
 
   socket.on('disconnect', () => {
     console.log('🔌 Socket disconnected:', socket.id);
@@ -124,6 +146,7 @@ mongoose.connect(process.env.MONGO_URI)
       const PreBooking = require('./models/PreBooking');
       const Visitor = require('./models/Visitor');
       const Notification = require('./models/Notification');
+      const User = require('./models/User');
       const namesRegex = /^(test|test\s*\d*|tet|teest|lokeee|sample|demo)$/i;
       const cutoffDate = new Date('2026-08-26T00:00:00.000Z');
 
@@ -405,3 +428,4 @@ app.use((req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT} (bound to 0.0.0.0)`);
 });
+
