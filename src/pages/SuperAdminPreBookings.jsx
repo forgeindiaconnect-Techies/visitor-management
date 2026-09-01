@@ -87,9 +87,6 @@ export default function SuperAdminPreBookings() {
   }, []);
 
   const getHeaders = () => ({
-    'X-Company-Id': user?.companyId || 'SYSTEM',
-    'X-User-Id': user?.id || user?._id || 'bootstrap',
-    'X-User-Role': user?.role || 'User',
     'Authorization': `Bearer ${localStorage.getItem('token')}`
   });
 

@@ -26,8 +26,12 @@ const preBookingSchema = new mongoose.Schema(
 
     bookingType: {
       type: String,
-      default: "PRE_BOOKING",
-      enum: ["PRE_BOOKING"]
+      enum: [
+        'PRE_BOOKING',
+        'DIRECT_VISIT',
+        'ADMIN_INVITATION'
+      ],
+      default: 'PRE_BOOKING'
     },
 
     activeBookingKey: {
@@ -117,7 +121,10 @@ const preBookingSchema = new mongoose.Schema(
 
     facePhoto: {
       type: String,
-      required: true,
+      required: function () {
+        return this.bookingType !== 'ADMIN_INVITATION';
+      },
+      default: ''
     },
 
     visitorType: {
@@ -260,6 +267,14 @@ const preBookingSchema = new mongoose.Schema(
     returningVisitor: {
       type: Boolean,
       default: false
+    },
+    invitationEmailSent: {
+      type: Boolean,
+      default: false
+    },
+    invitationSentAt: {
+      type: Date,
+      default: null
     }
   },
   {

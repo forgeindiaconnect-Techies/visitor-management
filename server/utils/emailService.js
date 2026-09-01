@@ -289,14 +289,207 @@ const sendRejectionEmail = async ({ visitorName, email }) => {
   return await sendEmail(email, subject, htmlContent);
 };
 
+const sendAdminVisitorPassEmail = async ({
+  visitorName,
+  email,
+  companyName,
+  visitorId,
+  visitDate,
+  expectedTime,
+  hostName,
+  purpose,
+  branchName,
+  passUrl
+}) => {
+  const safeCompanyName = companyName || 'Visitor Management System';
+
+  const subject = `${safeCompanyName} – Your Visitor Pass`;
+
+  const htmlBody = `
+    <div style="
+      background:#f1f5f9;
+      padding:30px 15px;
+      font-family:Arial,sans-serif;
+    ">
+      <div style="
+        max-width:620px;
+        margin:auto;
+        background:#ffffff;
+        border-radius:16px;
+        overflow:hidden;
+        box-shadow:0 8px 28px rgba(15,23,42,0.12);
+      ">
+        <div style="
+          background:linear-gradient(135deg,#1e1b6e,#4f46e5);
+          color:#ffffff;
+          padding:28px;
+          text-align:center;
+        ">
+          <h1 style="margin:0;font-size:25px;">
+            ${safeCompanyName}
+          </h1>
+
+          <p style="margin:8px 0 0;font-size:14px;">
+            Official Visitor Invitation
+          </p>
+        </div>
+
+        <div style="padding:30px;">
+          <p style="font-size:16px;color:#0f172a;">
+            Hello <strong>${visitorName}</strong>,
+          </p>
+
+          <p style="
+            color:#475569;
+            font-size:14px;
+            line-height:1.7;
+          ">
+            Your visit to <strong>${safeCompanyName}</strong> has been
+            registered successfully. Your visitor pass is ready.
+          </p>
+
+          <div style="
+            background:#f8fafc;
+            border:1px solid #e2e8f0;
+            border-radius:12px;
+            padding:20px;
+            margin:24px 0;
+          ">
+            <p><strong>Visitor ID:</strong> ${visitorId}</p>
+            <p><strong>Visit Date:</strong> ${visitDate}</p>
+            <p><strong>Expected Time:</strong> ${expectedTime}</p>
+            <p><strong>Host:</strong> ${hostName || 'Direct Visit'}</p>
+            <p><strong>Purpose:</strong> ${purpose}</p>
+            <p><strong>Branch:</strong> ${branchName}</p>
+            <p style="margin-bottom:0;">
+              <strong>Status:</strong>
+              <span style="
+                color:#15803d;
+                background:#dcfce7;
+                padding:4px 10px;
+                border-radius:20px;
+              ">
+                Approved
+              </span>
+            </p>
+          </div>
+
+          <div style="text-align:center;margin:30px 0;">
+            <a
+              href="${passUrl}"
+              target="_blank"
+              style="
+                display:inline-block;
+                background:#4f46e5;
+                color:#ffffff;
+                padding:14px 28px;
+                border-radius:8px;
+                text-decoration:none;
+                font-weight:bold;
+              "
+            >
+              View Visitor Pass
+            </a>
+          </div>
+
+          <p style="
+            color:#64748b;
+            font-size:13px;
+            line-height:1.6;
+          ">
+            Please show this visitor pass when you arrive. You can use
+            the pass to check in and check out.
+          </p>
+        </div>
+
+        <div style="
+          background:#0f172a;
+          color:#cbd5e1;
+          padding:18px;
+          text-align:center;
+          font-size:12px;
+        ">
+          This is an automated visitor invitation from
+          ${safeCompanyName}.
+        </div>
+      </div>
+    </div>
+  `;
+
+  return await sendEmail(email, subject, htmlBody);
+};
+
+const sendCompanyActivationEmail = async ({
+  recipientName,
+  email,
+  companyName,
+  companyCode,
+  subscription,
+  activationUrl
+}) => {
+  const subject = `${companyName} – Your VMS Dashboard Is Ready`;
+
+  const htmlBody = `
+    <div style="background:#f1f5f9;padding:30px;font-family:Arial,sans-serif;">
+      <div style="max-width:600px;margin:auto;background:#ffffff;border-radius:14px;overflow:hidden;">
+        <div style="background:#1e1b6e;color:#ffffff;padding:26px;text-align:center;">
+          <h2 style="margin:0;">Welcome to FIC VMS</h2>
+        </div>
+
+        <div style="padding:30px;">
+          <p>Hello <strong>${recipientName}</strong>,</p>
+
+          <p>
+            Your company dashboard has been created successfully.
+          </p>
+
+          <div style="background:#f8fafc;padding:18px;border-radius:10px;">
+            <p><strong>Company:</strong> ${companyName}</p>
+            <p><strong>Company Code:</strong> ${companyCode}</p>
+            <p><strong>Plan:</strong> ${subscription}</p>
+            <p><strong>Role:</strong> Super Admin</p>
+          </div>
+
+          <div style="text-align:center;margin:30px 0;">
+            <a
+              href="${activationUrl}"
+              target="_blank"
+              style="background:#4f46e5;color:#ffffff;padding:14px 26px;border-radius:8px;text-decoration:none;font-weight:bold;"
+            >
+              Activate Account
+            </a>
+          </div>
+
+          <p style="color:#64748b;font-size:13px;">
+            This secure activation link expires in 24 hours.
+          </p>
+        </div>
+
+        <div style="background:#0f172a;color:#cbd5e1;padding:16px;text-align:center;font-size:12px;">
+          Powered by
+          <a
+            href="https://forgeindiaconnect.com/"
+            style="color:#ffffff;"
+          >
+            ForgeIndiaConnect
+          </a>
+        </div>
+      </div>
+    </div>
+  `;
+
+  return await sendEmail(email, subject, htmlBody);
+};
+
 module.exports = {
   sendEmail,
+  sendCompanyActivationEmail,
   sendPreBookingInvitation,
   sendRegistrationConfirmation,
   sendVisitorInvitationEmail,
   sendPreBookingRequestReceived,
   sendApprovalEmail,
   sendRejectionEmail,
+  sendAdminVisitorPassEmail,
   EmailTemplates
 };
-

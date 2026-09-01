@@ -142,7 +142,12 @@ router.post('/login', loginLimiter, async (req, res) => {
       isExpired,
       subscription,
       subscriptionExpiresAt,
-      branding: company?.branding || { logoUrl: '', primaryColor: '#1E1B6E' }
+      branding: company?.branding || { logoUrl: '', primaryColor: '#1E1B6E' },
+      company: company ? {
+        code: company.code,
+        name: company.name,
+        branding: company.branding || { logoUrl: '', primaryColor: '#1E1B6E' }
+      } : null
     };
 
     // Generate Access Token (8h)

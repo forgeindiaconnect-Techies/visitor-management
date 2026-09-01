@@ -16,6 +16,74 @@ router.use((req, res, next) => {
 });
 
 // GET all companies (with counts)
+const multer = require('multer');
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const cloudinary = require('../config/cloudinary');
+const { v4: uuidv4 } = require('uuid');
+
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: (req, file) => {
+      const companyCode = req.params.companyCode || 'UNKNOWN';
+      return `fic-vms/companies/${companyCode.trim().toUpperCase()}/branding`;
+    },
+    public_id: (req, file) => `${uuidv4()}`,
+    allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+    transformation: [{ width: 300, height: 300, crop: 'limit' }]
+  },
+});
+
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB limit for logos
+  fileFilter: (req, file, cb) => {
+    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (allowedMimeTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only JPEG, PNG, and WebP are allowed.'));
+    }
+  }
+});
+
+router.post(
+  '/companies/:companyCode/logo',
+  upload.single('logo'),
+  async (req, res) => {
+    try {
+      const companyCode = req.params.companyCode.trim().toUpperCase();
+
+      if (!req.file) {
+        return res.status(400).json({ success: false, message: 'Please select a company logo' });
+      }
+
+      const logoUrl = req.file.path; // Multer-storage-cloudinary returns the URL in req.file.path
+
+      const company = await Company.findOneAndUpdate(
+        { code: companyCode },
+        {
+          $set: { 'branding.logoUrl': logoUrl }
+        },
+        { new: true }
+      );
+
+      if (!company) {
+        return res.status(404).json({ success: false, message: 'Company not found' });
+      }
+
+      return res.json({
+        success: true,
+        message: 'Company logo updated successfully',
+        data: company
+      });
+    } catch (error) {
+      console.error('Upload logo error:', error);
+      return res.status(500).json({ success: false, message: 'Unable to upload company logo' });
+    }
+  }
+);
+
 router.get('/companies', async (req, res) => {
   try {
     const companies = await Company.find().sort({ createdAt: -1 });
@@ -188,15 +256,15 @@ router.patch('/companies/:id', async (req, res) => {
         status: 'Success'
       });
     } else {
-      const newNotif = await Notification.create({
-        companyId: 'SYSTEM',
+      const tenantNotif = await Notification.create({
+        companyId: comp.code,
         type: 'info',
         module: 'Company',
-        title: '🏢 Tenant Updated',
-        message: `${comp.name} details have been updated.`,
+        title: '🏢 Company Details Updated',
+        message: `Your company details have been updated by the SaaS Administrator.`,
         createdBy: req.userRole || 'System'
       });
-      if (io) io.to(`company:${newNotif.companyId}`).emit('new_notification', newNotif);
+      if (io) io.to(`company:${comp.code}`).emit('new_notification', tenantNotif);
     }
 
     res.json(comp);

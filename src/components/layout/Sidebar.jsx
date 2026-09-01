@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { 
@@ -28,6 +28,7 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
   const allNavItems = [
     { name: 'Dashboard', path: '/', icon: <LayoutDashboard size={20} />, roles: ['SaaS Super Admin', 'Super Admin', 'Company Admin', 'MD', 'Admin', 'Security', 'Visitor', 'HR', 'Receptionist', 'Employee'] },
     { name: 'Companies', path: '/saas/companies', icon: <Building size={20} />, roles: ['SaaS Super Admin'] },
+    { name: 'Registrations', path: '/saas/leads', icon: <UserPlus size={20} />, roles: ['SaaS Super Admin'] },
     { name: 'Subscriptions', path: '/saas/subscriptions', icon: <CreditCard size={20} />, roles: ['SaaS Super Admin'] },
     { name: 'Payments', path: '/saas/payments', icon: <Activity size={20} />, roles: ['SaaS Super Admin'] },
     { name: 'Upgrade Requests', path: '/saas/upgrades', icon: <CheckSquare size={20} />, roles: ['SaaS Super Admin'] },
@@ -51,14 +52,37 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
     navItems = navItems.filter(item => item.name === 'Subscription');
   }
 
+  const [branding, setBranding] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('companyBranding') || '{}');
+    } catch (e) {
+      return {};
+    }
+  });
+
+  React.useEffect(() => {
+    const updateBranding = (event) => {
+      if (event.detail) {
+        setBranding(event.detail);
+      }
+    };
+    window.addEventListener('companyBrandingUpdated', updateBranding);
+    return () => {
+      window.removeEventListener('companyBrandingUpdated', updateBranding);
+    };
+  }, []);
+
   return (
     <aside className={`w-64 bg-[var(--color-brand-indigo)] text-white h-screen fixed top-0 left-0 flex flex-col shadow-xl z-20 transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-      <div className="h-16 flex items-center justify-between px-6 border-b border-white/10 shrink-0">
-        {user?.branding?.logoUrl ? (
-          <img src={user.branding.logoUrl} alt="Logo" className="h-8 max-w-[150px] object-contain" />
-        ) : (
-          <h1 className="text-xl font-bold tracking-wider truncate">{user?.companyName || 'FIC VMS'}</h1>
-        )}
+      <div className="h-16 flex items-center justify-between px-6 border-b border-white/10 shrink-0 bg-white/5">
+        <div className="flex items-center gap-3 overflow-hidden">
+          {branding.logoUrl && (
+            <img src={branding.logoUrl} alt="Logo" className="h-10 w-auto max-w-[80px] object-contain drop-shadow-md shrink-0" />
+          )}
+          <h1 className="text-lg font-bold tracking-wider truncate">
+            {user?.companyName || 'FIC VMS'}
+          </h1>
+        </div>
         <button 
           className="md:hidden text-white/70 hover:text-white"
           onClick={() => setIsOpen(false)}

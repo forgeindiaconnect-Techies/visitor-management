@@ -4,6 +4,7 @@ import Sidebar from './Sidebar';
 import Header from './Header';
 import { useAuth } from '../../context/AuthContext';
 import SubscriptionModals from '../subscription/SubscriptionModals';
+import CommonFooter from '../CommonFooter';
 
 const MainLayout = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
@@ -78,6 +79,8 @@ const MainLayout = () => {
         <main className={`flex-1 p-4 md:p-6 ${!trialText ? 'mt-16' : ''} overflow-y-auto min-w-0 overflow-x-hidden print:block print:p-0 print:m-0 print:overflow-visible print:h-auto`}>
           <Outlet />
         </main>
+        
+        <CommonFooter />
       </div>
     </div>
   );

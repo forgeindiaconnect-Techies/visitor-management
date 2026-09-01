@@ -58,7 +58,19 @@ const userSchema = new mongoose.Schema({
   },
   fcmToken: {
     type: String,
-    default: ""
+    default: null
+  },
+  passwordSetupTokenHash: {
+    type: String,
+    default: null
+  },
+  passwordSetupExpiresAt: {
+    type: Date,
+    default: null
+  },
+  mustSetPassword: {
+    type: Boolean,
+    default: false
   },
   fcmTokens: [
     {

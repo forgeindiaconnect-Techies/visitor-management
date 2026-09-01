@@ -72,6 +72,28 @@ io.on('connection', (socket) => {
     }
   );
 
+  socket.on('join_saas_room', ({ token }) => {
+    try {
+      const jwt = require('jsonwebtoken');
+      const decoded = jwt.verify(
+        token,
+        process.env.JWT_SECRET || 'secret' // Fallback in case env is not loaded right away
+      );
+
+      if (decoded.role !== 'SaaS Super Admin') {
+        return;
+      }
+
+      socket.join('saas-admins');
+
+      console.log(
+        `SaaS Super Admin joined real-time room: ${socket.id}`
+      );
+    } catch (error) {
+      console.error('Invalid SaaS socket token');
+    }
+  });
+
   socket.on('disconnect', () => {
     console.log('🔌 Socket disconnected:', socket.id);
   });
@@ -273,7 +295,8 @@ app.get('/api/pass-lookup/:visitId', async (req, res) => {
       { profileId: new RegExp(escapedRaw, 'i') },
       { bookingId: new RegExp(escapedRaw, 'i') },
       { mobileNumber: cleanId },
-      { qrToken: cleanId }
+      { qrToken: cleanId },
+      { trackingToken: cleanId }
     ];
 
     if (alphaNum && alphaNum !== cleanId) {
@@ -317,6 +340,8 @@ app.get('/api/pass-lookup/:visitId', async (req, res) => {
           branch: pb.branchLocation || 'Head Office',
           vehicleNumber: pb.vehicleNumber,
           photoUrl: pb.facePhoto,
+          qrToken: pb.qrToken || pb.trackingToken || '',
+          trackingToken: pb.trackingToken || pb.qrToken || '',
           status: pb.status === 'PENDING' ? 'Pending' : (pb.status === 'APPROVED' ? 'Approved' : (pb.status === 'CHECKED_IN' ? 'Inside' : pb.status)),
           createdAt: pb.createdAt
         };
@@ -349,6 +374,9 @@ app.use('/api/payment', paymentRoutes);
 app.use('/api/approval-permissions', approvalPermissionRoutes);
 const dashboardRouter = require('./routes/dashboard');
 app.use('/api/dashboard', dashboardRouter);
+
+const saasLeadsRouter = require('./routes/saasLeads');
+app.use('/api/saas-leads', saasLeadsRouter);
 
 app.all('/api/cleanup-test-data', async (req, res) => {
   try {

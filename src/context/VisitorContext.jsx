@@ -53,7 +53,7 @@ export const VisitorProvider = ({ children }) => {
 
   // Fetch visitors from backend
   const fetchVisitors = async () => {
-    if (!currentUser) {
+    if (!currentUser || currentUser?.role === 'SaaS Super Admin') {
       setVisitors([]);
       allVisitorsRef.current = [];
       setLoading(false);
@@ -136,8 +136,14 @@ export const VisitorProvider = ({ children }) => {
         };
       }).filter(Boolean);
 
+      // Only merge pre-bookings into the dashboard if they have actually arrived (checked in or checked out).
+      // Pending/Approved "registration details" stay in the Pre-Bookings tab.
+      const arrivedPreBookings = normalizedPreBookings.filter(pb => 
+        !['Pending', 'Approved', 'PENDING', 'APPROVED'].includes(pb.status)
+      );
+
       // Sort newest first before deduplication
-      const allCombined = [...safeVData, ...normalizedPreBookings].sort(
+      const allCombined = [...safeVData, ...arrivedPreBookings].sort(
         (a, b) => new Date(b.visitDate || b.createdAt || b.date || 0) - new Date(a.visitDate || a.createdAt || a.date || 0)
       );
 

@@ -200,7 +200,11 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
       const result = await response.json();
 
       if (response.ok && result.success) {
-        setNotifications(result.data || []);
+        let fetchedItems = result.data || [];
+        if (user?.role === 'SaaS Super Admin') {
+          fetchedItems = fetchedItems.filter((n) => n.companyId === 'SYSTEM' || n.module === 'SaaS');
+        }
+        setNotifications(fetchedItems);
       }
     } catch (error) {
       console.error("Unable to load notifications:", error);
@@ -240,9 +244,9 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
 
       const loggedInRole = user?.role;
 
-      // SaaS receives only SYSTEM notifications
+      // SaaS receives only SYSTEM notifications or SaaS module notifications
       if (loggedInRole === 'SaaS Super Admin') {
-        if (notificationCompanyId !== 'SYSTEM') {
+        if (notificationCompanyId !== 'SYSTEM' && notification.module !== 'SaaS') {
           return;
         }
       } else {
@@ -356,17 +360,48 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
     );
   }).length;
 
+  const [branding, setBranding] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('companyBranding') || '{}');
+    } catch (e) {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    const updateBranding = (event) => {
+      if (event.detail) {
+        setBranding(event.detail);
+      }
+    };
+
+    window.addEventListener('companyBrandingUpdated', updateBranding);
+
+    return () => {
+      window.removeEventListener('companyBrandingUpdated', updateBranding);
+    };
+  }, []);
+
   return (
     <header className={`h-16 bg-white border-b border-gray-200 fixed top-0 right-0 left-0 ${isSidebarOpen ? 'md:left-64' : ''} flex items-center justify-between px-4 sm:px-6 z-10 shadow-sm transition-all duration-300`}>
       <div className="flex items-center space-x-2 sm:space-x-4">
         {toggleSidebar && (
           <button 
             onClick={toggleSidebar}
-            className="text-gray-500 hover:text-[var(--color-brand-indigo)] transition-colors mr-1 sm:mr-2"
+            className="text-gray-500 hover:text-[var(--color-brand-indigo)] transition-colors"
           >
             <Menu size={24} />
           </button>
         )}
+        
+        {!isSidebarOpen && branding.logoUrl && (
+          <img
+            src={branding.logoUrl}
+            alt="Company Logo"
+            className="h-8 w-auto max-w-[120px] object-contain"
+          />
+        )}
+
         <div className="flex flex-col hidden sm:block">
           <h2 className="text-xl font-semibold text-gray-800">
             Welcome back, {formatDisplayName(user?.name, 'User')}
@@ -520,8 +555,12 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
         <div className="h-8 w-px bg-gray-200"></div>
         
         <div className="flex items-center space-x-3">
-          <div className="w-9 h-9 shrink-0 rounded-full bg-[var(--color-brand-indigo)] text-white flex items-center justify-center font-bold">
-            {user?.name?.charAt(0) || <User size={18} />}
+          <div className="w-9 h-9 shrink-0 rounded-full bg-[var(--color-brand-indigo)] text-white flex items-center justify-center font-bold overflow-hidden shadow-sm">
+            {branding?.logoUrl && ['SaaS Super Admin', 'Super Admin', 'Company Admin', 'MD', 'Admin'].includes(user?.role) ? (
+              <img src={branding.logoUrl} alt="Profile Logo" className="w-full h-full object-contain p-1 bg-white" />
+            ) : (
+              user?.name?.charAt(0) || <User size={18} />
+            )}
           </div>
           <div className="hidden sm:flex flex-col">
             <span className="text-sm font-medium text-gray-700 font-bold">

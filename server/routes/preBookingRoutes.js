@@ -19,6 +19,7 @@ const {
   reschedulePreBooking,
   getReturningVisitor,
   updatePreBooking,
+  createAndSendVisitorInvitation,
 } = require("../controllers/preBookingController");
 
 const router = express.Router();
@@ -123,7 +124,7 @@ router.get("/my", authMiddleware, getMyPreBookings);
 router.get("/reports", authMiddleware, getPreBookingReports);
 
 // Create Pre-Booking
-router.post("/", createPreBooking);
+router.post("/", authMiddleware, createPreBooking);
 
 // Get all Pre-Bookings
 router.get("/", authMiddleware, getAllPreBookings);
@@ -133,6 +134,13 @@ router.get("/visitor/:visitorId", getPreBookingByVisitId);
 
 // Get single Pre-Booking by QR token
 router.get("/qr/:token", getPreBookingByQR);
+
+// Super Admin creates an approved visitor pass and sends email
+router.post(
+  '/admin/send-invitation',
+  authMiddleware,
+  createAndSendVisitorInvitation
+);
 
 // Check-In Pre-Booking
 router.put("/visitor/:visitorId/check-in", checkInPreBooking);

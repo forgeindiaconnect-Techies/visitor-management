@@ -35,6 +35,8 @@ import VisitorInvitation from './pages/VisitorInvitation';
 import ApprovalList from './pages/approvals/ApprovalList';
 import ApprovalDetails from './pages/approvals/ApprovalDetails';
 import SuperAdminPreBookings from './pages/SuperAdminPreBookings';
+import SaaSLanding from './pages/saas/SaaSLanding';
+import ActivateAccount from './pages/auth/ActivateAccount';
 import ZoneList from './pages/zones/ZoneList';
 import EntryExitLogs from './pages/tracking/EntryExitLogs';
 import LiveMonitoring from './pages/tracking/LiveMonitoring';
@@ -86,6 +88,7 @@ const AppRoutes = () => {
 
   return (
     <Routes>
+      <Route path="/" element={!user ? <SaaSLanding /> : <Navigate to="/dashboard" replace />} />
       <Route path="/landing" element={<LandingPage />} />
       <Route path="/login" element={<Login />} />
       <Route path="/prebook" element={<PublicPreBooking />} />
@@ -98,15 +101,17 @@ const AppRoutes = () => {
       <Route path="/pre-register" element={<PreRegister />} />
       <Route path="/pre-register/:companyId" element={<PreRegister />} />
       <Route path="/visitor-invitation/:token" element={<VisitorInvitation />} />
+      <Route path="/activate-account/:token" element={<ActivateAccount />} />
+      <Route path="/saas" element={<SaaSLanding />} />
 
       {/* Main Authenticated Layout */}
       <Route element={user ? <MainLayout /> : <Navigate to="/login" replace />}>
-        <Route index element={<Dashboard />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="saas/companies" element={<ProtectedRoute allowedRoles={['SaaS Super Admin']}><Dashboard /></ProtectedRoute>} />
         <Route path="saas/subscriptions" element={<ProtectedRoute allowedRoles={['SaaS Super Admin']}><Dashboard /></ProtectedRoute>} />
         <Route path="saas/payments" element={<ProtectedRoute allowedRoles={['SaaS Super Admin']}><Dashboard /></ProtectedRoute>} />
         <Route path="saas/upgrades" element={<ProtectedRoute allowedRoles={['SaaS Super Admin']}><Dashboard /></ProtectedRoute>} />
+        <Route path="saas/leads" element={<ProtectedRoute allowedRoles={['SaaS Super Admin']}><Dashboard /></ProtectedRoute>} />
         <Route path="notifications" element={<ProtectedRoute allowedRoles={['SaaS Super Admin', 'Super Admin', 'MD', 'Admin', 'Branch Admin', 'Security', 'HR']}><NotificationsPage /></ProtectedRoute>} />
         
         {/* User Management */}

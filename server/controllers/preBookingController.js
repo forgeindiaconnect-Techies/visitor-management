@@ -4,7 +4,11 @@ const QRCode = require('qrcode');
 
 const visitorNotificationService = require('../services/visitorNotificationService');
 const logAction = require('../utils/auditLogger');
-const { sendApprovalEmail, sendPreBookingRequestReceived } = require('../utils/emailService');
+const {
+  sendApprovalEmail,
+  sendPreBookingRequestReceived,
+  sendAdminVisitorPassEmail
+} = require('../utils/emailService');
 const { formatDisplayName } = require('../utils/nameFormatter');
 
 const createVisitorId = async (companyCode) => {
@@ -65,18 +69,15 @@ const createPreBooking = async (req, res) => {
       });
     }
 
-    // Resolve and validate the company from the public pre-booking link
+    // Resolve and validate the company
     const Company = require("../models/Company");
 
-    const targetCompanyId = String(
-      req.body.companyId || ""
-    ).trim().toUpperCase();
+    const targetCompanyId = req.companyId;
 
-    // companyId is compulsory. Do not silently use FIC001.
     if (!targetCompanyId) {
       return res.status(400).json({
         success: false,
-        message: "Company ID is required. Please use the company's official pre-booking link."
+        message: "Company ID is required."
       });
     }
 
@@ -87,7 +88,7 @@ const createPreBooking = async (req, res) => {
     if (!targetCompany) {
       return res.status(404).json({
         success: false,
-        message: "This pre-booking link is invalid or unavailable. Company is not registered."
+        message: "This company is invalid or unavailable. Company is not registered."
       });
     }
 
@@ -355,64 +356,33 @@ const createPreBooking = async (req, res) => {
 const getAllPreBookings = async (req, res) => {
   try {
     const companyId = req.companyId;
-    if (!companyId || companyId === 'SYSTEM') {
-      return res.json({
-        success: true,
-        count: 0,
-        data: []
+
+    if (!companyId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Company information is missing'
       });
     }
 
-    const filter = {
-      companyId: companyId
-    };
-
-    if (
-      req.branchId &&
-      req.branchId !== "All Branches"
-    ) {
-      filter.branchLocation = req.branchId;
-    } else if (req.query.branch && req.query.branch !== "All Branches") {
-      filter.branchLocation = req.query.branch;
-    }
-
-    const normalizedRole = (req.userRole || '').toUpperCase().trim();
-    // Role-based filtering: HR/Employee users only see their assigned visitors or where they are the host
-    if (normalizedRole === 'HR' || normalizedRole === 'EMPLOYEE') {
-      const mongoose = require('mongoose');
-      let hrUser = req.user;
-      if (!hrUser && req.userId && mongoose.isValidObjectId(req.userId)) {
-        const User = require('../models/User');
-        hrUser = await User.findById(req.userId);
-      }
-      const hrName = (hrUser?.name || req.headers['x-user-name'] || '').trim();
-      const hrId = req.userId || req.headers['x-user-id'];
-
-      const hrOr = [];
-      if (hrId) hrOr.push({ assignedHr: hrId });
-      if (hrName) hrOr.push({ hostEmployee: new RegExp(`^${hrName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') });
-      
-      if (hrOr.length > 0) {
-        filter.$or = hrOr;
-      }
-      filter.visitorType = { $ne: 'NEW_VISITOR' };
-    }
-
-    filter.fullName = { $not: /^(test|test 1|test 2|test 3|lokeee|testing)$/i };
+    const filter =
+      req.userRole === 'SaaS Super Admin'
+        ? {}
+        : { companyId: companyId.toUpperCase() };
 
     const preBookings = await PreBooking.find(filter)
-      .populate("assignedHr", "name email role companyId")
       .sort({ createdAt: -1 });
 
-    return res.json({
+    return res.status(200).json({
       success: true,
       count: preBookings.length,
       data: preBookings
     });
   } catch (error) {
+    console.error('Get pre-bookings failed:', error);
+
     return res.status(500).json({
       success: false,
-      message: "Unable to fetch pre-bookings"
+      message: 'Unable to load pre-bookings'
     });
   }
 };
@@ -789,7 +759,12 @@ const getPreBookingByVisitId = async (req, res) => {
       searchConditions.push({ _id: cleanId });
     }
 
-    let pb = await PreBooking.findOne({ $or: searchConditions }).populate("assignedHr");
+    let pb = await PreBooking.findOne({
+      $and: [
+        { $or: searchConditions },
+        { companyId: req.companyId }
+      ]
+    }).populate("assignedHr");
 
     if (!pb) {
       const Visitor = require("../models/Visitor");
@@ -911,7 +886,10 @@ const getPreBookingByQR = async (req, res) => {
     }
 
     const pb = await PreBooking.findOne({
-      qrToken: token,
+      $or: [
+        { qrToken: token },
+        { trackingToken: token }
+      ],
       status: {
         $in: ["APPROVED", "CHECKED_IN", "CHECKED_OUT"]
       }
@@ -948,6 +926,8 @@ const getPreBookingByQR = async (req, res) => {
       vehicleNumber: pb.vehicleNumber,
       idType: pb.idType || '',
       idProofUrl: pb.idProofUrl || '',
+      qrToken: pb.qrToken || pb.trackingToken || '',
+      trackingToken: pb.trackingToken || pb.qrToken || '',
       facePhoto: pb.facePhoto,
       photoUrl: pb.facePhoto,
       status: pb.status,
@@ -1039,6 +1019,7 @@ const checkInPreBooking = async (req, res) => {
             { visitorId: rawId.toUpperCase() },
             { mobileNumber: rawId },
             { qrToken: rawId },
+            { trackingToken: rawId },
             ...(isValidObjectId ? [{ _id: rawId }] : [])
           ]
         },
@@ -1213,6 +1194,7 @@ const checkOutPreBooking = async (req, res) => {
             { visitorId: rawId.toUpperCase() },
             { mobileNumber: rawId },
             { qrToken: rawId },
+            { trackingToken: rawId },
             ...(isValidObjectId ? [{ _id: rawId }] : [])
           ]
         },
@@ -1968,6 +1950,196 @@ const updatePreBooking = async (req, res) => {
     return res.status(500).json({ success: false, message: "Failed to update pre-booking.", error: error.message });
   }
 };
+const createAndSendVisitorInvitation = async (req, res) => {
+  try {
+    const Company = require('../models/Company');
+    const crypto = require('crypto');
+
+    const companyId = req.companyId;
+
+    if (!companyId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Company information is missing'
+      });
+    }
+
+    const company = await Company.findOne({
+      code: companyId,
+      status: 'Active'
+    });
+
+    if (!company) {
+      return res.status(404).json({
+        success: false,
+        message: 'Company is invalid or inactive'
+      });
+    }
+
+    const {
+      fullName,
+      mobileNumber,
+      email,
+      hostEmployee,
+      visitPurpose,
+      visitDate,
+      expectedTime,
+      branchLocation,
+      vehicleNumber,
+      sendEmailNow = true
+    } = req.body;
+
+    if (
+      !fullName ||
+      !mobileNumber ||
+      !email ||
+      !visitDate ||
+      !expectedTime ||
+      !branchLocation
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please complete all required visitor details'
+      });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedMobile = String(mobileNumber).replace(/\D/g, '');
+
+    const visitorId = await createVisitorId(company.code);
+    const trackingToken = crypto.randomBytes(32).toString('hex');
+    const qrToken = crypto.randomBytes(32).toString('hex');
+
+    const preBooking = await PreBooking.create({
+      companyId: company.code,
+      visitorId,
+      qrToken,
+      facePhoto: req.body.facePhoto || '',
+      fullName: fullName.trim(),
+      mobileNumber: normalizedMobile,
+      email: normalizedEmail,
+      visitingCompany: company.name,
+      hostEmployee: hostEmployee || 'Direct Visits',
+      visitPurpose: visitPurpose || 'Official Visit',
+      visitDate,
+      expectedTime,
+      branchLocation,
+      vehicleNumber: vehicleNumber || '',
+      visitorType: 'NORMAL',
+      bookingType: 'ADMIN_INVITATION',
+      status: 'APPROVED',
+      approvedAt: new Date(),
+      approvedBy: req.userId,
+      trackingToken,
+      trackingTokenExpiresAt: new Date(
+        Date.now() + 30 * 24 * 60 * 60 * 1000
+      )
+    });
+
+    const frontendUrl = String(
+      process.env.FRONTEND_URL || 'https://zone-monitor.vercel.app'
+    ).replace(/\/+$/, '');
+
+    const passUrl = `${frontendUrl}/pass/${trackingToken}`;
+
+    let emailSent = false;
+    if (sendEmailNow) {
+      emailSent = await sendAdminVisitorPassEmail({
+        visitorName: preBooking.fullName,
+        email: preBooking.email,
+        companyName: company.name,
+        visitorId: preBooking.visitorId,
+        visitDate: new Date(preBooking.visitDate).toLocaleDateString('en-IN'),
+        expectedTime: preBooking.expectedTime,
+        hostName: preBooking.hostEmployee,
+        purpose: preBooking.visitPurpose,
+        branchName: preBooking.branchLocation,
+        passUrl
+      });
+    }
+
+    preBooking.invitationEmailSent = emailSent;
+    preBooking.invitationSentAt = emailSent ? new Date() : null;
+    await preBooking.save();
+
+    // Create and emit notification for the newly sent invitation
+    try {
+      const User = require("../models/User");
+      const Notification = require("../models/Notification");
+
+      const companyRegex = new RegExp(`^${company.code}$`, 'i');
+      const dashboardUsers = await User.find({
+        role: { $in: ["Super Admin", "Company Admin", "Admin", "MD", "HR", "Receptionist", "Security"] },
+        companyId: companyRegex,
+        status: "Active"
+      });
+
+      const creatorName = req.userName || req.userRole || "Admin";
+      const visitorName = preBooking.fullName;
+      const notificationMessage = `Invitation ${emailSent ? 'sent' : 'created'} for ${visitorName} by ${creatorName}.`;
+
+      const recipientIds = dashboardUsers.map(u => String(u._id));
+      const uniqueRecipientIds = [...new Set(recipientIds)];
+      const eventId = `INVITATION_CREATED_${preBooking._id}`;
+
+      const mainNotification = await Notification.findOneAndUpdate(
+        { eventId },
+        {
+          $set: {
+            title: "Visitor Invitation Created",
+            message: notificationMessage,
+            visitorName: visitorName
+          },
+          $setOnInsert: {
+            eventId,
+            companyId: company.code,
+            branchId: preBooking.branchLocation || 'Head Office',
+            recipients: uniqueRecipientIds.map(id => ({
+              userId: String(id),
+              user: id
+            })),
+            roles: ["Super Admin", "Company Admin", "Admin", "MD", "HR", "Receptionist", "Security"],
+            visitorId: preBooking.visitorId,
+            visitorType: 'PRE_BOOKING',
+            preBookingId: preBooking._id,
+            type: "PREBOOKING_APPROVED",
+            module: "PreBooking",
+            createdBy: creatorName,
+            isRead: false
+          }
+        },
+        {
+          upsert: true,
+          returnDocument: "after"
+        }
+      );
+
+      const io = req.app.get('io');
+      if (io && mainNotification) {
+        io.to(`company:${mainNotification.companyId}`).emit('new_notification', mainNotification);
+      }
+    } catch (notifErr) {
+      console.error("Error creating invitation notifications:", notifErr);
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: emailSent
+        ? 'Visitor invitation and pass sent successfully'
+        : 'Booking created, but the email could not be delivered',
+      emailSent,
+      data: preBooking,
+      passUrl
+    });
+  } catch (error) {
+    console.error('Create visitor invitation failed:', error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Unable to create visitor invitation'
+    });
+  }
+};
 
 module.exports = {
   createPreBooking,
@@ -1987,4 +2159,5 @@ module.exports = {
   reschedulePreBooking,
   getReturningVisitor,
   updatePreBooking,
+  createAndSendVisitorInvitation,
 };

@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { Building, Users, UserCheck, CreditCard, Calendar, Activity, Check, X, ShieldAlert, Sparkles, Plus, AlertCircle, RefreshCw, Eye, EyeOff, Download, Copy, ExternalLink } from 'lucide-react';
 import { exportToCSV } from '../../utils/exportUtils';
 import SendNotificationModal from '../../components/superadmin/SendNotificationModal';
+import { io } from 'socket.io-client';
 
 const DashboardCard = ({ title, value, icon: Icon, colorClass, subtitle, onClick }) => (
   <div 
@@ -28,6 +29,7 @@ const SaaSPlatformDashboard = () => {
   const [auditLogFilters, setAuditLogFilters] = useState({
     search: '', date: '', company: '', module: 'All', status: 'All'
   });
+  const [saasLeads, setSaasLeads] = useState([]);
   const [upgradeRequests, setUpgradeRequests] = useState([]);
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -36,6 +38,14 @@ const SaaSPlatformDashboard = () => {
 
   // Form states for creating a new company
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [selectedLead, setSelectedLead] = useState(null);
+  const [subscription, setSubscription] = useState('Basic');
+  const [expiryDate, setExpiryDate] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailMessage, setEmailMessage] = useState('');
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [activeLeadTab, setActiveLeadTab] = useState('details');
   const [newCompany, setNewCompany] = useState({
     companyName: '',
     adminName: '',
@@ -44,6 +54,7 @@ const SaaSPlatformDashboard = () => {
     password: '',
     plan: 'One Day Trial'
   });
+  const [companyLogo, setCompanyLogo] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
 
   // Mock payment simulator state
@@ -59,6 +70,7 @@ const SaaSPlatformDashboard = () => {
   // Edit company state
   const [showEditModal, setShowEditModal] = useState(false);
   const [editCompany, setEditCompany] = useState(null);
+  const [editCompanyLogo, setEditCompanyLogo] = useState(null);
 
   const location = window.location;
   const pathname = location.pathname;
@@ -68,6 +80,7 @@ const SaaSPlatformDashboard = () => {
   if (pathname.includes('/saas/subscriptions')) currentTab = 'Subscriptions';
   else if (pathname.includes('/saas/payments')) currentTab = 'Payments';
   else if (pathname.includes('/saas/upgrades')) currentTab = 'Upgrade Requests';
+  else if (pathname.includes('/saas/leads')) currentTab = 'Registrations';
 
   const activeTab = currentTab;
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
@@ -148,6 +161,15 @@ const SaaSPlatformDashboard = () => {
         setUpgradeRequests(upgradeData);
       }
 
+      // Fetch saas leads
+      const leadsRes = await fetch(`${API_BASE}/api/saas-leads`, {
+        headers: getHeaders()
+      });
+      if (leadsRes.ok) {
+        const leadsData = await leadsRes.json();
+        setSaasLeads(leadsData.data);
+      }
+
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
       setError(err.message);
@@ -158,6 +180,39 @@ const SaaSPlatformDashboard = () => {
 
   useEffect(() => {
     fetchData();
+
+    const rawApi = (import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com')).replace(/\/api\/?$/, '');
+    const socket = io(rawApi);
+    
+    if (user) {
+      socket.emit('join-notification-room', {
+        userId: user._id || user.id,
+        role: user.role,
+        companyId: user.companyId
+      });
+
+      // Secure SaaS Admin Room Join
+      if (user.role === 'SaaS Super Admin' && user.token) {
+        socket.emit('join_saas_room', { token: user.token });
+      }
+    }
+
+    const handleNewLead = (newLead) => {
+      setSaasLeads((current) => {
+        const alreadyExists = current.some(lead => lead._id === newLead._id);
+        if (alreadyExists) return current;
+        
+        showToast(`New Registration: ${newLead.companyName}`, 'info');
+        return [newLead, ...current];
+      });
+    };
+
+    socket.on('new_saas_lead', handleNewLead);
+
+    return () => {
+      socket.off('new_saas_lead', handleNewLead);
+      socket.disconnect();
+    };
   }, []);
 
   const showToast = (message, type = 'success') => {
@@ -219,9 +274,30 @@ const SaaSPlatformDashboard = () => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || 'Failed to update company');
+
+      if (editCompanyLogo) {
+        try {
+          const logoData = new FormData();
+          logoData.append('logo', editCompanyLogo);
+          const logoResponse = await fetch(`${API_BASE}/api/super-admin/companies/${editCompany.code}/logo`, {
+            method: 'POST',
+            headers: {
+              ...(user?.token && { 'Authorization': `Bearer ${user.token}` })
+            },
+            body: logoData
+          });
+          if (!logoResponse.ok) {
+            console.warn('Logo upload failed, but company was updated.');
+          }
+        } catch (uploadErr) {
+          console.error('Logo upload error:', uploadErr);
+        }
+      }
+
       showToast(`Company details updated successfully`, 'success');
       setShowEditModal(false);
       setEditCompany(null);
+      setEditCompanyLogo(null);
       fetchData();
     } catch (err) {
       showToast(err.message, 'error');
@@ -296,6 +372,25 @@ const SaaSPlatformDashboard = () => {
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || 'Registration failed');
 
+      if (companyLogo && data.company && data.company.code) {
+        try {
+          const logoData = new FormData();
+          logoData.append('logo', companyLogo);
+          const logoResponse = await fetch(`${API_BASE}/api/super-admin/companies/${data.company.code}/logo`, {
+            method: 'POST',
+            headers: {
+              ...(user?.token && { 'Authorization': `Bearer ${user.token}` })
+            },
+            body: logoData
+          });
+          if (!logoResponse.ok) {
+            console.warn('Logo upload failed, but company was created.');
+          }
+        } catch (uploadErr) {
+          console.error('Logo upload error:', uploadErr);
+        }
+      }
+
       showToast(`Registered successfully. Company Code: ${data.company.code}`, 'success');
       setShowCreateModal(false);
       setNewCompany({
@@ -306,6 +401,7 @@ const SaaSPlatformDashboard = () => {
         password: '',
         plan: 'One Day Trial'
       });
+      setCompanyLogo(null);
       fetchData();
     } catch (err) {
       showToast(err.message, 'error');
@@ -370,6 +466,104 @@ const SaaSPlatformDashboard = () => {
       'IP Address': log.ipAddress || 'Unknown'
     }));
     exportToCSV(exportData, 'SaaS_Audit_Logs.csv');
+  };
+
+  const handleUpdateLeadStatus = async (leadId, status) => {
+    try {
+      const response = await fetch(`${API_BASE}/api/saas-leads/${leadId}/status`, {
+        method: 'PATCH',
+        headers: getHeaders(),
+        body: JSON.stringify({ status })
+      });
+      if (!response.ok) throw new Error('Failed to update lead status');
+      setNotification({ message: 'Lead status updated successfully', type: 'success' });
+      fetchData();
+    } catch (err) {
+      setNotification({ message: err.message, type: 'error' });
+    }
+  };
+
+  const handleSendEmail = async (e) => {
+    e.preventDefault();
+    if (!selectedLead || !emailSubject || !emailMessage) return;
+
+    try {
+      setSendingEmail(true);
+      const response = await fetch(`${API_BASE}/api/saas-leads/${selectedLead._id}/send-email`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ subject: emailSubject, message: emailMessage })
+      });
+      
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to send email');
+      
+      showToast('Email sent successfully!', 'success');
+      
+      // Update local state
+      setSaasLeads((current) =>
+        current.map((lead) =>
+          lead._id === selectedLead._id ? data.data : lead
+        )
+      );
+      setSelectedLead(data.data);
+      setEmailSubject('');
+      setEmailMessage('');
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
+  const createCompanyDashboard = async () => {
+    if (!selectedLead || !expiryDate) {
+      alert('Please select the subscription expiry date');
+      return;
+    }
+
+    try {
+      setCreating(true);
+
+      const response = await fetch(
+        `${API_BASE}/api/saas-leads/${selectedLead._id}/convert`,
+        {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({
+            subscription,
+            subscriptionExpiresAt: expiryDate
+          })
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message);
+      }
+
+      showToast(result.message, 'success');
+
+      setSaasLeads((current) =>
+        current.map((lead) =>
+          lead._id === selectedLead._id
+            ? {
+                ...lead,
+                convertedCompanyId: result.data?.company?._id || true
+              }
+            : lead
+        )
+      );
+
+      setSelectedLead(null);
+      setExpiryDate('');
+      fetchData(); // Optionally re-fetch to get updated companies list
+    } catch (error) {
+      showToast(error.message, 'error');
+    } finally {
+      setCreating(false);
+    }
   };
 
   return (
@@ -503,7 +697,18 @@ const SaaSPlatformDashboard = () => {
                 <tbody className="divide-y divide-gray-100 text-xs">
                   {companies.map((comp) => (
                     <tr key={comp._id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-5 py-4 font-semibold text-gray-900">{comp.name}</td>
+                      <td className="px-5 py-4 font-semibold text-gray-900">
+                        <div className="flex items-center gap-3">
+                          {comp.branding?.logoUrl ? (
+                            <img src={comp.branding.logoUrl} alt="Logo" className="w-8 h-8 rounded object-contain bg-white shrink-0 shadow-sm" />
+                          ) : (
+                            <div className="w-8 h-8 rounded bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[var(--color-brand-indigo)] font-bold shrink-0">
+                              {comp.name.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <span className="truncate">{comp.name}</span>
+                        </div>
+                      </td>
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-1.5">
                           <span className="font-mono text-xs bg-slate-100 text-gray-700 px-2 py-0.5 rounded border border-slate-200 font-semibold">
@@ -841,6 +1046,250 @@ const SaaSPlatformDashboard = () => {
             </div>
           </>
         )}
+        {activeTab === 'Registrations' && (
+          <>
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Registrations / Sales Leads</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Manage new registrations and convert them to tenants.</p>
+              </div>
+            </div>
+            
+            <div className="overflow-x-auto pb-2">
+              <table className="w-full text-left border-collapse min-w-max">
+                <thead>
+                  <tr className="bg-slate-50 text-gray-500 text-[11px] uppercase tracking-wider">
+                    <th className="px-6 py-4 font-medium">Company Name</th>
+                    <th className="px-6 py-4 font-medium">Contact</th>
+                    <th className="px-6 py-4 font-medium">Expected Size</th>
+                    <th className="px-6 py-4 font-medium">Date</th>
+                    <th className="px-6 py-4 font-medium">Status</th>
+                    <th className="px-6 py-4 font-medium text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {saasLeads.map((lead) => (
+                    <tr key={lead._id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-6 py-4 font-semibold text-gray-900">
+                        <div className="flex items-center gap-3">
+                          {lead.logoUrl ? (
+                            <img 
+                              src={lead.logoUrl} 
+                              alt={`${lead.companyName} logo`} 
+                              className="w-8 h-8 rounded object-contain bg-white shrink-0 shadow-sm border border-gray-100" 
+                            />
+                          ) : (
+                            <div className="w-8 h-8 rounded bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#1E1B6E] font-bold shrink-0 text-xs">
+                              {lead.companyName ? lead.companyName.charAt(0).toUpperCase() : 'C'}
+                            </div>
+                          )}
+                          <span>{lead.companyName}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 font-semibold text-gray-700">
+                        {lead.contactPerson}
+                        <div className="text-xs font-normal text-gray-500">{lead.email} | {lead.mobileNumber}</div>
+                      </td>
+                      <td className="px-6 py-4 text-xs font-medium text-gray-600">
+                        {lead.expectedBranches} Branch(es), {lead.expectedEmployees} Emp.
+                      </td>
+                      <td className="px-6 py-4 text-xs font-medium text-gray-600">
+                        <div className="flex items-center space-x-1.5">
+                          <Calendar size={13} className="text-gray-400" />
+                          <span>{new Date(lead.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-xs">
+                        <select 
+                          value={lead.status}
+                          disabled={lead.status === 'Won' || lead.status === 'Lost'}
+                          onChange={(e) => handleUpdateLeadStatus(lead._id, e.target.value)}
+                          className="px-2 py-1 border rounded bg-white text-xs"
+                        >
+                          <option value="New">New</option>
+                          <option value="Contacted">Contacted</option>
+                          <option value="Demo Scheduled">Demo Scheduled</option>
+                          <option value="Negotiation">Negotiation</option>
+                          <option value="Won">Won</option>
+                          <option value="Lost">Lost</option>
+                        </select>
+                      </td>
+                      <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
+                        <button 
+                          onClick={() => { setSelectedLead(lead); setActiveLeadTab('details'); }}
+                          className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded transition-colors inline-block"
+                        >
+                          View Details
+                        </button>
+                        {lead.status === 'Won' && !lead.convertedCompanyId ? (
+                          <button 
+                            onClick={() => { setSelectedLead(lead); setActiveLeadTab('convert'); }}
+                            className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded transition-colors inline-block"
+                          >
+                            Create Dashboard
+                          </button>
+                        ) : lead.convertedCompanyId ? (
+                          <span className="text-xs text-green-600 font-bold bg-green-50 px-2 py-1 rounded inline-block">Converted</span>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                  {saasLeads.length === 0 && !loading && (
+                    <tr>
+                      <td colSpan="6" className="px-6 py-12 text-center text-gray-500 font-medium bg-slate-50/50">
+                        No sales leads found.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {selectedLead && (
+              <div className="fixed inset-0 flex items-center justify-center bg-black/50 p-4 z-50 backdrop-blur-sm overflow-y-auto">
+                <div className="w-full max-w-4xl rounded-2xl bg-white shadow-2xl animate-in zoom-in-95 duration-200 overflow-hidden flex flex-col max-h-[90vh]">
+                  <div className="bg-[#1E1B6E] p-4 flex justify-between items-center text-white shrink-0">
+                    <h2 className="text-lg font-bold">Lead Details</h2>
+                    <button onClick={() => setSelectedLead(null)} className="text-gray-300 hover:text-white">
+                      <X size={24} />
+                    </button>
+                  </div>
+                  
+                  <div className="flex border-b border-gray-200 shrink-0">
+                    <button onClick={() => setActiveLeadTab('details')} className={`px-6 py-3 text-sm font-semibold border-b-2 transition-colors ${activeLeadTab === 'details' ? 'border-[#1E1B6E] text-[#1E1B6E]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Overview</button>
+                    <button onClick={() => setActiveLeadTab('email')} className={`px-6 py-3 text-sm font-semibold border-b-2 transition-colors ${activeLeadTab === 'email' ? 'border-[#1E1B6E] text-[#1E1B6E]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Email & History</button>
+                    {selectedLead.status === 'Won' && !selectedLead.convertedCompanyId && (
+                      <button onClick={() => setActiveLeadTab('convert')} className={`px-6 py-3 text-sm font-semibold border-b-2 transition-colors ${activeLeadTab === 'convert' ? 'border-green-600 text-green-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Convert to Tenant</button>
+                    )}
+                  </div>
+
+                  <div className="p-6 overflow-y-auto flex-1 bg-gray-50">
+                    {activeLeadTab === 'details' && (
+                      <div className="space-y-6">
+                        <div className="flex items-center gap-6 bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+                          {selectedLead.logoUrl ? (
+                            <img src={selectedLead.logoUrl} alt={`${selectedLead.companyName} logo`} className="h-24 w-24 rounded-xl object-contain bg-gray-50 border border-gray-100" />
+                          ) : (
+                            <div className="h-24 w-24 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-300">
+                              <Building size={32} />
+                            </div>
+                          )}
+                          <div>
+                            <h3 className="text-2xl font-bold text-gray-900">{selectedLead.companyName}</h3>
+                            <p className="text-gray-500 font-medium">{selectedLead.contactPerson}</p>
+                            <div className="mt-2 flex gap-3 text-sm text-gray-600">
+                              <span className="flex items-center gap-1 bg-gray-100 px-2 py-1 rounded">✉️ {selectedLead.email}</span>
+                              <span className="flex items-center gap-1 bg-gray-100 px-2 py-1 rounded">📱 {selectedLead.mobileNumber}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm space-y-3">
+                            <div>
+                              <span className="text-xs text-gray-400 font-semibold uppercase">Deal Status</span>
+                              <p className="font-bold text-indigo-700">{selectedLead.status}</p>
+                            </div>
+                            <div>
+                              <span className="text-xs text-gray-400 font-semibold uppercase">Expected Scale</span>
+                              <p className="font-medium text-gray-700">{selectedLead.expectedBranches} Branches, {selectedLead.expectedEmployees} Employees</p>
+                            </div>
+                            <div>
+                              <span className="text-xs text-gray-400 font-semibold uppercase">Registration Date</span>
+                              <p className="font-medium text-gray-700">{new Date(selectedLead.createdAt).toLocaleString()}</p>
+                            </div>
+                          </div>
+                          
+                          <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm space-y-3">
+                            <div>
+                              <span className="text-xs text-gray-400 font-semibold uppercase">Customer Message</span>
+                              <p className="text-sm text-gray-700 italic border-l-2 border-indigo-200 pl-3 py-1 mt-1">{selectedLead.message || 'No message provided'}</p>
+                            </div>
+                            <div>
+                              <span className="text-xs text-gray-400 font-semibold uppercase">Last Contacted</span>
+                              <p className="font-medium text-gray-700">{selectedLead.lastContactedAt ? new Date(selectedLead.lastContactedAt).toLocaleString() : 'Never'}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {activeLeadTab === 'email' && (
+                      <div className="space-y-6">
+                        <form onSubmit={handleSendEmail} className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm space-y-4">
+                          <h4 className="font-bold text-gray-800 border-b pb-2">Send Email</h4>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">Subject</label>
+                            <input type="text" required value={emailSubject} onChange={e => setEmailSubject(e.target.value)} className="w-full border rounded-lg p-2.5 outline-none focus:ring-1 focus:ring-[#1E1B6E]" placeholder="FIC VMS Demo Discussion" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">Message</label>
+                            <textarea rows="4" required value={emailMessage} onChange={e => setEmailMessage(e.target.value)} className="w-full border rounded-lg p-2.5 outline-none focus:ring-1 focus:ring-[#1E1B6E]" placeholder="Thank you for registering..."></textarea>
+                          </div>
+                          <button type="submit" disabled={sendingEmail} className="bg-[#1E1B6E] text-white px-4 py-2 rounded-lg text-sm font-bold disabled:opacity-50 hover:bg-indigo-900 transition-colors">
+                            {sendingEmail ? 'Sending...' : 'Send Email'}
+                          </button>
+                        </form>
+
+                        <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
+                          <h4 className="font-bold text-gray-800 border-b pb-2 mb-4">Communication History</h4>
+                          {selectedLead.communicationHistory && selectedLead.communicationHistory.length > 0 ? (
+                            <div className="space-y-4">
+                              {selectedLead.communicationHistory.map((hist, idx) => (
+                                <div key={idx} className="border-l-2 border-indigo-200 pl-4 py-1">
+                                  <div className="flex justify-between items-start">
+                                    <h5 className="font-bold text-gray-800 text-sm">{hist.subject}</h5>
+                                    <span className="text-xs text-gray-500">{new Date(hist.sentAt).toLocaleString()}</span>
+                                  </div>
+                                  <p className="text-xs text-gray-400 mt-0.5">Sent by: {hist.sentBy}</p>
+                                  <p className="text-sm text-gray-600 mt-2 bg-gray-50 p-2 rounded">{hist.message}</p>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-gray-500 italic">No communication history yet.</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {activeLeadTab === 'convert' && selectedLead.status === 'Won' && (
+                      <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm max-w-md mx-auto mt-4">
+                        <div className="text-center mb-6">
+                          <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                            <Building size={32} />
+                          </div>
+                          <h3 className="text-xl font-bold text-gray-900">Provision Tenant Workspace</h3>
+                          <p className="text-sm text-gray-500 mt-1">Convert this Won lead into an active tenant</p>
+                        </div>
+                        
+                        <div className="space-y-4">
+                          <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-1">Subscription Plan</label>
+                            <select value={subscription} onChange={e => setSubscription(e.target.value)} className="w-full rounded-lg border border-gray-200 bg-gray-50 p-2.5 outline-none focus:ring-1 focus:ring-green-500">
+                              <option value="One Day Trial">One Day Trial</option>
+                              <option value="Basic">Basic</option>
+                              <option value="Standard">Standard</option>
+                              <option value="Enterprise">Enterprise</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-1">Subscription Expiry</label>
+                            <input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} className="w-full rounded-lg border border-gray-200 bg-gray-50 p-2.5 outline-none focus:ring-1 focus:ring-green-500" required />
+                          </div>
+                          
+                          <button onClick={createCompanyDashboard} disabled={creating} className="w-full bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 transition-colors disabled:opacity-50 mt-4">
+                            {creating ? 'Provisioning...' : 'Create Dashboard & Send Activation Email'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* Upgrade Plan Modal */}
@@ -1000,6 +1449,15 @@ const SaaSPlatformDashboard = () => {
                     </button>
                   </div>
                 </div>
+                <div className="col-span-1 sm:col-span-2">
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Company Logo (Optional)</label>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={(event) => setCompanyLogo(event.target.files[0])}
+                    className="w-full text-sm border rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-[#1E1B6E] bg-white"
+                  />
+                </div>
               </div>
               <div className="bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2 text-xs text-indigo-700 flex items-start gap-2">
                 <span className="mt-0.5 text-indigo-500">ℹ️</span>
@@ -1067,7 +1525,7 @@ const SaaSPlatformDashboard = () => {
           <div className="bg-white rounded-xl shadow-2xl border max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="bg-[#1E1B6E] p-4 text-white flex justify-between items-center">
               <h3 className="font-bold text-md">Edit Tenant Company</h3>
-              <button onClick={() => { setShowEditModal(false); setEditCompany(null); }} className="text-white hover:text-gray-300">
+              <button onClick={() => { setShowEditModal(false); setEditCompany(null); setEditCompanyLogo(null); }} className="text-white hover:text-gray-300">
                 <X size={20} />
               </button>
             </div>
@@ -1118,11 +1576,29 @@ const SaaSPlatformDashboard = () => {
                   </select>
                 </div>
               </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Company Logo (Optional)</label>
+                {editCompany.branding?.logoUrl && (
+                  <div className="mb-2 flex items-center gap-3 p-2 bg-gray-50 border rounded-lg">
+                    <img src={editCompany.branding.logoUrl} alt="Current Logo" className="w-10 h-10 object-contain bg-white rounded border shadow-sm shrink-0" />
+                    <div className="text-xs text-gray-500">
+                      <p className="font-semibold text-gray-700">Current Logo</p>
+                      <p>Upload a new image below to replace</p>
+                    </div>
+                  </div>
+                )}
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={(event) => setEditCompanyLogo(event.target.files[0])}
+                  className="w-full text-sm border rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-[#1E1B6E] bg-white"
+                />
+              </div>
               
               <div className="mt-8 flex space-x-3">
                 <button 
                   type="button"
-                  onClick={() => { setShowEditModal(false); setEditCompany(null); }}
+                  onClick={() => { setShowEditModal(false); setEditCompany(null); setEditCompanyLogo(null); }}
                   className="flex-1 px-4 py-2.5 bg-white border border-slate-200 text-gray-700 font-semibold rounded-xl hover:bg-slate-50 transition-colors"
                 >
                   Cancel

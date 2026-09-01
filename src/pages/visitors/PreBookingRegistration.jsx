@@ -80,13 +80,15 @@ const PreBookingRegistration = () => {
   const fetchInvitations = async () => {
     setListLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/invitations/list?status=${statusFilter}&search=${searchTerm}`, {
+      const response = await fetch(`${API_BASE}/prebookings`, {
         headers: getHeaders(false)
       });
       if (response.ok) {
         const data = await response.json();
-        const list = Array.isArray(data) ? data : (data && Array.isArray(data.invitations) ? data.invitations : []);
-        setInvitations(list);
+        const list = Array.isArray(data) ? data : (data && Array.isArray(data.data) ? data.data : []);
+        // Only show Admin Invitations
+        const invitationsOnly = list.filter(pb => pb.bookingType === 'ADMIN_INVITATION');
+        setInvitations(invitationsOnly);
       }
     } catch (err) {
       console.error(err);
@@ -136,29 +138,28 @@ const PreBookingRegistration = () => {
 
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/invitations/create`, {
+      const response = await fetch(`${API_BASE}/prebookings/admin/send-invitation`, {
         method: 'POST',
         headers: getHeaders(true),
         body: JSON.stringify({
-          visitorName: formData.visitorName,
+          fullName: formData.visitorName,
           email: formData.email,
           mobileNumber: formData.mobileNumber,
-          companyName: formData.companyName,
-          purpose: formData.purpose,
+          visitingCompany: formData.companyName,
+          visitPurpose: formData.purpose,
           visitDate: formData.visitDate,
-          visitTime: formData.visitTime,
-          branch: formData.branch,
-          dob: formData.dob,
+          expectedTime: formData.visitTime,
+          branchLocation: formData.branch,
           hostEmployee: formData.hostEmployee,
-          notes: formData.notes,
+          vehicleNumber: '',
           sendEmailNow
         })
       });
 
       const data = await response.json();
-      if (response.ok && (data.success || data.invitation)) {
+      if (response.ok) {
         alert(sendEmailNow ? "Invitation email sent successfully!" : "Invitation link generated successfully!");
-        const generatedLinkVal = data.registrationLink || (data.invitation && data.invitation.token ? `${process.env.FRONTEND_URL || 'https://zone-monitor.vercel.app'}/pre-register?token=${data.invitation.token}` : '');
+        const generatedLinkVal = data.passUrl || '';
         setGeneratedLink(generatedLinkVal);
         fetchInvitations();
       } else {
@@ -240,12 +241,12 @@ const PreBookingRegistration = () => {
 
   const handleCancelInv = async (id) => {
     try {
-      const response = await fetch(`${API_BASE}/invitations/${id}/cancel`, {
-        method: 'POST',
+      const response = await fetch(`${API_BASE}/prebookings/visitor/${id}`, {
+        method: 'DELETE',
         headers: getHeaders(false)
       });
       if (response.ok) {
-        addNotification('Cancelled', 'Invitation link has been cancelled.', 'info');
+        addNotification('Cancelled', 'Invitation has been deleted.', 'info');
         fetchInvitations();
       }
     } catch (err) {
@@ -443,11 +444,10 @@ const PreBookingRegistration = () => {
           <button 
             type="button" 
             onClick={() => handleGenerate(true)}
-            disabled={loading}
-            className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs flex items-center gap-2 shadow-md transition-colors"
+            className="rounded-lg bg-indigo-600 px-5 py-3 font-semibold text-white hover:bg-indigo-700 flex items-center justify-center gap-2"
           >
-            {loading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-            <span>Send Invitation Email</span>
+            <Send size={16} />
+            <span>Send Invitation Mail</span>
           </button>
 
           <button 
@@ -542,9 +542,10 @@ const PreBookingRegistration = () => {
               <tr className="bg-slate-50 text-slate-500 text-[11px] uppercase tracking-wider">
                 <th className="px-6 py-3.5 font-bold">Visitor Name</th>
                 <th className="px-6 py-3.5 font-bold">Email</th>
-                <th className="px-6 py-3.5 font-bold">Visit Date</th>
-                <th className="px-6 py-3.5 font-bold">Invitation Status</th>
-                <th className="px-6 py-3.5 font-bold">Expires</th>
+                <th className="px-6 py-3.5 font-bold">Company</th>
+                <th className="px-6 py-3.5 font-bold">Visitor ID</th>
+                <th className="px-6 py-3.5 font-bold">Email Sent</th>
+                <th className="px-6 py-3.5 font-bold">Sent Time</th>
                 <th className="px-6 py-3.5 font-bold text-right">Actions</th>
               </tr>
             </thead>
@@ -552,58 +553,46 @@ const PreBookingRegistration = () => {
               {filteredInvitations.map((inv) => (
                 <tr key={inv._id} className="hover:bg-slate-50/70 transition-colors">
                   <td className="px-6 py-4 font-bold text-slate-900 whitespace-nowrap">
-                    {inv.visitorName}
-                    {inv.bookingId && (
-                      <span className="block text-[10px] text-indigo-600 font-mono font-bold">{inv.bookingId}</span>
-                    )}
+                    {inv.fullName || inv.visitorName}
                   </td>
                   <td className="px-6 py-4 text-slate-600 font-medium whitespace-nowrap">{inv.email}</td>
-                  <td className="px-6 py-4 text-slate-700 whitespace-nowrap">{inv.visitDate} ({inv.visitTime || '10:00 AM'})</td>
+                  <td className="px-6 py-4 text-slate-700 whitespace-nowrap">{inv.companyId}</td>
+                  <td className="px-6 py-4 text-slate-700 whitespace-nowrap">{inv.visitorId || inv.bookingId}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    {getStatusBadge(inv.status)}
+                    {inv.invitationEmailSent ? (
+                      <span className="text-emerald-600 font-medium">Email Sent</span>
+                    ) : (
+                      <span className="text-gray-500 font-medium">Not Sent</span>
+                    )}
                   </td>
-                  <td className="px-6 py-4 text-slate-500 text-[11px] whitespace-nowrap">
-                    {new Date(inv.expiresAt).toLocaleDateString()}
+                  <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500">
+                    {inv.invitationSentAt
+                      ? new Date(inv.invitationSentAt).toLocaleString()
+                      : '-'}
                   </td>
                   <td className="px-6 py-4 text-right whitespace-nowrap">
                     <div className="flex items-center justify-end gap-1.5">
                       <button
                         onClick={() => {
-                          const link = `${window.location.origin}/pre-register?token=${inv.token}`;
+                          const link = inv.trackingToken 
+                            ? `${window.location.origin}/pass/${inv.trackingToken}`
+                            : `${window.location.origin}/pre-register?token=${inv.token || ''}`;
                           handleCopyLink(link);
                         }}
                         className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                        title="Copy Registration Link"
+                        title="Copy Invitation Link"
                       >
                         <Copy size={16} />
                       </button>
 
-                      {!inv.used && !inv.cancelled && (
-                        <>
-                          <button
-                            onClick={() => handleResend(inv._id)}
-                            className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="Resend Invitation Email"
-                          >
-                            <Send size={16} />
-                          </button>
-
-                          <button
-                            onClick={() => handleRegenerate(inv._id)}
-                            className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
-                            title="Regenerate Token & Link"
-                          >
-                            <RefreshCw size={16} />
-                          </button>
-
-                          <button
-                            onClick={() => handleCancelInv(inv._id)}
-                            className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Cancel Invitation"
-                          >
-                            <XCircle size={16} />
-                          </button>
-                        </>
+                      {inv.status === 'APPROVED' && (
+                        <button
+                          onClick={() => handleCancelInv(inv._id)}
+                          className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Cancel Invitation"
+                        >
+                          <XCircle size={16} />
+                        </button>
                       )}
                     </div>
                   </td>

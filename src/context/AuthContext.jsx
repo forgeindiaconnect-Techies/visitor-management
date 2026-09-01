@@ -119,7 +119,43 @@ export const AuthProvider = ({ children }) => {
 
       if (response.ok) {
         setUser(userData);
-        localStorage.setItem('token', userData.token); // Explicitly store token
+        const loginToken =
+          userData.token ||
+          userData.accessToken ||
+          userData.data?.token ||
+          userData.data?.accessToken;
+        
+        const loggedInUser =
+          userData.user ||
+          userData.data?.user;
+        
+        if (!loginToken) {
+          throw new Error('The backend login response did not include a token.');
+        }
+        
+        localStorage.setItem('token', loginToken);
+
+        const companyBranding =
+          userData.company?.branding ||
+          userData.data?.company?.branding ||
+          loggedInUser?.company?.branding ||
+          {};
+
+        localStorage.setItem(
+          'companyBranding',
+          JSON.stringify(companyBranding)
+        );
+        
+        if (loggedInUser) {
+          localStorage.setItem('user', JSON.stringify(loggedInUser));
+        
+          if (loggedInUser.companyId) {
+            localStorage.setItem(
+              'companyId',
+              loggedInUser.companyId
+            );
+          }
+        }
         if (rememberMe) {
           localStorage.setItem('zmvms_user', JSON.stringify(userData));
         } else {

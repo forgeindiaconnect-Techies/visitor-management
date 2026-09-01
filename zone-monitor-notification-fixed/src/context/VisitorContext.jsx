@@ -53,7 +53,7 @@ export const VisitorProvider = ({ children }) => {
 
   // Fetch visitors from backend
   const fetchVisitors = async () => {
-    if (!currentUser) {
+    if (!currentUser || currentUser?.role === 'SaaS Super Admin') {
       setVisitors([]);
       allVisitorsRef.current = [];
       setLoading(false);

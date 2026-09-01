@@ -750,6 +750,7 @@ router.get('/pass/:visitId', async (req, res) => {
         $or: [
           { visitorId: visitId },
           { qrToken: visitId },
+          { trackingToken: visitId },
           ...(isValidObjectId ? [{ _id: visitId }] : [])
         ]
       });
@@ -772,6 +773,8 @@ router.get('/pass/:visitId', async (req, res) => {
           branch: pb.branchLocation || 'Head Office',
           vehicleNumber: pb.vehicleNumber,
           photoUrl: pb.facePhoto,
+          qrToken: pb.qrToken || pb.trackingToken || '',
+          trackingToken: pb.trackingToken || pb.qrToken || '',
           status: pb.status === 'PENDING' ? 'Pending' : (pb.status === 'APPROVED' ? 'Approved' : (pb.status === 'CHECKED_IN' ? 'Inside' : pb.status)),
           createdAt: pb.createdAt
         };
