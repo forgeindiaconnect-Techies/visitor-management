@@ -47,7 +47,7 @@ const getNextAllowedVisitDate = () => {
 const PublicPreBooking = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { companyId: routeCompanyId } = useParams();
+  const { companyCode: routeCodeParam, companyId: routeCompanyId } = useParams();
   const fileInputRef = useRef(null);
 
   // Company Validation State
@@ -100,7 +100,7 @@ const PublicPreBooking = () => {
     const searchParams = new URLSearchParams(location.search);
 
     const companyCode = String(
-      routeCompanyId || searchParams.get('companyId') || ''
+      routeCodeParam || routeCompanyId || searchParams.get('companyId') || ''
     ).trim().toUpperCase();
 
     const validateCompany = async () => {
@@ -162,16 +162,21 @@ const PublicPreBooking = () => {
 
   useEffect(() => {
     const loadBranches = async () => {
-      const searchParams = new URLSearchParams(location.search);
-      const companyCode = String(routeCompanyId || searchParams.get('companyId') || '').trim().toUpperCase();
+      const companyCode = targetCompany?.code || targetCompany?.companyId || routeCodeParam || routeCompanyId;
       if (!companyCode) return;
+
       try {
-        const baseUrl = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+        const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
         const API_BASE = baseUrl.replace(/\/api\/?$/, '');
-        const response = await fetch(`${API_BASE}/api/branch-settings/public/${companyCode}`);
+
+        const response = await fetch(
+          `${API_BASE}/api/branch-settings/public/${companyCode}`
+        );
+
         const result = await response.json();
-        if (response.ok && result.success) {
-          setBranches(result.data);
+
+        if (response.ok) {
+          setBranches(result.data || []);
         } else {
           setBranches([]);
         }
@@ -182,7 +187,7 @@ const PublicPreBooking = () => {
     };
 
     loadBranches();
-  }, [routeCompanyId, location.search]);
+  }, [targetCompany?.code, targetCompany?.companyId, routeCodeParam, routeCompanyId]);
 
   const checkReturningVisitor = async (mobile) => {
     const cleanMobile = String(mobile || '').replace(/\D/g, '');
@@ -678,17 +683,19 @@ const PublicPreBooking = () => {
       <div className="fixed top-1/3 right-1/4 w-72 h-72 bg-indigo-100/30 rounded-full blur-[90px] pointer-events-none animate-float-bg -z-10" />
 
       {/* Header Bar */}
-      <div className="max-w-3xl w-full mx-auto flex items-center justify-center mb-8 z-10">
-        <div className="flex items-center gap-2">
-          {targetCompany?.branding?.logoUrl ? (
-            <img src={targetCompany.branding.logoUrl} alt="Company Logo" className="h-14 w-14 object-contain rounded-xl" />
-          ) : (
-            <img src={logoImg} alt="Forge India Logo" className="h-14 w-14 object-contain" />
-          )}
-          <span className="font-black text-gray-950 text-base tracking-tight">
-            {targetCompany?.companyName || 'Forge India Connect'}
-          </span>
-        </div>
+      <div className="max-w-3xl w-full mx-auto flex flex-col items-center justify-center mb-6 z-10 gap-2">
+        {targetCompany?.branding?.logoUrl ? (
+          <img
+            src={targetCompany.branding.logoUrl}
+            alt={`${targetCompany?.companyName || targetCompany?.name || 'Company'} logo`}
+            className="h-20 max-w-[220px] object-contain rounded-xl"
+          />
+        ) : (
+          <img src={logoImg} alt="Company Logo" className="h-16 w-16 object-contain" />
+        )}
+        <h1 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight text-center">
+          Visitor Registration – {targetCompany?.companyName || targetCompany?.name || 'Company'}
+        </h1>
       </div>
 
       {/* Main Container Card */}
@@ -925,25 +932,30 @@ const PublicPreBooking = () => {
                 />
               </div>
 
-            {branches.length > 0 && (
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wider">Branch Location</label>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wider">Branch Location *</label>
                 <select
                   name="branch"
-                  value={formData.branch}
-                  onChange={handleChange}
+                  value={formData.branch || formData.branchLocation || ''}
+                  onChange={(e) => {
+                    handleChange(e);
+                    setFormData(prev => ({ ...prev, branch: e.target.value, branchLocation: e.target.value }));
+                  }}
                   className={selectClassName}
                   required
                 >
                   <option value="">Select Branch</option>
+
                   {branches.map((branch) => (
-                    <option key={branch._id} value={branch.branchName}>
+                    <option
+                      key={branch._id || branch.branchName}
+                      value={branch.branchName}
+                    >
                       {branch.branchName}
                     </option>
                   ))}
                 </select>
               </div>
-            )}
           </div>
 
             <div className="grid sm:grid-cols-2 gap-4">

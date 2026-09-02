@@ -15,12 +15,69 @@ const UserList = () => {
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, userId: null, newStatus: null, actionText: '' });
   const [selectedUserEdit, setSelectedUserEdit] = useState(null);
   const [editStatus, setEditStatus] = useState('');
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteForm, setInviteForm] = useState({
+    name: '',
+    email: '',
+    role: '',
+    branch: '',
+    department: ''
+  });
+  const [sendingInvite, setSendingInvite] = useState(false);
+
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
   const { activeBranch, branches } = useBranch();
   
   // Exclude 'All Branches' from the selectable list for individual users
   const assignableBranches = branches.filter(b => b !== 'All Branches');
+
+  const sendUserInvitation = async () => {
+    if (!inviteForm.name || !inviteForm.email || !inviteForm.role || !inviteForm.branch) {
+      alert('Please complete all required fields');
+      return;
+    }
+
+    try {
+      setSendingInvite(true);
+      const token = localStorage.getItem('token');
+      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const rawBaseUrl = baseUrl.replace(/\/api\/?$/, '');
+
+      const response = await fetch(
+        `${rawBaseUrl}/api/user-invitations`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify(inviteForm)
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message);
+      }
+
+      alert(result.message);
+      setInviteOpen(false);
+      setInviteForm({
+        name: '',
+        email: '',
+        role: '',
+        branch: '',
+        department: ''
+      });
+      fetchUsers();
+    } catch (error) {
+      alert(error.message);
+    } finally {
+      setSendingInvite(false);
+    }
+  };
 
   const getHeaders = () => ({
     'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -162,9 +219,18 @@ const UserList = () => {
           <p className="text-gray-500 mt-1">Manage system access and dashboard roles</p>
         </div>
         <div className="flex items-center space-x-3">
+          <button
+            type="button"
+            onClick={() => setInviteOpen(true)}
+            className="px-4 py-2 bg-indigo-700 text-white font-semibold text-sm rounded-lg hover:bg-indigo-800 transition flex items-center gap-2 shadow-sm cursor-pointer"
+          >
+            <UserPlus size={18} />
+            <span>Invite User</span>
+          </button>
+
           <button 
             onClick={() => navigate('/users/new')}
-            className="px-4 py-2 bg-[var(--color-brand-indigo)] text-white hover:bg-[var(--color-brand-indigo-light)] font-medium rounded-lg transition-colors shadow-sm flex items-center gap-2"
+            className="px-4 py-2 bg-slate-800 text-white font-medium text-sm rounded-lg hover:bg-slate-900 transition-colors shadow-sm flex items-center gap-2 cursor-pointer"
           >
             <UserPlus size={18} />
             <span>Add New User</span>
@@ -476,6 +542,142 @@ const UserList = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* INVITE USER MODAL */}
+      {inviteOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl border border-gray-100 animate-in zoom-in-95 duration-200">
+            <h2 className="text-xl font-bold text-gray-900 mb-1">
+              Invite Company User
+            </h2>
+            <p className="text-xs text-gray-500 mb-4">
+              Sends a secure 24-hour activation link to the employee's email.
+            </p>
+
+            <div className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Employee Name *</label>
+                <input
+                  type="text"
+                  placeholder="Employee Name"
+                  value={inviteForm.name}
+                  onChange={(event) =>
+                    setInviteForm({
+                      ...inviteForm,
+                      name: event.target.value
+                    })
+                  }
+                  className="w-full rounded-lg border border-gray-200 p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Employee Email *</label>
+                <input
+                  type="email"
+                  placeholder="Employee Email"
+                  value={inviteForm.email}
+                  onChange={(event) =>
+                    setInviteForm({
+                      ...inviteForm,
+                      email: event.target.value
+                    })
+                  }
+                  className="w-full rounded-lg border border-gray-200 p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Role *</label>
+                  <select
+                    value={inviteForm.role}
+                    onChange={(event) =>
+                      setInviteForm({
+                        ...inviteForm,
+                        role: event.target.value
+                      })
+                    }
+                    className="w-full rounded-lg border border-gray-200 p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 font-medium"
+                    required
+                  >
+                    <option value="">Select Role</option>
+                    <option value="Admin">Admin</option>
+                    <option value="MD">MD</option>
+                    <option value="HR">HR</option>
+                    <option value="Senior HR">Senior HR</option>
+                    <option value="Receptionist">Receptionist</option>
+                    <option value="Security">Security</option>
+                    <option value="Employee">Employee</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Branch *</label>
+                  <select
+                    value={inviteForm.branch}
+                    onChange={(event) =>
+                      setInviteForm({
+                        ...inviteForm,
+                        branch: event.target.value
+                      })
+                    }
+                    className="w-full rounded-lg border border-gray-200 p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50 font-medium"
+                    required
+                  >
+                    <option value="">Select Branch</option>
+                    {assignableBranches.map((branch) => (
+                      <option
+                        key={branch._id || branch}
+                        value={branch.branchName || branch}
+                      >
+                        {branch.branchName || branch}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Department</label>
+                <input
+                  type="text"
+                  placeholder="Department (Optional)"
+                  value={inviteForm.department}
+                  onChange={(event) =>
+                    setInviteForm({
+                      ...inviteForm,
+                      department: event.target.value
+                    })
+                  }
+                  className="w-full rounded-lg border border-gray-200 p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3 border-t pt-4">
+              <button
+                type="button"
+                onClick={() => setInviteOpen(false)}
+                className="px-4 py-2 rounded-lg border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={sendUserInvitation}
+                disabled={sendingInvite}
+                className="px-4 py-2 rounded-lg bg-indigo-700 text-sm font-semibold text-white hover:bg-indigo-800 transition disabled:opacity-50 shadow-sm cursor-pointer"
+              >
+                {sendingInvite ? 'Sending...' : 'Send Invitation'}
+              </button>
+            </div>
           </div>
         </div>
       )}

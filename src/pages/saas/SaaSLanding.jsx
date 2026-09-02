@@ -3,14 +3,77 @@ import { motion } from 'framer-motion';
 import { Shield, Users, Clock, Building, CheckCircle2, Zap } from 'lucide-react';
 import CommonFooter from '../../components/CommonFooter';
 
+const demoPlans = [
+  {
+    name: 'One Day Trial',
+    price: 0,
+    priceLabel: 'Free',
+    validity: '24 hours',
+    visitorPasses: '25 total',
+    branches: '1 branch',
+    users: '3 users',
+    features: [
+      'QR visitor passes',
+      'Check-in and check-out',
+      'Pre-booking',
+      'Email notifications',
+      'Basic dashboard'
+    ]
+  },
+  {
+    name: 'Basic',
+    price: 1999,
+    priceLabel: '₹1,999',
+    validity: '30 days',
+    visitorPasses: '500 passes',
+    branches: '1 branch',
+    users: '10 users',
+    features: [
+      'QR visitor passes',
+      'Pre-booking',
+      'Email notifications',
+      'Basic reports'
+    ]
+  },
+  {
+    name: 'Standard',
+    price: 4999,
+    priceLabel: '₹4,999',
+    validity: '30 days',
+    visitorPasses: '3,000 passes',
+    branches: '5 branches',
+    users: '50 users',
+    features: [
+      'Everything in Basic',
+      'Advanced reports',
+      'Custom branding',
+      'Real-time notifications'
+    ]
+  },
+  {
+    name: 'Enterprise',
+    price: 9999,
+    priceLabel: '₹9,999',
+    validity: '30 days',
+    visitorPasses: 'Unlimited passes',
+    branches: 'Unlimited branches',
+    users: 'Unlimited users',
+    features: [
+      'Everything in Standard',
+      'API access',
+      'Custom branding',
+      'Priority support'
+    ]
+  }
+];
+
 const SaaSLanding = () => {
   const [formData, setFormData] = useState({
     companyName: '',
     contactPerson: '',
     email: '',
     mobileNumber: '',
-    expectedBranches: 1,
-    expectedEmployees: 1,
+    requestedPlan: 'One Day Trial',
     message: ''
   });
   const [companyLogo, setCompanyLogo] = useState(null);
@@ -30,7 +93,10 @@ const SaaSLanding = () => {
         registrationData.append('companyLogo', companyLogo);
       }
 
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/saas-leads/register`, {
+      const configuredUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const baseUrl = configuredUrl.replace(/\/+$/, '').replace(/\/api$/, '');
+
+      const response = await fetch(`${baseUrl}/api/saas-leads/register`, {
         method: 'POST',
         body: registrationData
       });
@@ -38,14 +104,15 @@ const SaaSLanding = () => {
       if (response.ok && result.success) {
         setSubmitStatus({ type: 'success', message: result.message });
         setFormData({
-          companyName: '', contactPerson: '', email: '', mobileNumber: '', expectedBranches: 1, expectedEmployees: 1, message: ''
+          companyName: '', contactPerson: '', email: '', mobileNumber: '', requestedPlan: 'One Day Trial', message: ''
         });
         setCompanyLogo(null);
       } else {
         setSubmitStatus({ type: 'error', message: result.message || 'Registration failed' });
       }
     } catch (error) {
-      setSubmitStatus({ type: 'error', message: 'Network error. Please try again later.' });
+      console.error('Registration submit error:', error);
+      setSubmitStatus({ type: 'error', message: error.message || 'Network error. Please try again later.' });
     } finally {
       setIsSubmitting(false);
     }
@@ -190,13 +257,99 @@ const SaaSLanding = () => {
                     <label className="block text-sm font-semibold text-gray-700 mb-1">Mobile Number *</label>
                     <input type="tel" required value={formData.mobileNumber} onChange={e => setFormData({...formData, mobileNumber: e.target.value})} className="w-full border-gray-300 rounded-lg p-2.5 border focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" placeholder="+91 9876543210" />
                   </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1">Expected Branches</label>
-                    <input type="number" min="1" value={formData.expectedBranches} onChange={e => setFormData({...formData, expectedBranches: parseInt(e.target.value)})} className="w-full border-gray-300 rounded-lg p-2.5 border focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1">Expected Employees</label>
-                    <input type="number" min="1" value={formData.expectedEmployees} onChange={e => setFormData({...formData, expectedEmployees: parseInt(e.target.value)})} className="w-full border-gray-300 rounded-lg p-2.5 border focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" />
+                  <div className="md:col-span-2">
+                    <label
+                      htmlFor="requestedPlan"
+                      className="mb-2 block text-sm font-semibold text-slate-800"
+                    >
+                      Choose Plan <span className="text-red-500">*</span>
+                    </label>
+
+                    <select
+                      id="requestedPlan"
+                      name="requestedPlan"
+                      value={formData.requestedPlan}
+                      onChange={(event) =>
+                        setFormData((previous) => ({
+                          ...previous,
+                          requestedPlan: event.target.value
+                        }))
+                      }
+                      required
+                      className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
+                    >
+                      <option value="One Day Trial">
+                        One Day Trial — Free — 25 passes — 1 branch — 3 users
+                      </option>
+
+                      <option value="Basic">
+                        Basic — ₹1,999 — 500 passes — 1 branch — 10 users
+                      </option>
+
+                      <option value="Standard">
+                        Standard — ₹4,999 — 3,000 passes — 5 branches — 50 users
+                      </option>
+
+                      <option value="Enterprise">
+                        Enterprise — ₹9,999 — Unlimited passes, branches and users
+                      </option>
+                    </select>
+
+                    <p className="mt-2 text-xs text-slate-500">
+                      Select a plan to view its validity, limits and features.
+                    </p>
+
+                    {(() => {
+                      const selectedPlan = demoPlans.find(
+                        (plan) =>
+                          plan.name === formData.requestedPlan
+                      );
+
+                      if (!selectedPlan) return null;
+
+                      return (
+                        <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50 p-4">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <h3 className="font-bold text-slate-900">
+                                {selectedPlan.name}
+                              </h3>
+
+                              <p className="mt-1 text-sm text-slate-600">
+                                {selectedPlan.visitorPasses}
+                                {' • '}
+                                {selectedPlan.branches}
+                                {' • '}
+                                {selectedPlan.users}
+                              </p>
+                            </div>
+
+                            <div className="text-left sm:text-right">
+                              <p className="text-lg font-bold text-indigo-700">
+                                {selectedPlan.priceLabel}
+                              </p>
+
+                              <p className="text-xs text-slate-500">
+                                Valid for {selectedPlan.validity}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {selectedPlan.features.map(
+                              (feature) => (
+                                <span
+                                  key={feature}
+                                  className="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700 shadow-sm"
+                                >
+                                  ✓ {feature}
+                                </span>
+                              )
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
                 <div>

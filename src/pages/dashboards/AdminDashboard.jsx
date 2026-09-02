@@ -8,6 +8,7 @@ import { calculateTimeSpent } from '../../utils/timeUtils';
 import TodaysVisitorsCard from '../../components/dashboard/TodaysVisitorsCard';
 import VisitorStatusSummaryCard from '../../components/dashboard/VisitorStatusSummaryCard';
 import SubscriptionCountdown from '../../components/subscription/SubscriptionCountdown';
+import CompanyPreBookingLink from '../../components/CompanyPreBookingLink';
 import { formatDisplayTime, formatDisplayDate } from '../../utils/dateUtils';
 
 import { useNavigate } from 'react-router-dom';
@@ -133,6 +134,7 @@ const AdminDashboard = () => {
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <SubscriptionCountdown user={currentUser} />
+      <CompanyPreBookingLink company={{ code: currentUser?.companyId, name: currentUser?.companyName }} />
 
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>

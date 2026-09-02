@@ -8,6 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 import TodaysVisitorsCard from '../../components/dashboard/TodaysVisitorsCard';
 import VisitorStatusSummaryCard from '../../components/dashboard/VisitorStatusSummaryCard';
 import SubscriptionCountdown from '../../components/subscription/SubscriptionCountdown';
+import CompanyPreBookingLink from '../../components/CompanyPreBookingLink';
 import { formatDisplayTime, formatDisplayDate } from '../../utils/dateUtils';
 
 const DashboardCard = ({ title, value, icon: Icon, colorClass, onClick }) => (
@@ -35,6 +36,9 @@ const SuperAdminDashboard = () => {
   const navigate = useNavigate();
   const [usageStats, setUsageStats] = React.useState(null);
   const [dashboardStats, setDashboardStats] = React.useState(null);
+  const [company, setCompany] = React.useState(null);
+  const [visitorPassUsage, setVisitorPassUsage] = React.useState(null);
+  const [visitorPassUsageError, setVisitorPassUsageError] = React.useState('');
 
   React.useEffect(() => {
     if (currentUser?.role !== 'SaaS Super Admin') {
@@ -44,12 +48,55 @@ const SuperAdminDashboard = () => {
         'X-Company-Id': currentUser?.companyId || ''
       };
 
-      fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/company/usage`, { headers })
+      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const rawBaseUrl = baseUrl.replace(/\/api\/?$/, '');
+
+      fetch(`${rawBaseUrl}/api/companies/me/branding`, { headers })
+        .then(res => res.json())
+        .then(resData => {
+          if (resData.success && resData.data) {
+            setCompany(resData.data);
+          } else {
+            setCompany({ code: currentUser?.companyId, name: currentUser?.companyName });
+          }
+        })
+        .catch(() => setCompany({ code: currentUser?.companyId, name: currentUser?.companyName }));
+
+      fetch(`${baseUrl}/api/company/usage`, { headers })
         .then(res => res.json())
         .then(data => setUsageStats(data))
         .catch(console.error);
 
-      fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/dashboard/stats`, { headers })
+      fetch(`${rawBaseUrl}/api/visitors/subscription-usage`, {
+        headers
+      })
+        .then(async (response) => {
+          const result = await response.json();
+
+          if (!response.ok || !result.success) {
+            throw new Error(
+              result.message ||
+              'Unable to load visitor-pass usage.'
+            );
+          }
+
+          return result;
+        })
+        .then((result) => {
+          setVisitorPassUsage(result.data);
+          setVisitorPassUsageError('');
+        })
+        .catch((error) => {
+          console.error(
+            'Visitor-pass usage error:',
+            error
+          );
+
+          setVisitorPassUsage(null);
+          setVisitorPassUsageError(error.message);
+        });
+
+      fetch(`${baseUrl}/api/dashboard/stats`, { headers })
         .then(res => res.json())
         .then(resData => {
           if (resData.success && resData.data) {
@@ -166,6 +213,7 @@ const SuperAdminDashboard = () => {
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <SubscriptionCountdown />
+      <CompanyPreBookingLink company={company || { code: currentUser?.companyId, name: currentUser?.companyName }} />
       
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
@@ -325,6 +373,49 @@ const SuperAdminDashboard = () => {
         </div>
       )}
 
+      {visitorPassUsage?.plan === 'One Day Trial' && (
+        <div className="mb-6 rounded-xl border border-amber-300 bg-amber-50 p-5">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h3 className="text-lg font-bold text-amber-900">
+                You are using the One Day Trial
+              </h3>
+
+              <p className="mt-1 text-sm text-amber-800">
+                You can generate up to 25 visitor passes,
+                create 1 branch, and add up to 3 system users.
+              </p>
+
+              <p className="mt-2 text-sm font-medium text-amber-900">
+                Visitor Pass Usage:{' '}
+                {visitorPassUsage.usageText}
+              </p>
+
+              <p className="mt-1 text-sm font-medium text-amber-900">
+                Trial Expires:{' '}
+                {new Date(
+                  visitorPassUsage.renewalDate
+                ).toLocaleString('en-IN', {
+                  day: '2-digit',
+                  month: 'long',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => navigate('/subscription')}
+              className="rounded-lg bg-amber-600 px-5 py-2.5 font-semibold text-white hover:bg-amber-700"
+            >
+              Upgrade Plan
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
         <DashboardCard onClick={() => navigate('/visitors')} title="Direct Visits" value={dashboardStats ? Math.max(0, dashboardStats.totalVisitors - dashboardStats.totalPreBookings) : totalDirectVisits} icon={Users} colorClass="bg-blue-100 text-blue-600" />
         <DashboardCard onClick={() => navigate('/pre-bookings')} title="Pre-Bookings" value={dashboardStats ? dashboardStats.totalPreBookings : totalPreBookings} icon={Users} colorClass="bg-indigo-100 text-indigo-600" />
@@ -333,6 +424,103 @@ const SuperAdminDashboard = () => {
         <DashboardCard onClick={() => navigate('/blacklist')} title="Blocked Visitors" value={dashboardStats ? dashboardStats.blockedVisitors : blockedVisitors} icon={Ban} colorClass="bg-red-100 text-red-600" />
         <DashboardCard onClick={() => navigate('/settings')} title="Total Branches" value={dashboardStats ? dashboardStats.totalBranches : totalBranches} icon={Building} colorClass="bg-purple-100 text-purple-600" />
       </div>
+
+      {currentUser?.role !== 'SaaS Super Admin' && (
+        <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-sm font-medium text-slate-500">
+                Visitor Pass Usage
+              </p>
+
+              <h3 className="mt-1 text-3xl font-bold text-slate-900">
+                {visitorPassUsage
+                  ? visitorPassUsage.usageText
+                  : 'Loading...'}
+              </h3>
+
+              {visitorPassUsage && (
+                <p className="mt-1 text-sm text-slate-500">
+                  {visitorPassUsage.plan} plan
+                </p>
+              )}
+            </div>
+
+            <div className="md:text-right">
+              <p className="text-sm font-medium text-slate-500">
+                Renewal Date
+              </p>
+
+              <p className="mt-1 text-lg font-semibold text-slate-900">
+                {visitorPassUsage?.renewalDate
+                  ? new Date(
+                      visitorPassUsage.renewalDate
+                    ).toLocaleDateString('en-IN', {
+                      day: '2-digit',
+                      month: 'long',
+                      year: 'numeric'
+                    })
+                  : 'Loading...'}
+              </p>
+            </div>
+          </div>
+
+          {visitorPassUsage &&
+            !visitorPassUsage.unlimited && (
+              <div className="mt-5">
+                <div className="h-3 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      visitorPassUsage.visitorPassesUsed >=
+                      visitorPassUsage.visitorPassLimit
+                        ? 'bg-red-500'
+                        : visitorPassUsage.visitorPassesUsed /
+                              visitorPassUsage.visitorPassLimit >=
+                            0.8
+                          ? 'bg-orange-500'
+                          : 'bg-blue-600'
+                    }`}
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        (visitorPassUsage.visitorPassesUsed /
+                          visitorPassUsage.visitorPassLimit) *
+                          100
+                      )}%`
+                    }}
+                  />
+                </div>
+
+                <div className="mt-2 flex justify-between text-xs text-slate-500">
+                  <span>
+                    {visitorPassUsage.visitorPassesUsed} used
+                  </span>
+
+                  <span>
+                    {Math.max(
+                      0,
+                      visitorPassUsage.visitorPassLimit -
+                        visitorPassUsage.visitorPassesUsed
+                    )}{' '}
+                    remaining
+                  </span>
+                </div>
+              </div>
+            )}
+
+          {visitorPassUsage?.unlimited && (
+            <div className="mt-5 rounded-lg bg-green-50 px-4 py-3 text-sm font-medium text-green-700">
+              Your Enterprise plan has unlimited visitor passes.
+            </div>
+          )}
+
+          {visitorPassUsageError && (
+            <div className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+              {visitorPassUsageError}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
         

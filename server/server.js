@@ -369,6 +369,7 @@ app.use('/api/attendance', attendanceRouter);
 app.use('/api/branch-settings', branchSettingsRouter);
 app.use('/api/super-admin', superAdminRouter);
 app.use('/api/company', companyRouter);
+app.use('/api/companies', companyRouter);
 app.use('/api/audit-logs', auditLogsRouter);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/approval-permissions', approvalPermissionRoutes);
@@ -377,6 +378,9 @@ app.use('/api/dashboard', dashboardRouter);
 
 const saasLeadsRouter = require('./routes/saasLeads');
 app.use('/api/saas-leads', saasLeadsRouter);
+
+const userInvitationRoutes = require('./routes/userInvitationRoutes');
+app.use('/api/user-invitations', userInvitationRoutes);
 
 app.all('/api/cleanup-test-data', async (req, res) => {
   try {

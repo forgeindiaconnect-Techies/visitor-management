@@ -441,21 +441,50 @@ export default function SuperAdminPreBookings() {
 
   const approveVisitor = async (id) => {
     try {
-      const response = await fetch(`${API_URL}/api/prebookings/${id}/approve`, {
-        method: "PUT",
-        headers: { 
-          "Content-Type": "application/json",
-          ...getHeaders()
+      const response = await fetch(
+        `${API_URL}/api/prebookings/${id}/approve`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            ...getHeaders()
+          }
         }
-      });
+      );
+
       const result = await response.json();
-      if (!response.ok) throw new Error(result.message || "Approval failed");
-      setApprovedQR(result.data);
+
+      if (!response.ok) {
+        if (
+          result.code ===
+          'VISITOR_PASS_LIMIT_REACHED'
+        ) {
+          alert(
+            'Your monthly visitor-pass limit has been reached. Please upgrade your subscription.'
+          );
+          return;
+        }
+
+        throw new Error(
+          result.message || 'Approval failed'
+        );
+      }
+
+      setApprovedQR(
+        result.data ||
+        result.preBooking ||
+        result
+      );
+
       setSelectedVisitor(null);
       await fetchPreBookings();
     } catch (error) {
-      console.error("Approve error:", error);
-      alert(error.message);
+      console.error('Approve error:', error);
+
+      alert(
+        error.message ||
+        'Unable to approve the visitor.'
+      );
     }
   };
 

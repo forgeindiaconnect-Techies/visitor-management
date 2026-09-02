@@ -205,18 +205,159 @@ const SaaSPlatformDashboard = () => {
         const alreadyExists = current.some(lead => lead._id === newLead._id);
         if (alreadyExists) return current;
         
-        showToast(`New Registration: ${newLead.companyName}`, 'info');
+        showToast(
+          `New Registration: ${newLead.companyName} requested the ${
+            newLead.requestedPlan || 'One Day Trial'
+          } plan`,
+          'info'
+        );
         return [newLead, ...current];
       });
     };
 
-    socket.on('new_saas_lead', handleNewLead);
+    const handleLeadUpdated = (
+      updatedLead
+    ) => {
+      setSaasLeads((currentLeads) =>
+        currentLeads.map((lead) =>
+          lead._id === updatedLead._id
+            ? updatedLead
+            : lead
+        )
+      );
+
+      setSelectedLead((currentLead) =>
+        currentLead?._id === updatedLead._id
+          ? updatedLead
+          : currentLead
+      );
+    };
+
+    socket.on(
+      'new_saas_lead',
+      handleNewLead
+    );
+
+    socket.on(
+      'saas_lead_updated',
+      handleLeadUpdated
+    );
 
     return () => {
-      socket.off('new_saas_lead', handleNewLead);
+      socket.off(
+        'new_saas_lead',
+        handleNewLead
+      );
+
+      socket.off(
+        'saas_lead_updated',
+        handleLeadUpdated
+      );
+
       socket.disconnect();
     };
   }, []);
+
+  const updatePaymentStatus = async (
+    leadId,
+    paymentStatus
+  ) => {
+    try {
+      const token =
+        localStorage.getItem('token') ||
+        currentUser?.token;
+
+      const configuredUrl =
+        import.meta.env.VITE_API_URL ||
+        'http://localhost:5000';
+
+      const baseUrl = configuredUrl.replace(
+        /\/api\/?$/,
+        ''
+      );
+
+      const response = await fetch(
+        `${baseUrl}/api/saas-leads/${leadId}/payment-status`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            paymentStatus
+          })
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(
+          result.message ||
+          'Failed to update payment status.'
+        );
+      }
+
+      setSaasLeads((currentLeads) =>
+        currentLeads.map((lead) =>
+          lead._id === result.lead._id
+            ? result.lead
+            : lead
+        )
+      );
+
+      showToast(
+        `${result.lead.companyName}: Payment changed to ${result.lead.paymentStatus}`,
+        'success'
+      );
+    } catch (error) {
+      console.error(
+        'Payment update error:',
+        error
+      );
+
+      showToast(
+        error.message ||
+        'Unable to update payment status.',
+        'error'
+      );
+    }
+  };
+
+  const getPlanBadgeClass = (plan) => {
+    switch (plan) {
+      case 'Enterprise':
+        return 'bg-purple-100 text-purple-700 border-purple-200';
+
+      case 'Standard':
+        return 'bg-indigo-100 text-indigo-700 border-indigo-200';
+
+      case 'Basic':
+        return 'bg-blue-100 text-blue-700 border-blue-200';
+
+      case 'One Day Trial':
+      default:
+        return 'bg-amber-100 text-amber-700 border-amber-200';
+    }
+  };
+
+  const getPaymentBadgeClass = (status) => {
+    switch (status) {
+      case 'Paid':
+        return 'bg-green-100 text-green-700 border-green-200';
+
+      case 'Failed':
+        return 'bg-red-100 text-red-700 border-red-200';
+
+      case 'Not Required':
+        return 'bg-slate-100 text-slate-700 border-slate-200';
+
+      case 'Pending':
+      default:
+        return 'bg-orange-100 text-orange-700 border-orange-200';
+    }
+  };
 
   const showToast = (message, type = 'success') => {
     setNotification({ message, type });
@@ -538,9 +679,7 @@ const SaaSPlatformDashboard = () => {
           body: JSON.stringify({
             subscription,
             subscriptionExpiresAt: expiryDate,
-            primaryColor,
-            initialBranch,
-            logoUrl: logoUrlInput || selectedLead.logoUrl || ''
+            primaryColor
           })
         }
       );
@@ -1069,8 +1208,18 @@ const SaaSPlatformDashboard = () => {
                   <tr className="bg-slate-50 text-gray-500 text-[11px] uppercase tracking-wider">
                     <th className="px-6 py-4 font-medium">Company Name</th>
                     <th className="px-6 py-4 font-medium">Contact</th>
-                    <th className="px-6 py-4 font-medium">Expected Size</th>
-                    <th className="px-6 py-4 font-medium">Date</th>
+
+                    <th className="px-6 py-4 font-medium">
+                      Requested Plan
+                    </th>
+
+                    <th className="px-6 py-4 font-medium">
+                      Payment
+                    </th>
+
+                    <th className="px-6 py-4 font-medium">
+                      Date
+                    </th>
                     <th className="px-6 py-4 font-medium">Status</th>
                     <th className="px-6 py-4 font-medium text-right">Action</th>
                   </tr>
@@ -1098,8 +1247,78 @@ const SaaSPlatformDashboard = () => {
                         {lead.contactPerson}
                         <div className="text-xs font-normal text-gray-500">{lead.email} | {lead.mobileNumber}</div>
                       </td>
-                      <td className="px-6 py-4 text-xs font-medium text-gray-600">
-                        {lead.expectedBranches} Branch(es), {lead.expectedEmployees} Emp.
+                      <td className="px-6 py-4 text-xs">
+                        <div className="flex flex-col items-start gap-1">
+                          <span
+                            className={`rounded-full border px-2.5 py-1 font-semibold ${getPlanBadgeClass(
+                              lead.requestedPlan || 'One Day Trial'
+                            )}`}
+                          >
+                            {lead.requestedPlan || 'One Day Trial'}
+                          </span>
+
+                          <span className="text-[11px] text-slate-500">
+                            {lead.requestedPlan === 'Enterprise'
+                              ? 'Unlimited passes'
+                              : lead.requestedPlan === 'Standard'
+                                ? '3,000 passes'
+                                : lead.requestedPlan === 'Basic'
+                                  ? '500 passes'
+                                  : '25 passes · 24 hours'}
+                          </span>
+                        </div>
+                      </td>
+
+                      <td className="px-6 py-4 text-xs">
+                        {(lead.requestedPlan ||
+                          'One Day Trial') ===
+                        'One Day Trial' ? (
+                          <span className="rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 font-semibold text-slate-700">
+                            Not Required
+                          </span>
+                        ) : (
+                          <select
+                            value={
+                              lead.paymentStatus ||
+                              'Pending'
+                            }
+                            onChange={(event) =>
+                              updatePaymentStatus(
+                                lead._id,
+                                event.target.value
+                              )
+                            }
+                            disabled={
+                              Boolean(
+                                lead.convertedCompanyId
+                              )
+                            }
+                            className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold outline-none ${getPaymentBadgeClass(
+                              lead.paymentStatus ||
+                              'Pending'
+                            )} ${
+                              lead.convertedCompanyId
+                                ? 'cursor-not-allowed opacity-60'
+                                : 'cursor-pointer'
+                            }`}
+                          >
+                            <option value="Pending">
+                              Pending
+                            </option>
+
+                            <option value="Paid">
+                              Paid
+                            </option>
+
+                            <option value="Failed">
+                              Failed
+                            </option>
+
+                            <option value="Refunded">
+                              Refunded
+                            </option>
+                          </select>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-xs font-medium text-gray-600">
                         <div className="flex items-center space-x-1.5">
@@ -1133,7 +1352,13 @@ const SaaSPlatformDashboard = () => {
                           View Details
                         </button>
                         {lead.status === 'Won' &&
-                         !lead.convertedCompanyId && (
+                         !lead.convertedCompanyId &&
+                         (
+                           (lead.requestedPlan ||
+                             'One Day Trial') ===
+                             'One Day Trial' ||
+                           lead.paymentStatus === 'Paid'
+                         ) && (
                           <button
                             type="button"
                             onClick={() => { setSelectedLead(lead); setActiveLeadTab('convert'); }}
@@ -1141,6 +1366,17 @@ const SaaSPlatformDashboard = () => {
                           >
                             Create Dashboard
                           </button>
+                        )}
+
+                        {lead.status === 'Won' &&
+                         !lead.convertedCompanyId &&
+                         (lead.requestedPlan ||
+                           'One Day Trial') !==
+                           'One Day Trial' &&
+                         lead.paymentStatus !== 'Paid' && (
+                          <span className="ml-2 inline-block text-xs font-semibold text-orange-600">
+                            Payment required before conversion
+                          </span>
                         )}
 
                         {lead.convertedCompanyId && (
@@ -1294,21 +1530,22 @@ const SaaSPlatformDashboard = () => {
                             <label className="block text-sm font-semibold text-gray-700 mb-1">Expiry Date</label>
                             <input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} className="w-full rounded-lg border border-gray-200 bg-gray-50 p-2.5 outline-none focus:ring-1 focus:ring-green-500" required />
                           </div>
-                          <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-1">Company Logo URL</label>
-                            <input type="text" value={logoUrlInput} onChange={e => setLogoUrlInput(e.target.value)} placeholder="https://example.com/logo.png" className="w-full rounded-lg border border-gray-200 bg-gray-50 p-2.5 outline-none focus:ring-1 focus:ring-green-500 text-sm" />
-                          </div>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="block text-sm font-semibold text-gray-700 mb-1">Primary Colour</label>
-                              <div className="flex items-center gap-2">
-                                <input type="color" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} className="w-9 h-9 rounded cursor-pointer border-0" />
-                                <input type="text" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} className="w-full rounded-lg border border-gray-200 bg-gray-50 p-2 text-xs font-mono" />
-                              </div>
+                          {selectedLead?.logoUrl ? (
+                            <div className="bg-slate-50 border border-gray-200 rounded-lg p-3 text-center">
+                              <span className="text-xs font-semibold text-gray-500 block mb-1.5">Auto-Assigned Company Logo</span>
+                              <img src={selectedLead.logoUrl} alt="Uploaded logo" className="h-16 object-contain mx-auto border rounded-md p-1 bg-white" />
                             </div>
-                            <div>
-                              <label className="block text-sm font-semibold text-gray-700 mb-1">Initial Branch</label>
-                              <input type="text" value={initialBranch} onChange={e => setInitialBranch(e.target.value)} placeholder="Main Branch" className="w-full rounded-lg border border-gray-200 bg-gray-50 p-2.5 outline-none focus:ring-1 focus:ring-green-500 text-sm" required />
+                          ) : (
+                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-xs text-amber-800 font-medium text-center">
+                              No logo uploaded during registration. Default branding will be applied.
+                            </div>
+                          )}
+
+                          <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-1">Primary Colour</label>
+                            <div className="flex items-center gap-2">
+                              <input type="color" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} className="w-10 h-10 rounded cursor-pointer border-0" />
+                              <input type="text" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} className="w-full rounded-lg border border-gray-200 bg-gray-50 p-2 text-xs font-mono" />
                             </div>
                           </div>
                           

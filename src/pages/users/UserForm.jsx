@@ -22,6 +22,7 @@ const UserForm = () => {
     createdBy: currentUser?.name || 'System'
   });
   
+  const [inviteMode, setInviteMode] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -43,8 +44,10 @@ const UserForm = () => {
     submissionData.createdByRole = currentUser?.role;
     submissionData.creatorBranch = currentUser?.branch;
 
+    const targetUrl = inviteMode ? `${API_URL}/invite` : API_URL;
+
     try {
-      const response = await fetch(API_URL, {
+      const response = await fetch(targetUrl, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -64,7 +67,7 @@ const UserForm = () => {
         navigate('/users');
       } else {
         const errorData = await response.json();
-        setError(errorData.message || 'Failed to create user');
+        setError(errorData.message || 'Failed to process user creation');
       }
     } catch (err) {
       setError('Network error: Unable to connect to server');
@@ -141,19 +144,36 @@ const UserForm = () => {
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5 flex items-center gap-2">
-                <Lock size={16} className="text-gray-400" /> Initial Password
-              </label>
-              <input
-                type="text"
-                name="password"
-                required
-                value={formData.password}
-                onChange={handleChange}
-                className="w-full px-4 py-2.5 bg-slate-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-indigo)] focus:bg-white transition-all"
-                placeholder="Enter a secure password"
-              />
+            <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-bold text-gray-900">Send Activation Link (Recommended)</h4>
+                  <p className="text-xs text-gray-500">Employee receives a secure 24-hour setup link to create their own password.</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={inviteMode}
+                  onChange={(e) => setInviteMode(e.target.checked)}
+                  className="w-5 h-5 text-indigo-600 rounded cursor-pointer accent-indigo-700"
+                />
+              </div>
+
+              {!inviteMode && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1 flex items-center gap-1.5">
+                    <Lock size={14} className="text-gray-400" /> Manual Initial Password
+                  </label>
+                  <input
+                    type="text"
+                    name="password"
+                    required={!inviteMode}
+                    value={formData.password}
+                    onChange={handleChange}
+                    className="w-full px-3.5 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Enter manual password"
+                  />
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

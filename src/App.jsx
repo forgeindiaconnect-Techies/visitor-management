@@ -37,6 +37,7 @@ import ApprovalDetails from './pages/approvals/ApprovalDetails';
 import SuperAdminPreBookings from './pages/SuperAdminPreBookings';
 import SaaSLanding from './pages/saas/SaaSLanding';
 import ActivateAccount from './pages/auth/ActivateAccount';
+import EmployeeActivate from './pages/auth/EmployeeActivate';
 import ZoneList from './pages/zones/ZoneList';
 import EntryExitLogs from './pages/tracking/EntryExitLogs';
 import LiveMonitoring from './pages/tracking/LiveMonitoring';
@@ -94,6 +95,7 @@ const AppRoutes = () => {
       <Route path="/prebook" element={<PublicPreBooking />} />
       <Route path="/prebook/:companyId" element={<PublicPreBooking />} />
       <Route path="/pre-booking" element={<PublicPreBooking />} />
+      <Route path="/pre-booking/:companyCode" element={<PublicPreBooking />} />
       <Route path="/pre-booking/:companyId" element={<PublicPreBooking />} />
       <Route path="/visitor-status/:token" element={<VisitorStatus />} />
       <Route path="/pass/:visitId" element={<VisitorPass />} />
@@ -102,6 +104,7 @@ const AppRoutes = () => {
       <Route path="/pre-register/:companyId" element={<PreRegister />} />
       <Route path="/visitor-invitation/:token" element={<VisitorInvitation />} />
       <Route path="/activate-account/:token" element={<ActivateAccount />} />
+      <Route path="/employee-activate/:token" element={<EmployeeActivate />} />
       <Route path="/saas" element={<SaaSLanding />} />
 
       {/* Main Authenticated Layout */}

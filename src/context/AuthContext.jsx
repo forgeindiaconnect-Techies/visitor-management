@@ -87,7 +87,7 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
-  const login = async (email, password, rememberMe = false) => {
+  const login = async (email, password, rememberMe = false, companyId = '') => {
     try {
       const url = `${import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com')}/api/auth/login`;
       console.log('Attempting login to:', url);
@@ -112,7 +112,7 @@ export const AuthProvider = ({ children }) => {
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, fcmToken })
+        body: JSON.stringify({ email, password, fcmToken, companyId })
       });
 
       const userData = await response.json();
@@ -127,7 +127,8 @@ export const AuthProvider = ({ children }) => {
         
         const loggedInUser =
           userData.user ||
-          userData.data?.user;
+          userData.data?.user ||
+          userData;
         
         if (!loginToken) {
           throw new Error('The backend login response did not include a token.');

@@ -1,15 +1,23 @@
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import {
+  useNavigate,
+  useParams
+} from 'react-router-dom';
 
-const ActivateAccount = () => {
+const EmployeeActivate = () => {
   const { token } = useParams();
   const navigate = useNavigate();
 
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [password, setPassword] =
+    useState('');
 
-  const handleActivation = async (event) => {
+  const [confirmPassword, setConfirmPassword] =
+    useState('');
+
+  const [loading, setLoading] =
+    useState(false);
+
+  const activateAccount = async (event) => {
     event.preventDefault();
 
     if (password !== confirmPassword) {
@@ -25,7 +33,7 @@ const ActivateAccount = () => {
         'http://localhost:5000';
 
       const response = await fetch(
-        `${baseUrl}/api/auth/activate-account/${token}`,
+        `${baseUrl}/api/user-invitations/activate/${token}`,
         {
           method: 'POST',
           headers: {
@@ -41,15 +49,11 @@ const ActivateAccount = () => {
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.message || 'Activation failed');
+        throw new Error(result.message);
       }
 
       alert(result.message);
-      if (result.companyCode) {
-        navigate(`/login?company=${result.companyCode}`);
-      } else {
-        navigate('/login');
-      }
+      navigate('/login');
     } catch (error) {
       alert(error.message);
     } finally {
@@ -60,39 +64,45 @@ const ActivateAccount = () => {
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
       <form
-        onSubmit={handleActivation}
+        onSubmit={activateAccount}
         className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl"
       >
-        <h1 className="text-2xl font-bold text-slate-900">
-          Activate Your Account
+        <h1 className="text-2xl font-bold">
+          Activate Employee Account
         </h1>
 
-        <p className="mt-2 text-sm text-slate-500">
-          Create a secure password for your company dashboard.
+        <p className="mt-2 text-sm text-gray-500">
+          Create your password to access your company dashboard.
         </p>
 
-        <label className="mt-6 block font-medium">
+        <label className="mt-6 block font-medium text-gray-700 text-sm">
           New Password
         </label>
+
         <input
           type="password"
           value={password}
-          onChange={(event) => setPassword(event.target.value)}
+          onChange={(event) =>
+            setPassword(event.target.value)
+          }
           minLength={8}
           required
-          className="mt-2 w-full rounded-lg border p-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="mt-2 w-full rounded-lg border p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
         />
 
-        <label className="mt-4 block font-medium">
+        <label className="mt-4 block font-medium text-gray-700 text-sm">
           Confirm Password
         </label>
+
         <input
           type="password"
           value={confirmPassword}
-          onChange={(event) => setConfirmPassword(event.target.value)}
+          onChange={(event) =>
+            setConfirmPassword(event.target.value)
+          }
           minLength={8}
           required
-          className="mt-2 w-full rounded-lg border p-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="mt-2 w-full rounded-lg border p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
         />
 
         <button
@@ -100,16 +110,18 @@ const ActivateAccount = () => {
           disabled={loading}
           className="mt-6 w-full rounded-lg bg-indigo-700 p-3 font-semibold text-white hover:bg-indigo-800 transition disabled:opacity-50"
         >
-          {loading ? 'Activating...' : 'Create Password'}
+          {loading
+            ? 'Activating...'
+            : 'Create Password'}
         </button>
 
-        <p className="mt-6 text-center text-xs text-slate-500">
+        <p className="mt-6 text-center text-xs text-gray-500">
           Powered by{' '}
           <a
             href="https://forgeindiaconnect.com/"
             target="_blank"
             rel="noopener noreferrer"
-            className="font-semibold text-indigo-700 hover:underline"
+            className="font-semibold text-indigo-700"
           >
             ForgeIndiaConnect
           </a>
@@ -119,4 +131,4 @@ const ActivateAccount = () => {
   );
 };
 
-export default ActivateAccount;
+export default EmployeeActivate;

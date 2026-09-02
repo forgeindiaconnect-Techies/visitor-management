@@ -102,6 +102,11 @@ router.get("/validate/:companyId", async (req, res) => {
 
     return res.json({
       success: true,
+      data: {
+        code: company.code,
+        name: company.name,
+        branding: company.branding
+      },
       company: {
         companyId: company.code,
         companyName: company.name,

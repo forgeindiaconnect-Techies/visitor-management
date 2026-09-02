@@ -172,6 +172,27 @@ const preBookingSchema = new mongoose.Schema(
       sparse: true,
     },
 
+    passUsageCounted: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
+
+    passGeneratedAt: {
+      type: Date,
+      default: null
+    },
+
+    usageCycleStart: {
+      type: Date,
+      default: null
+    },
+
+    usageCycleEnd: {
+      type: Date,
+      default: null
+    },
+
     checkInTime: {
       type: Date,
       default: null,

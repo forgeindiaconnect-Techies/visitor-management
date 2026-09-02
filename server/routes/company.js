@@ -3,8 +3,41 @@ const router = express.Router();
 const Company = require('../models/Company');
 const authMiddleware = require('../middleware/authMiddleware');
 const { sendEmail, EmailTemplates } = require('../utils/emailService');
+const {
+  startNewSubscriptionCycle
+} = require('../services/subscriptionCycleService');
 
 router.use(authMiddleware);
+
+// GET branding for the logged-in company
+router.get(
+  '/me/branding',
+  authMiddleware,
+  async (req, res) => {
+    try {
+      const company = await Company.findOne({
+        code: req.companyId
+      }).select('name code branding');
+
+      if (!company) {
+        return res.status(404).json({
+          success: false,
+          message: 'Company not found'
+        });
+      }
+
+      return res.json({
+        success: true,
+        data: company
+      });
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: 'Unable to load company branding'
+      });
+    }
+  }
+);
 
 // GET current company details
 router.get('/me', async (req, res) => {
@@ -98,10 +131,17 @@ router.post('/request-upgrade', async (req, res) => {
 // POST mock-payment to automatically activate subscription (Step 7 & 8)
 router.post('/mock-payment', async (req, res) => {
   try {
-    const { requestedPlan, amount, durationDays } = req.body;
+    const { requestedPlan, amount } = req.body;
 
-    if (!requestedPlan || !amount || !durationDays) {
-      return res.status(400).json({ message: 'Missing required payment details' });
+    if (
+      !requestedPlan ||
+      amount === undefined ||
+      amount === null
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required payment details'
+      });
     }
 
     const Company = require('../models/Company');
@@ -113,16 +153,28 @@ router.post('/mock-payment', async (req, res) => {
       return res.status(404).json({ message: 'Company not found' });
     }
 
-    // Automatically activate the subscription
-    company.subscription = requestedPlan;
-    company.status = 'Active';
+    // Start a fresh subscription cycle using backend plan settings.
+    let subscriptionResult;
 
-    // Set new expiry date
-    const newExpiry = new Date();
-    newExpiry.setDate(newExpiry.getDate() + parseInt(durationDays, 10));
-    company.subscriptionExpiresAt = newExpiry;
-
-    await company.save();
+    try {
+      subscriptionResult =
+        await startNewSubscriptionCycle({
+          company,
+          newPlan: requestedPlan,
+          updatedBy:
+            req.userRole ||
+            req.userId ||
+            'Mock Payment',
+          activationDate: new Date()
+        });
+    } catch (subscriptionError) {
+      return res
+        .status(subscriptionError.statusCode || 400)
+        .json({
+          success: false,
+          message: subscriptionError.message
+        });
+    }
 
     // Send a notification to the SaaS Super Admin (SYSTEM)
     const newNotif = await Notification.create({
@@ -130,7 +182,7 @@ router.post('/mock-payment', async (req, res) => {
       type: 'success',
       module: 'Subscription',
       title: '✅ Automatic Subscription Activated',
-      message: `${company.name} successfully paid ₹${amount} and upgraded to ${requestedPlan} (Valid for ${durationDays} days).`,
+      message: `${company.name} successfully paid ₹${amount} and upgraded to ${requestedPlan} (Valid for ${subscriptionResult.company.subscription === 'One Day Trial' ? 1 : 30} days).`,
       createdBy: req.userRole || 'System'
     });
 
@@ -147,9 +199,23 @@ router.post('/mock-payment', async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Payment successful. Subscription is now active.',
-      subscription: company.subscription,
-      subscriptionExpiresAt: company.subscriptionExpiresAt
+      message:
+        'Payment successful. A new subscription cycle is now active.',
+
+      subscription:
+        subscriptionResult.company.subscription,
+
+      subscriptionStartedAt:
+        subscriptionResult.subscriptionStartedAt,
+
+      subscriptionExpiresAt:
+        subscriptionResult.subscriptionExpiresAt,
+
+      visitorPassUsage: {
+        used: 0,
+        message:
+          'Visitor-pass usage will start from zero for this subscription cycle.'
+      }
     });
   } catch (err) {
     res.status(500).json({ message: err.message });

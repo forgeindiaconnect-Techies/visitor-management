@@ -10,6 +10,8 @@ const Notification = require('../models/Notification');
 const authMiddleware = require('../middleware/authMiddleware');
 const bcrypt = require('bcrypt');
 const { v4: uuidv4 } = require('uuid');
+const { calculateSubscriptionCycle } = require('../services/subscriptionCycleService');
+const planLimits = require('../config/plans');
 
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
@@ -24,15 +26,72 @@ const upload = multer({
   limits: { fileSize: 2 * 1024 * 1024 } 
 });
 
+const requireSaasSuperAdmin = (
+  req,
+  res,
+  next
+) => {
+  const role =
+    req.user?.role ||
+    req.userRole ||
+    '';
+
+  const normalizedRole = String(role)
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '_');
+
+  if (normalizedRole !== 'SAAS_SUPER_ADMIN') {
+    return res.status(403).json({
+      success: false,
+      message:
+        'Only SaaS Super Admin can perform this action.'
+    });
+  }
+
+  next();
+};
+
 // Public route: Register a new SaaS lead
 router.post('/register', upload.single('companyLogo'), async (req, res) => {
   try {
-    const { companyName, contactPerson, email, mobileNumber, expectedBranches, expectedEmployees, message } = req.body;
+    const {
+      companyName,
+      contactPerson,
+      email,
+      mobileNumber,
+      requestedPlan = 'One Day Trial',
+      message
+    } = req.body;
 
     // Basic validation
     if (!companyName || !contactPerson || !email || !mobileNumber) {
       return res.status(400).json({ success: false, message: 'Required fields are missing' });
     }
+
+    const selectedPlan = String(requestedPlan).trim();
+
+    const allowedPlans = [
+      'One Day Trial',
+      'Basic',
+      'Standard',
+      'Enterprise'
+    ];
+
+    if (
+      !allowedPlans.includes(selectedPlan) ||
+      !planLimits[selectedPlan]
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please select a valid subscription plan.'
+      });
+    }
+
+    const paymentStatus =
+      selectedPlan === 'One Day Trial'
+        ? 'Not Required'
+        : 'Pending';
 
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedMobile = String(mobileNumber).replace(/\D/g, '');
@@ -61,10 +120,10 @@ router.post('/register', upload.single('companyLogo'), async (req, res) => {
       contactPerson: contactPerson.trim(),
       email: normalizedEmail,
       mobileNumber: normalizedMobile,
-      expectedBranches: expectedBranches || 1,
-      expectedEmployees: expectedEmployees || 1,
+      requestedPlan: selectedPlan,
+      paymentStatus,
       message: message || '',
-      logoUrl: logoUrl,
+      logoUrl,
       status: 'New'
     });
 
@@ -78,7 +137,7 @@ router.post('/register', upload.single('companyLogo'), async (req, res) => {
       type: 'SAAS_LEAD_CREATED',
       module: 'SaaS',
       title: 'New Company Registration',
-      message: `${lead.companyName} registered through the SaaS landing page.`,
+      message: `${lead.companyName} requested the ${lead.requestedPlan} plan through the SaaS landing page.`,
       createdBy: lead.contactPerson,
       roles: ['SaaS Super Admin']
     });
@@ -88,6 +147,59 @@ router.post('/register', upload.single('companyLogo'), async (req, res) => {
       io.to('company:SYSTEM').emit('new_saas_lead', lead);
       io.to('saas-admins').emit('new_notification', notification);
     }
+
+    // Send instant registration confirmation email to lead applicant
+    const { sendEmail } = require('../utils/emailService');
+    sendEmail(
+      normalizedEmail,
+      `Registration Received - ${companyName.trim()}`,
+      `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+          <div style="background-color: #1E1B6E; color: white; padding: 24px; text-align: center;">
+            <h2 style="margin: 0;">Registration Received</h2>
+          </div>
+          <div style="padding: 24px; color: #334155;">
+            <p>Hello <strong>${contactPerson.trim()}</strong>,</p>
+            <p>Thank you for registering <strong>${companyName.trim()}</strong> for Zone Monitor Visitor Management System.</p>
+            <p>
+              <strong>Requested Plan:</strong>
+              ${selectedPlan}
+            </p>
+
+            <p>
+              <strong>Validity:</strong>
+              ${planLimits[selectedPlan].durationDays === 1
+                ? '24 hours'
+                : `${planLimits[selectedPlan].durationDays} days`}
+            </p>
+
+            <p>
+              <strong>Visitor Passes:</strong>
+              ${planLimits[selectedPlan].visitorPasses === -1
+                ? 'Unlimited'
+                : planLimits[selectedPlan].visitorPasses}
+            </p>
+
+            <p>
+              <strong>Branches:</strong>
+              ${planLimits[selectedPlan].branches === -1
+                ? 'Unlimited'
+                : planLimits[selectedPlan].branches}
+            </p>
+
+            <p>
+              <strong>System Users:</strong>
+              ${planLimits[selectedPlan].users === -1
+                ? 'Unlimited'
+                : planLimits[selectedPlan].users}
+            </p>
+
+            <p>Our sales & onboarding team is reviewing your registration and will contact you shortly to schedule a demo and set up your workspace.</p>
+            <p style="font-size: 12px; color: #64748b; margin-top: 24px;">Powered by ForgeIndiaConnect</p>
+          </div>
+        </div>
+      `
+    ).catch(err => console.warn('Lead confirmation email failed:', err.message));
 
     res.status(201).json({ success: true, message: 'Registration submitted successfully. Our team will contact you shortly.', data: lead });
   } catch (error) {
@@ -116,20 +228,205 @@ router.get('/', async (req, res) => {
 });
 
 // PATCH update lead status
-router.patch('/:id/status', async (req, res) => {
-  try {
-    const { status } = req.body;
-    const lead = await SaasLead.findByIdAndUpdate(
-      req.params.id,
-      { status },
-      { new: true }
-    );
-    if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
-    res.json({ success: true, lead });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+router.patch(
+  '/:id/status',
+  authMiddleware,
+  requireSaasSuperAdmin,
+  async (req, res) => {
+    try {
+      const { status } = req.body;
+
+      const allowedStatuses = [
+        'New',
+        'Contacted',
+        'Demo Scheduled',
+        'Negotiation',
+        'Won',
+        'Lost'
+      ];
+
+      if (!allowedStatuses.includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid lead status.'
+        });
+      }
+
+      const lead =
+        await SaasLead.findByIdAndUpdate(
+          req.params.id,
+          {
+            $set: {
+              status
+            }
+          },
+          {
+            new: true,
+            runValidators: true
+          }
+        );
+
+      if (!lead) {
+        return res.status(404).json({
+          success: false,
+          message: 'Lead not found'
+        });
+      }
+
+      const io = req.app.get('io');
+
+      if (io) {
+        io.to('saas-admins').emit(
+          'saas_lead_updated',
+          lead
+        );
+      }
+
+      return res.json({
+        success: true,
+        message: 'Lead status updated.',
+        lead
+      });
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
   }
-});
+);
+
+// PATCH update payment status
+router.patch(
+  '/:id/payment-status',
+  authMiddleware,
+  requireSaasSuperAdmin,
+  async (req, res) => {
+    try {
+      const { paymentStatus } = req.body;
+
+      const allowedPaymentStatuses = [
+        'Pending',
+        'Paid',
+        'Failed',
+        'Refunded',
+        'Not Required'
+      ];
+
+      if (
+        !allowedPaymentStatuses.includes(
+          paymentStatus
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid payment status.'
+        });
+      }
+
+      const lead =
+        await SaasLead.findById(
+          req.params.id
+        );
+
+      if (!lead) {
+        return res.status(404).json({
+          success: false,
+          message: 'Lead not found.'
+        });
+      }
+
+      const selectedPlan =
+        lead.requestedPlan ||
+        'One Day Trial';
+
+      if (
+        selectedPlan === 'One Day Trial' &&
+        paymentStatus !== 'Not Required'
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Payment is not required for the One Day Trial.'
+        });
+      }
+
+      if (
+        selectedPlan !== 'One Day Trial' &&
+        paymentStatus === 'Not Required'
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'A paid plan cannot use Not Required payment status.'
+        });
+      }
+
+      lead.paymentStatus = paymentStatus;
+      await lead.save();
+
+      const notification =
+        await Notification.create({
+          eventId:
+            `SAAS_PAYMENT_${lead._id}_${Date.now()}`,
+
+          companyId: 'SYSTEM',
+          type:
+            paymentStatus === 'Paid'
+              ? 'success'
+              : paymentStatus === 'Failed'
+                ? 'error'
+                : 'info',
+
+          module: 'Subscription',
+
+          title: 'Payment Status Updated',
+
+          message:
+            `${lead.companyName} — ${selectedPlan} payment changed to ${paymentStatus}.`,
+
+          createdBy:
+            req.user?.name ||
+            req.userName ||
+            'SaaS Super Admin',
+
+          roles: ['SaaS Super Admin']
+        });
+
+      const io = req.app.get('io');
+
+      if (io) {
+        io.to('saas-admins').emit(
+          'saas_lead_updated',
+          lead
+        );
+
+        io.to('saas-admins').emit(
+          'new_notification',
+          notification
+        );
+      }
+
+      return res.status(200).json({
+        success: true,
+        message:
+          'Payment status updated successfully.',
+        lead
+      });
+    } catch (error) {
+      console.error(
+        'Payment status update error:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          'Failed to update payment status.'
+      });
+    }
+  }
+);
 
 // POST convert lead to company
 router.post('/:leadId/convert', async (req, res) => {
@@ -177,50 +474,95 @@ router.post('/:leadId/convert', async (req, res) => {
       } while (await Company.exists({ code: companyCode }));
     }
 
-    const subscription = req.body.subscription || req.body.plan || 'Standard';
-    
-    // Support either old durationDays or new subscriptionExpiresAt
-    let subscriptionExpiresAt;
-    if (req.body.subscriptionExpiresAt) {
-      subscriptionExpiresAt = new Date(req.body.subscriptionExpiresAt);
-    } else {
-      subscriptionExpiresAt = new Date();
-      subscriptionExpiresAt.setDate(subscriptionExpiresAt.getDate() + (parseInt(req.body.durationDays, 10) || 30));
-    }
+    const subscription =
+      lead.requestedPlan ||
+      req.body.subscription ||
+      req.body.plan ||
+      'One Day Trial';
 
-    if (Number.isNaN(subscriptionExpiresAt.getTime())) {
+    const allowedPlans = [
+      'One Day Trial',
+      'Basic',
+      'Standard',
+      'Enterprise'
+    ];
+
+    if (!allowedPlans.includes(subscription)) {
       return res.status(400).json({
         success: false,
-        message: 'Valid subscription expiry date is required'
+        message:
+          'The client selected an invalid subscription plan.'
       });
     }
 
-    const logoUrl = req.body.logoUrl || lead.logoUrl || '';
+    const isTrial =
+      subscription === 'One Day Trial';
+
+    if (
+      !isTrial &&
+      lead.paymentStatus !== 'Paid'
+    ) {
+      return res.status(400).json({
+        success: false,
+        code: 'PAYMENT_REQUIRED',
+        message:
+          `${subscription} cannot be activated until payment is completed.`
+      });
+    }
+
+    let subscriptionCycle;
+
+    try {
+      subscriptionCycle =
+        calculateSubscriptionCycle(
+          subscription,
+          new Date()
+        );
+    } catch (cycleError) {
+      return res
+        .status(cycleError.statusCode || 400)
+        .json({
+          success: false,
+          message: cycleError.message
+        });
+    }
+
+    const logoUrl = lead.logoUrl || req.body.logoUrl || '';
     const primaryColor = req.body.primaryColor || '#1E1B6E';
-    const initialBranchName = req.body.initialBranch?.trim() || 'Main Branch';
 
     const company = await Company.create({
       name: lead.companyName,
       code: companyCode,
       subscription,
-      subscriptionExpiresAt,
-      status: 'Active',
-      createdBy: req.userId || 'SaaS Conversion',
-      branding: {
-        logoUrl: logoUrl,
-        primaryColor: primaryColor
-      }
-    });
 
-    // Create Initial BranchSetting for this Company
-    const BranchSetting = require('../models/BranchSetting');
-    await BranchSetting.create({
-      companyId: company.code,
-      branchName: initialBranchName,
-      latitude: 12.9716,
-      longitude: 77.5946,
-      radius: 50
-    }).catch(err => console.warn('Initial BranchSetting creation note:', err.message));
+      subscriptionStartedAt:
+        subscriptionCycle.subscriptionStartedAt,
+
+      subscriptionExpiresAt:
+        subscriptionCycle.subscriptionExpiresAt,
+
+      status: 'Active',
+
+      createdBy:
+        req.userId || 'SaaS Conversion',
+
+      branding: {
+        logoUrl,
+        primaryColor
+      },
+
+      upgradeHistory: [
+        {
+          plan: subscription,
+          startDate:
+            subscriptionCycle.subscriptionStartedAt,
+          endDate:
+            subscriptionCycle.subscriptionExpiresAt,
+          updatedBy:
+            req.userId || 'SaaS Conversion'
+        }
+      ]
+    });
 
     const crypto = require('crypto');
     const activationToken = crypto.randomBytes(32).toString('hex');
@@ -230,26 +572,53 @@ router.post('/:leadId/convert', async (req, res) => {
     const bcrypt = require('bcrypt');
     const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
 
-    const superAdmin = await User.create({
-      name: lead.contactPerson,
-      email: lead.email,
-      mobileNumber: lead.mobileNumber,
-      role: 'Super Admin',
-      companyId: company.code,
-      branch: initialBranchName,
-      branchId: initialBranchName,
-      status: 'Active',
-      password: hashedPassword,
-      passwordSetupTokenHash: activationTokenHash,
-      passwordSetupExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      mustSetPassword: true
-    });
+    let superAdmin = await User.findOne({ email: lead.email });
+    if (superAdmin) {
+      superAdmin.companyId = company.code;
+      superAdmin.name = lead.contactPerson;
+      superAdmin.mobileNumber = lead.mobileNumber;
+      superAdmin.role = 'Super Admin';
+      superAdmin.branch = 'All Branches';
+      superAdmin.branchId = 'All Branches';
+      superAdmin.status = 'Active';
+      superAdmin.password = hashedPassword;
+      superAdmin.passwordSetupTokenHash = activationTokenHash;
+      superAdmin.passwordSetupExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      superAdmin.mustSetPassword = true;
+      await superAdmin.save();
+    } else {
+      superAdmin = await User.create({
+        name: lead.contactPerson,
+        email: lead.email,
+        mobileNumber: lead.mobileNumber,
+        role: 'Super Admin',
+        companyId: company.code,
+        branch: 'All Branches',
+        branchId: 'All Branches',
+        status: 'Active',
+        password: hashedPassword,
+        passwordSetupTokenHash: activationTokenHash,
+        passwordSetupExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        mustSetPassword: true
+      });
+    }
 
-    lead.convertedCompanyId = company._id;
+    lead.status = 'Won';
+    lead.convertedCompanyId = company.code;
+    lead.convertedAt = new Date();
+
+    lead.activatedPlan = subscription;
+
+    if (subscription === 'One Day Trial') {
+      lead.paymentStatus = 'Not Required';
+    }
+
     await lead.save();
 
     const frontendUrl = String(process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/+$/, '');
     const activationUrl = `${frontendUrl}/activate-account/${activationToken}`;
+    const loginUrl = `${frontendUrl}/login?company=${company.code}`;
+    const preBookingUrl = `${frontendUrl}/pre-booking/${company.code}`;
 
     // Send the account activation email
     const { sendCompanyActivationEmail } = require('../utils/emailService');
@@ -259,7 +628,9 @@ router.post('/:leadId/convert', async (req, res) => {
       companyName: company.name,
       companyCode: company.code,
       subscription: company.subscription,
-      activationUrl
+      activationUrl,
+      loginUrl,
+      preBookingUrl
     });
 
     return res.status(201).json({

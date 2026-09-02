@@ -425,13 +425,19 @@ const sendCompanyActivationEmail = async ({
   companyName,
   companyCode,
   subscription,
-  activationUrl
+  activationUrl,
+  loginUrl: customLoginUrl,
+  preBookingUrl: customPreBookingUrl
 }) => {
   const subject = `${companyName} – Your VMS Dashboard Is Ready`;
+  const baseUrl = process.env.FRONTEND_URL || 'https://visitor-management-indol.vercel.app';
+  const cleanBaseUrl = baseUrl.replace(/\/+$/, '');
+  const loginUrl = customLoginUrl || `${cleanBaseUrl}/login?company=${companyCode}`;
+  const preBookingUrl = customPreBookingUrl || `${cleanBaseUrl}/pre-booking/${companyCode}`;
 
   const htmlBody = `
     <div style="background:#f1f5f9;padding:30px;font-family:Arial,sans-serif;">
-      <div style="max-width:600px;margin:auto;background:#ffffff;border-radius:14px;overflow:hidden;">
+      <div style="max-width:600px;margin:auto;background:#ffffff;border-radius:14px;overflow:hidden;box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
         <div style="background:#1e1b6e;color:#ffffff;padding:26px;text-align:center;">
           <h2 style="margin:0;">Welcome to FIC VMS</h2>
         </div>
@@ -440,30 +446,43 @@ const sendCompanyActivationEmail = async ({
           <p>Hello <strong>${recipientName}</strong>,</p>
 
           <p>
-            Your company dashboard has been created successfully.
+            Your company dashboard for <strong>${companyName}</strong> has been created successfully.
           </p>
 
-          <div style="background:#f8fafc;padding:18px;border-radius:10px;">
-            <p><strong>Company Name:</strong> ${companyName}</p>
-            <p><strong>Company Code:</strong> ${companyCode}</p>
-            <p><strong>Login Email:</strong> ${email}</p>
-            <p><strong>Plan:</strong> ${subscription}</p>
-            <p><strong>Role:</strong> Super Admin</p>
+          <div style="background:#f8fafc;padding:18px;border-radius:10px;border: 1px solid #e2e8f0;margin-bottom:24px;">
+            <p style="margin:4px 0;"><strong>Company Name:</strong> ${companyName}</p>
+            <p style="margin:4px 0;"><strong>Company Code:</strong> ${companyCode}</p>
+            <p style="margin:4px 0;"><strong>Login Email:</strong> ${email}</p>
+            <p style="margin:4px 0;"><strong>Plan:</strong> ${subscription}</p>
+            <p style="margin:4px 0;"><strong>Role:</strong> Super Admin</p>
           </div>
 
-          <div style="text-align:center;margin:30px 0;">
+          <div style="text-align:center;margin:28px 0;">
             <a
               href="${activationUrl}"
               target="_blank"
-              style="background:#4f46e5;color:#ffffff;padding:14px 26px;border-radius:8px;text-decoration:none;font-weight:bold;"
+              style="background:#4f46e5;color:#ffffff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block;"
             >
-              Activate Account
+              Activate Account & Create Password
             </a>
+            <p style="color:#64748b;font-size:12px;margin-top:8px;">
+              * This one-time password setup link expires in 24 hours.
+            </p>
           </div>
 
-          <p style="color:#64748b;font-size:13px;">
-            This secure activation link expires in 24 hours.
-          </p>
+          <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;" />
+
+          <div style="space-y:16px;">
+            <div style="margin-bottom:16px;">
+              <p style="margin:0 0 4px 0;font-weight:bold;color:#1e293b;">📌 Permanent Dashboard Login Link (Bookmark this):</p>
+              <a href="${loginUrl}" target="_blank" style="color:#4f46e5;word-break:break-all;font-size:14px;">${loginUrl}</a>
+            </div>
+
+            <div>
+              <p style="margin:0 0 4px 0;font-weight:bold;color:#1e293b;">🔗 Visitor Pre-Booking Link (Share with visitors):</p>
+              <a href="${preBookingUrl}" target="_blank" style="color:#059669;word-break:break-all;font-size:14px;">${preBookingUrl}</a>
+            </div>
+          </div>
         </div>
 
         <div style="background:#0f172a;color:#cbd5e1;padding:16px;text-align:center;font-size:12px;">

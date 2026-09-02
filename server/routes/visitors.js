@@ -13,6 +13,11 @@ const sendNotification = require('../utils/firebaseNotification');
 const User = require('../models/User');
 const Company = require('../models/Company');
 const checkApprovalPermission = require('../middleware/approvalPermission');
+const {
+  reserveVisitorPass,
+  releaseVisitorPass,
+  getVisitorPassUsage
+} = require('../services/subscriptionUsageService');
 
 router.use((req, res, next) => {
   if (req.path.startsWith('/pass/') || req.path.startsWith('/status/') || req.path.startsWith('/public-status/') || req.path === '/public-prebook' || req.path === '/upload' || req.path === '/clean-notifications-temp' || req.path.startsWith('/profile/')) {
@@ -462,10 +467,69 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Get visitor-pass usage for the current subscription cycle
+router.get('/subscription-usage', async (req, res) => {
+  try {
+    const usage = await getVisitorPassUsage(
+      req.companyId
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        companyId: usage.companyId,
+        plan: usage.plan,
+        status: usage.status,
+        expired: usage.expired,
+
+        visitorPassesUsed:
+          usage.visitorPassesUsed,
+
+        visitorPassLimit:
+          usage.visitorPassLimit,
+
+        unlimited:
+          usage.unlimited,
+
+        cycleStart:
+          usage.cycleStart,
+
+        renewalDate:
+          usage.renewalDate,
+
+        usageText: usage.unlimited
+          ? `${usage.visitorPassesUsed} / Unlimited`
+          : `${usage.visitorPassesUsed} / ${usage.visitorPassLimit}`
+      }
+    });
+  } catch (error) {
+    console.error(
+      'Get visitor-pass usage error:',
+      error
+    );
+
+    return res
+      .status(error.statusCode || 500)
+      .json({
+        success: false,
+        message:
+          error.message ||
+          'Unable to load visitor-pass usage.'
+      });
+  }
+});
+
 // Add a new visitor
 router.post('/', async (req, res) => {
   try {
-    const { visitorName, mobileNumber, email, companyName, photoUrl } = req.body;
+    const {
+      visitorName,
+      mobileNumber,
+      email,
+      companyName,
+      photoUrl,
+      hostName
+    } = req.body;
 
     // Check Blacklist
     const Blacklist = require('../models/Blacklist');
@@ -473,30 +537,6 @@ router.post('/', async (req, res) => {
     if (isBlacklisted) {
       // Force status to Rejected for security audit logs
       req.body.status = 'Rejected';
-    }
-
-    // Enforce Monthly Visitor Limits based on Plan
-    const Company = require('../models/Company');
-    const planLimits = require('../config/plans');
-    const company = await Company.findOne({ code: req.companyId });
-    if (company && company.subscription) {
-      const limits = planLimits[company.subscription];
-      if (limits && limits.visitors !== -1) {
-        const startOfMonth = new Date();
-        startOfMonth.setDate(1);
-        startOfMonth.setHours(0, 0, 0, 0);
-
-        const count = await Visitor.countDocuments({
-          companyId: req.companyId,
-          createdAt: { $gte: startOfMonth }
-        });
-
-        if (count >= limits.visitors) {
-          return res.status(403).json({
-            message: `Visitor limit reached. Your current plan (${company.subscription}) only allows up to ${limits.visitors} visitors per month. Please upgrade your subscription.`
-          });
-        }
-      }
     }
 
     // 1. Upsert Visitor Profile
@@ -564,8 +604,49 @@ router.post('/', async (req, res) => {
     }
 
     let initialStatus = req.body.isDraft ? 'Draft' : (req.body.status || 'Pending');
-    if (visitType === 'DIRECT_VISIT' && !req.body.isDraft) {
-      initialStatus = 'Approved'; // Bypass Pending Approval for Direct Visits
+    if (
+      visitType === 'DIRECT_VISIT' &&
+      !req.body.isDraft &&
+      !isBlacklisted
+    ) {
+      initialStatus = 'Approved';
+    }
+
+    if (isBlacklisted) {
+      initialStatus = 'Rejected';
+    }
+
+    // Count only a new, approved direct-visit pass.
+    // Draft and pending visitor records do not consume pass usage.
+    const shouldCountPass =
+      visitType === 'DIRECT_VISIT' &&
+      initialStatus === 'Approved' &&
+      !req.body.isDraft;
+
+    let passReservation = null;
+
+    if (shouldCountPass) {
+      try {
+        passReservation = await reserveVisitorPass(
+          req.companyId
+        );
+      } catch (usageError) {
+        return res
+          .status(usageError.statusCode || 500)
+          .json({
+            success: false,
+            code:
+              usageError.code ||
+              'VISITOR_PASS_USAGE_ERROR',
+            message:
+              usageError.message ||
+              'Unable to verify visitor-pass usage.',
+            usage: {
+              used: usageError.used,
+              limit: usageError.limit
+            }
+          });
+      }
     }
 
     const visitor = new Visitor({
@@ -575,13 +656,56 @@ router.post('/', async (req, res) => {
       profileId,
       visitId,
       bookingId,
-      qrCode,
-      qrPayload,
+      qrCode:
+        shouldCountPass && passReservation
+          ? qrCode
+          : '',
+
+      qrPayload:
+        shouldCountPass && passReservation
+          ? qrPayload
+          : null,
+
+      passUsageCounted: Boolean(
+        shouldCountPass && passReservation
+      ),
+
+      passGeneratedAt:
+        shouldCountPass && passReservation
+          ? new Date()
+          : null,
+
+      usageCycleStart:
+        passReservation?.cycleStart || null,
+
+      usageCycleEnd:
+        passReservation?.cycleEnd || null,
+
       visitType,
       status: initialStatus,
       approvalStatus: initialStatus === 'Approved' ? 'APPROVED' : 'PENDING'
     });
-    const newVisitor = await visitor.save();
+
+    let newVisitor;
+
+    try {
+      newVisitor = await visitor.save();
+    } catch (passSaveError) {
+      if (passReservation?.usage?._id) {
+        try {
+          await releaseVisitorPass(
+            passReservation.usage._id
+          );
+        } catch (releaseError) {
+          console.error(
+            'Failed to release direct visitor-pass reservation:',
+            releaseError
+          );
+        }
+      }
+
+      throw passSaveError;
+    }
 
     try {
       const { createNotification } = require('../services/notificationService');
@@ -1364,31 +1488,116 @@ router.patch('/:id/approve', checkApprovalPermission, async (req, res) => {
       visitor.bookingId = `BK${bNum.toString().padStart(6, '0')}`;
     }
 
-    const rawFrontendUrl = process.env.FRONTEND_URL || 'https://zone-monitor.vercel.app';
-    const frontendUrl = String(rawFrontendUrl).replace(/[\r\n\t]/g, '').trim().replace(/\/+$/, '');
-    visitor.qrCode = `${frontendUrl}/pass/${visitor.visitId || visitor._id}`;
-    visitor.qrPayload = {
-      bookingId: visitor.bookingId,
-      visitorId: visitor.profileId || visitor.visitId,
-      mobile: visitor.mobileNumber
-    };
+    let passReservation = null;
 
-    const updatedVisitor = await visitor.save();
+    // Old or retried records may already have consumed usage.
+    // Reserve only when this visit has never been counted.
+    if (!visitor.passUsageCounted) {
+      try {
+        passReservation = await reserveVisitorPass(
+          visitor.companyId || req.companyId
+        );
+      } catch (usageError) {
+        return res
+          .status(usageError.statusCode || 500)
+          .json({
+            success: false,
+            code:
+              usageError.code ||
+              'VISITOR_PASS_USAGE_ERROR',
+            message:
+              usageError.message ||
+              'Unable to verify visitor-pass usage.',
+            usage: {
+              used: usageError.used,
+              limit: usageError.limit
+            }
+          });
+      }
+    }
+
+    let updatedVisitor;
+
+    try {
+      const rawFrontendUrl =
+        process.env.FRONTEND_URL ||
+        'https://zone-monitor.vercel.app';
+
+      const frontendUrl = String(rawFrontendUrl)
+        .replace(/[\r\n\t]/g, '')
+        .trim()
+        .replace(/\/+$/, '');
+
+      visitor.qrCode =
+        `${frontendUrl}/pass/${visitor.visitId || visitor._id}`;
+
+      visitor.qrPayload = {
+        bookingId: visitor.bookingId,
+        visitorId:
+          visitor.profileId ||
+          visitor.visitId,
+        mobile: visitor.mobileNumber
+      };
+
+      visitor.passUsageCounted = true;
+
+      visitor.passGeneratedAt =
+        visitor.passGeneratedAt ||
+        new Date();
+
+      visitor.usageCycleStart =
+        visitor.usageCycleStart ||
+        passReservation?.cycleStart ||
+        null;
+
+      visitor.usageCycleEnd =
+        visitor.usageCycleEnd ||
+        passReservation?.cycleEnd ||
+        null;
+
+      updatedVisitor = await visitor.save();
+    } catch (passSaveError) {
+      if (passReservation?.usage?._id) {
+        try {
+          await releaseVisitorPass(
+            passReservation.usage._id
+          );
+        } catch (releaseError) {
+          console.error(
+            'Failed to release visitor approval pass reservation:',
+            releaseError
+          );
+        }
+      }
+
+      throw passSaveError;
+    }
 
     // Trigger Notifications & Emails
-    await visitorNotificationService.notifyVisitorEvent({
-      visitor: updatedVisitor,
-      event: visitorNotificationService.VISITOR_EVENTS.APPROVED,
-      actor: req.user,
-      io: req.app.get('io')
-    });
+    try {
+      await visitorNotificationService.notifyVisitorEvent({
+        visitor: updatedVisitor,
+        event:
+          visitorNotificationService
+            .VISITOR_EVENTS.APPROVED,
+        actor: req.user,
+        io: req.app.get('io')
+      });
 
-    await visitorNotificationService.notifyVisitorEvent({
-      visitor: updatedVisitor,
-      event: visitorNotificationService.VISITOR_EVENTS.QR_AVAILABLE,
-      actor: req.user,
-      io: req.app.get('io')
-    });
+      await visitorNotificationService.notifyVisitorEvent({
+        visitor: updatedVisitor,
+        event:
+          visitorNotificationService
+            .VISITOR_EVENTS.QR_AVAILABLE,
+        actor: req.user,
+        io: req.app.get('io')
+      });
+    } catch (notificationError) {
+      console.error(
+        'Visitor approved, but notification failed:',
+        notificationError
+      );
+    }
 
     await logAction(req, `Visitor Pre-Booking Approved`, 'Visitor', {
       userId: req.user ? req.user._id : undefined,

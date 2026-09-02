@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Lock, Mail, CheckCircle, Eye, EyeOff, Building, User, Phone, Sparkles } from 'lucide-react';
 import logoImg from '../assets/logo.svg';
 
 const Login = () => {
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const companyCodeParam = searchParams.get('company');
+
   const [mode, setMode] = useState('login'); // 'login' or 'register'
   
   // Login fields
@@ -36,7 +40,12 @@ const Login = () => {
     setErrorMsg('');
 
     if (mode === 'login') {
-      const result = await login(email, password, rememberMe);
+      const result = await login(
+        email,
+        password,
+        rememberMe,
+        companyCodeParam?.trim().toUpperCase() || ''
+      );
       if (result.success) {
         setIsLoading(false);
         setIsSuccess(true);
@@ -109,6 +118,13 @@ const Login = () => {
           </div>
           <h1 className="text-3xl font-bold text-gray-900 mb-1">FIC VMS</h1>
           <p className="text-gray-500 text-sm font-medium">{mode === 'login' ? 'Zone Monitoring & Visitor Management' : 'SaaS Company Registration'}</p>
+          {companyCodeParam && (
+            <div className="mt-3 px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-lg inline-flex items-center gap-1.5">
+              <Building size={14} className="text-[#1E1B6E]" />
+              <span className="text-xs font-semibold text-gray-600">Company Portal:</span>
+              <span className="text-xs font-bold text-[#1E1B6E] tracking-wider uppercase">{companyCodeParam}</span>
+            </div>
+          )}
         </div>
 
         {isSuccess && mode === 'register' ? (

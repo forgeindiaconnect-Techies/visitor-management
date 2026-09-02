@@ -144,6 +144,116 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// POST /api/users/invite - Send one-time employee activation link
+router.post('/invite', async (req, res) => {
+  try {
+    const loggedInCompanyId = req.companyId || req.user?.companyId;
+
+    if (!loggedInCompanyId || loggedInCompanyId === 'SYSTEM') {
+      return res.status(400).json({
+        success: false,
+        message: 'Unable to identify company for employee invitation'
+      });
+    }
+
+    const { name, email, role, department, branch, mobileNumber } = req.body;
+
+    if (!name || !email || !role) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name, email, and role are required'
+      });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Check if user already exists in this company
+    const existingUser = await User.findOne({
+      companyId: loggedInCompanyId,
+      email: normalizedEmail
+    });
+
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        message: 'This email is already registered in your company'
+      });
+    }
+
+    // Generate secure 24-hour setup token
+    const crypto = require('crypto');
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    const user = await User.create({
+      name,
+      email: normalizedEmail,
+      mobileNumber: mobileNumber || '',
+      password: await require('bcrypt').hash(crypto.randomBytes(16).toString('hex'), 12),
+      role,
+      department: department || 'General',
+      branch: branch || 'Main Branch',
+      branchId: branch || 'Main Branch',
+      companyId: loggedInCompanyId,
+      status: 'Active',
+      mustSetPassword: true,
+      passwordSetupTokenHash: tokenHash,
+      passwordSetupExpiresAt: expiresAt,
+      createdBy: req.userName || 'Company Super Admin'
+    });
+
+    // Send invitation email
+    const Company = require('../models/Company');
+    const company = await Company.findOne({ code: loggedInCompanyId });
+    const { sendEmail } = require('../utils/emailService');
+
+    const baseUrl = process.env.FRONTEND_URL || 'https://visitor-management-indol.vercel.app';
+    const activationLink = `${baseUrl.replace(/\/$/, '')}/activate-account/${rawToken}`;
+
+    await sendEmail({
+      to: normalizedEmail,
+      subject: `Employee Invitation - Set Up Your ${company?.name || 'Company'} Account`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+          <div style="background-color: #1E1B6E; color: white; padding: 24px; text-align: center;">
+            <h2 style="margin: 0;">Account Invitation</h2>
+            <p style="margin: 6px 0 0; color: #c7d2fe;">${company?.name || 'Zone Monitor'}</p>
+          </div>
+          <div style="padding: 24px; color: #334155;">
+            <p>Hello <strong>${name}</strong>,</p>
+            <p>You have been invited to join <strong>${company?.name || 'Zone Monitor'}</strong> as <strong>${role}</strong>.</p>
+            <div style="background: #f8fafc; padding: 16px; border-radius: 8px; margin: 16px 0;">
+              <p style="margin: 4px 0;"><strong>Company Code:</strong> ${loggedInCompanyId}</p>
+              <p style="margin: 4px 0;"><strong>Role:</strong> ${role}</p>
+              <p style="margin: 4px 0;"><strong>Branch:</strong> ${branch || 'Main Branch'}</p>
+              <p style="margin: 4px 0;"><strong>Email:</strong> ${normalizedEmail}</p>
+            </div>
+            <p>Click the button below to set up your password and activate your employee account. This secure link expires in 24 hours.</p>
+            <div style="text-align: center; margin: 24px 0;">
+              <a href="${activationLink}" style="background-color: #1E1B6E; color: white; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Activate Account</a>
+            </div>
+            <p style="font-size: 12px; color: #64748b;">If the button does not work, copy and paste this URL into your browser:<br/><a href="${activationLink}">${activationLink}</a></p>
+          </div>
+        </div>
+      `
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: `Invitation email sent to ${normalizedEmail}`,
+      user,
+      activationLink
+    });
+  } catch (error) {
+    console.error('Employee invitation error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to send invitation link'
+    });
+  }
+});
+
 // POST new user
 router.post('/', async (req, res) => {
   try {

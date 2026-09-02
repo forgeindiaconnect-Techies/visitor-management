@@ -10,6 +10,10 @@ const {
   sendAdminVisitorPassEmail
 } = require('../utils/emailService');
 const { formatDisplayName } = require('../utils/nameFormatter');
+const {
+  reserveVisitorPass,
+  releaseVisitorPass
+} = require('../services/subscriptionUsageService');
 
 const createVisitorId = async (companyCode) => {
   const normalizedCode = String(companyCode).trim().toUpperCase();
@@ -439,28 +443,78 @@ const approvePreBooking = async (req, res) => {
       });
     }
 
-    const qrToken = crypto.randomBytes(32).toString("hex");
+    let passReservation = null;
 
-    preBooking.status = "APPROVED";
-    preBooking.qrToken = qrToken;
-    preBooking.approvedAt = new Date();
+    try {
+      // Reserve one pass before generating a new QR pass.
+      // Existing approved passes cannot reach this code because of the
+      // PENDING status validation above.
+      passReservation = await reserveVisitorPass(
+        preBooking.companyId
+      );
+    } catch (usageError) {
+      return res
+        .status(usageError.statusCode || 500)
+        .json({
+          success: false,
+          code: usageError.code || 'VISITOR_PASS_USAGE_ERROR',
+          message:
+            usageError.message ||
+            'Unable to verify visitor-pass usage.',
+          usage: {
+            used: usageError.used,
+            limit: usageError.limit
+          }
+        });
+    }
 
-    preBooking.approvalDetails = {
-      approvedBy: req.userId,
-      approvedByRole: req.userRole,
-      approvedAt: new Date(),
-      method: 'Dashboard'
-    };
+    try {
+      const qrToken = crypto.randomBytes(32).toString('hex');
 
-    preBooking.statusHistory.push({
-      status: 'APPROVED',
-      changedBy: req.userId,
-      changedByRole: req.userRole,
-      changedAt: new Date(),
-      reason: ''
-    });
+      preBooking.status = 'APPROVED';
+      preBooking.qrToken = qrToken;
+      preBooking.approvedAt = new Date();
 
-    await preBooking.save();
+      preBooking.passUsageCounted = true;
+      preBooking.passGeneratedAt = new Date();
+      preBooking.usageCycleStart =
+        passReservation.cycleStart;
+      preBooking.usageCycleEnd =
+        passReservation.cycleEnd;
+
+      preBooking.approvalDetails = {
+        approvedBy: req.userId,
+        approvedByRole: req.userRole,
+        approvedAt: new Date(),
+        method: 'Dashboard'
+      };
+
+      preBooking.statusHistory.push({
+        status: 'APPROVED',
+        changedBy: req.userId,
+        changedByRole: req.userRole,
+        changedAt: new Date(),
+        reason: ''
+      });
+
+      await preBooking.save();
+    } catch (passGenerationError) {
+      // The pass was not saved successfully, so restore the usage.
+      if (passReservation?.usage?._id) {
+        try {
+          await releaseVisitorPass(
+            passReservation.usage._id
+          );
+        } catch (releaseError) {
+          console.error(
+            'Failed to release visitor-pass reservation:',
+            releaseError
+          );
+        }
+      }
+
+      throw passGenerationError;
+    }
 
     try {
       await sendApprovalEmail(preBooking);
@@ -1599,45 +1653,151 @@ const reApprovePreBooking = async (req, res) => {
       ]
     };
 
-    const updatedPreBooking = await PreBooking.findOneAndUpdate(
-      query,
-      {
-        $set: {
-          status: "APPROVED",
-          approvalStatus: "APPROVED",
-          rejectedAt: null,
-          rejectionReason: null,
-          approvedAt: new Date(),
-          qrToken: crypto.randomBytes(32).toString("hex"),
-          trackingToken: crypto.randomBytes(32).toString("hex"),
-          trackingTokenExpiresAt: new Date(
-            Date.now() + 30 * 24 * 60 * 60 * 1000
-          ),
-          approvalDetails: {
-            approvedBy: req.userId,
-            approvedByRole: req.userRole || rawRole || "Super Admin",
-            approvedAt: new Date(),
-            method: "Super Admin Re-Approval"
-          }
-        },
-        $push: {
-          reApprovalHistory: {
-            reApprovedBy: req.userId,
-            reApprovedByRole: req.userRole || rawRole || "Super Admin",
-            reApprovedAt: new Date(),
-            previousStatus: "REJECTED"
-          }
-        }
-      },
-      {
-        new: true
-      }
-    );
+    const existingPreBooking =
+      await PreBooking.findOne(query);
 
-    if (!updatedPreBooking) {
+    if (!existingPreBooking) {
       return res.status(404).json({
         success: false,
-        message: "Pre-booking not found in your company or not in rejected status."
+        message:
+          'Pre-booking not found in your company or not in rejected status.'
+      });
+    }
+
+    let passReservation = null;
+
+    // Reserve usage only if this visit has never consumed a pass.
+    if (!existingPreBooking.passUsageCounted) {
+      try {
+        passReservation = await reserveVisitorPass(
+          existingPreBooking.companyId
+        );
+      } catch (usageError) {
+        return res
+          .status(usageError.statusCode || 500)
+          .json({
+            success: false,
+            code:
+              usageError.code ||
+              'VISITOR_PASS_USAGE_ERROR',
+            message:
+              usageError.message ||
+              'Unable to verify visitor-pass usage.',
+            usage: {
+              used: usageError.used,
+              limit: usageError.limit
+            }
+          });
+      }
+    }
+
+    const now = new Date();
+
+    const updateFields = {
+      status: 'APPROVED',
+      approvalStatus: 'APPROVED',
+      rejectedAt: null,
+      rejectionReason: null,
+      approvedAt: now,
+
+      qrToken:
+        crypto.randomBytes(32).toString('hex'),
+
+      trackingToken:
+        crypto.randomBytes(32).toString('hex'),
+
+      trackingTokenExpiresAt: new Date(
+        Date.now() + 30 * 24 * 60 * 60 * 1000
+      ),
+
+      passUsageCounted: true,
+
+      passGeneratedAt:
+        existingPreBooking.passGeneratedAt || now,
+
+      usageCycleStart:
+        existingPreBooking.usageCycleStart ||
+        passReservation?.cycleStart ||
+        null,
+
+      usageCycleEnd:
+        existingPreBooking.usageCycleEnd ||
+        passReservation?.cycleEnd ||
+        null,
+
+      approvalDetails: {
+        approvedBy: req.userId,
+        approvedByRole:
+          req.userRole ||
+          rawRole ||
+          'Super Admin',
+        approvedAt: now,
+        method: 'Super Admin Re-Approval'
+      }
+    };
+
+    let updatedPreBooking;
+
+    try {
+      updatedPreBooking =
+        await PreBooking.findOneAndUpdate(
+          query,
+          {
+            $set: updateFields,
+
+            $push: {
+              reApprovalHistory: {
+                reApprovedBy: req.userId,
+                reApprovedByRole:
+                  req.userRole ||
+                  rawRole ||
+                  'Super Admin',
+                reApprovedAt: now,
+                previousStatus: 'REJECTED'
+              }
+            }
+          },
+          {
+            new: true,
+            runValidators: true
+          }
+        );
+    } catch (updateError) {
+      if (passReservation?.usage?._id) {
+        try {
+          await releaseVisitorPass(
+            passReservation.usage._id
+          );
+        } catch (releaseError) {
+          console.error(
+            'Failed to release re-approval pass reservation:',
+            releaseError
+          );
+        }
+      }
+
+      throw updateError;
+    }
+
+    // Another request may have re-approved it first.
+    if (!updatedPreBooking) {
+      if (passReservation?.usage?._id) {
+        try {
+          await releaseVisitorPass(
+            passReservation.usage._id
+          );
+        } catch (releaseError) {
+          console.error(
+            'Failed to release unused re-approval reservation:',
+            releaseError
+          );
+        }
+      }
+
+      return res.status(409).json({
+        success: false,
+        message:
+          'This pre-booking has already been processed.'
       });
     }
 
@@ -2006,35 +2166,80 @@ const createAndSendVisitorInvitation = async (req, res) => {
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedMobile = String(mobileNumber).replace(/\D/g, '');
 
+    let passReservation = null;
+
+    try {
+      passReservation = await reserveVisitorPass(company.code);
+    } catch (usageError) {
+      return res
+        .status(usageError.statusCode || 500)
+        .json({
+          success: false,
+          code: usageError.code || 'VISITOR_PASS_USAGE_ERROR',
+          message:
+            usageError.message ||
+            'Unable to verify visitor-pass usage.',
+          usage: {
+            used: usageError.used,
+            limit: usageError.limit
+          }
+        });
+    }
+
     const visitorId = await createVisitorId(company.code);
     const trackingToken = crypto.randomBytes(32).toString('hex');
     const qrToken = crypto.randomBytes(32).toString('hex');
 
-    const preBooking = await PreBooking.create({
-      companyId: company.code,
-      visitorId,
-      qrToken,
-      facePhoto: req.body.facePhoto || '',
-      fullName: fullName.trim(),
-      mobileNumber: normalizedMobile,
-      email: normalizedEmail,
-      visitingCompany: company.name,
-      hostEmployee: hostEmployee || 'Direct Visits',
-      visitPurpose: visitPurpose || 'Official Visit',
-      visitDate,
-      expectedTime,
-      branchLocation,
-      vehicleNumber: vehicleNumber || '',
-      visitorType: 'NORMAL',
-      bookingType: 'ADMIN_INVITATION',
-      status: 'APPROVED',
-      approvedAt: new Date(),
-      approvedBy: req.userId,
-      trackingToken,
-      trackingTokenExpiresAt: new Date(
-        Date.now() + 30 * 24 * 60 * 60 * 1000
-      )
-    });
+    let preBooking;
+
+    try {
+      preBooking = await PreBooking.create({
+        companyId: company.code,
+        visitorId,
+        qrToken,
+
+        passUsageCounted: true,
+        passGeneratedAt: new Date(),
+        usageCycleStart: passReservation.cycleStart,
+        usageCycleEnd: passReservation.cycleEnd,
+
+        facePhoto: req.body.facePhoto || '',
+        fullName: fullName.trim(),
+        mobileNumber: normalizedMobile,
+        email: normalizedEmail,
+        visitingCompany: company.name,
+        hostEmployee: hostEmployee || 'Direct Visits',
+        visitPurpose: visitPurpose || 'Official Visit',
+        visitDate,
+        expectedTime,
+        branchLocation,
+        vehicleNumber: vehicleNumber || '',
+        visitorType: 'NORMAL',
+        bookingType: 'ADMIN_INVITATION',
+        status: 'APPROVED',
+        approvedAt: new Date(),
+        approvedBy: req.userId,
+        trackingToken,
+        trackingTokenExpiresAt: new Date(
+          Date.now() + 30 * 24 * 60 * 60 * 1000
+        )
+      });
+    } catch (passGenerationError) {
+      if (passReservation?.usage?._id) {
+        try {
+          await releaseVisitorPass(
+            passReservation.usage._id
+          );
+        } catch (releaseError) {
+          console.error(
+            'Failed to release admin visitor-pass reservation:',
+            releaseError
+          );
+        }
+      }
+
+      throw passGenerationError;
+    }
 
     const frontendUrl = String(
       process.env.FRONTEND_URL || 'https://zone-monitor.vercel.app'

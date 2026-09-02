@@ -262,53 +262,126 @@ export const VisitorProvider = ({ children }) => {
   }, [allVisitors, activeBranch]);
 
   const addVisitor = async (visitorData) => {
-    // Only Super Admin uses the activeBranch from dropdown or form.
-    // Admin, Security, and MD are locked to their own branch.
+    // Super Admin can select a branch.
+    // Other company users remain restricted to their branch.
     let userBranch = visitorData.branch;
+
     if (!userBranch) {
-      userBranch = currentUser && !['Super Admin'].includes(currentUser.role) 
-        ? currentUser.branch 
-        : (activeBranch === 'All Branches' ? '' : activeBranch);
+      userBranch =
+        currentUser &&
+        !['Super Admin'].includes(
+          currentUser.role
+        )
+          ? currentUser.branch
+          : activeBranch === 'All Branches'
+            ? ''
+            : activeBranch;
     }
-    
+
     const newVisitor = {
       ...visitorData,
-      status: visitorData.status || 'Pending',
-      branch: userBranch,
+      status:
+        visitorData.status || 'Pending',
+      branch: userBranch
     };
-    
+
+    const token =
+      localStorage.getItem('token') ||
+      currentUser?.token;
+
     try {
       const response = await fetch(API_URL, {
         method: 'POST',
-        headers: { 
+
+        headers: {
           'Content-Type': 'application/json',
-          ...(currentUser?.token && { 'Authorization': `Bearer ${currentUser.token}` })
+
+          ...(token && {
+            Authorization: `Bearer ${token}`
+          }),
+
+          'X-Company-Id':
+            currentUser?.companyId || ''
         },
+
         body: JSON.stringify(newVisitor)
       });
-      
-      if (response.ok) {
-        const savedVisitor = await response.json();
-        setVisitors(prev => {
-          const newList = [...prev, savedVisitor];
-          allVisitorsRef.current = newList;
-          return newList;
-        });
-        addNotification('Visitor Registered', `${savedVisitor.visitorName} has been pre-registered.`, 'success');
-      } else {
-        const errorData = await response.json();
-        addNotification('Registration Failed', errorData.message || 'Server rejected the request', 'error');
+
+      let responseData = {};
+
+      try {
+        responseData = await response.json();
+      } catch {
+        responseData = {};
       }
-    } catch (err) {
-      console.error(err);
-      // Fallback for when backend is completely unreachable (NetworkError)
-      const fallbackVisitor = { ...newVisitor, id: Date.now().toString() };
-      setVisitors(prev => {
-        const newList = [...prev, fallbackVisitor];
-        allVisitorsRef.current = newList;
-        return newList;
+
+      if (!response.ok) {
+        if (
+          responseData.code ===
+          'VISITOR_PASS_LIMIT_REACHED'
+        ) {
+          addNotification(
+            'Visitor-Pass Limit Reached',
+            'Your monthly visitor-pass limit has been reached. Please upgrade your subscription.',
+            'error'
+          );
+
+          return {
+            success: false,
+            limitReached: true
+          };
+        }
+
+        throw new Error(
+          responseData.message ||
+          'Server rejected the visitor registration.'
+        );
+      }
+
+      const savedVisitor =
+        responseData.data ||
+        responseData.visitor ||
+        responseData;
+
+      setVisitors((previousVisitors) => {
+        const updatedVisitors = [
+          ...previousVisitors,
+          savedVisitor
+        ];
+
+        allVisitorsRef.current =
+          updatedVisitors;
+
+        return updatedVisitors;
       });
-      addNotification('Visitor Registered (Offline)', `${fallbackVisitor.visitorName} saved locally.`, 'warning');
+
+      addNotification(
+        'Visitor Registered',
+        `${savedVisitor.visitorName} has been registered successfully.`,
+        'success'
+      );
+
+      return {
+        success: true,
+        visitor: savedVisitor
+      };
+    } catch (error) {
+      console.error(
+        'Visitor registration error:',
+        error
+      );
+
+      addNotification(
+        'Registration Failed',
+        error.message ||
+          'Unable to connect to the server. The visitor was not registered.',
+        'error'
+      );
+
+      return {
+        success: false,
+        error: error.message
+      };
     }
   };
 

@@ -5,17 +5,17 @@ const authMiddleware = require('../middleware/authMiddleware');
 const logAction = require('../utils/auditLogger');
 const getTenantFilter = require('../utils/tenantFilter');
 
-// Public: Get active company branches for pre-booking dropdown
-router.get('/public/:companyId', async (req, res) => {
-  try {
-    const Company = require('../models/Company');
+const Company = require('../models/Company');
 
-    const companyId = String(req.params.companyId)
-      .trim()
-      .toUpperCase();
+// Public: Get active company branches for pre-booking dropdown
+router.get('/public/:companyCode', async (req, res) => {
+  try {
+    const companyCode = String(
+      req.params.companyCode
+    ).trim().toUpperCase();
 
     const company = await Company.findOne({
-      code: companyId,
+      code: companyCode,
       status: 'Active'
     });
 
@@ -27,7 +27,7 @@ router.get('/public/:companyId', async (req, res) => {
     }
 
     const branches = await BranchSetting.find({
-      companyId
+      companyId: companyCode
     })
       .select('branchName')
       .sort({ branchName: 1 });

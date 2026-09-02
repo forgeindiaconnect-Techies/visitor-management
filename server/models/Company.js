@@ -43,6 +43,12 @@ const companySchema = new mongoose.Schema({
     default: ['Super Admin', 'MD', 'Senior HR', 'IT']
   },
 
+  subscriptionStartedAt: {
+    type: Date,
+    default: Date.now,
+    required: true
+  },
+
   subscriptionExpiresAt: {
     type: Date,
     required: true

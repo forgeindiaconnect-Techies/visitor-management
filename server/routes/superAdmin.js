@@ -5,6 +5,9 @@ const User = require('../models/User');
 const Visitor = require('../models/Visitor');
 const authMiddleware = require('../middleware/authMiddleware');
 const logAction = require('../utils/auditLogger');
+const {
+  startNewSubscriptionCycle
+} = require('../services/subscriptionCycleService');
 
 // Require SaaS Super Admin role for all super-admin endpoints
 router.use(authMiddleware);
@@ -500,61 +503,70 @@ router.patch('/upgrade-requests/:id', async (req, res) => {
     await upgradeReq.save();
 
     if (status === 'Approved') {
-      // Find the company and update subscription
-      const company = await Company.findOne({ code: upgradeReq.companyId });
-      if (company) {
-        company.subscription = upgradeReq.requestedPlan;
+      const company = await Company.findOne({
+        code: String(upgradeReq.companyId)
+          .trim()
+          .toUpperCase()
+      });
 
-        let newExpiry = company.subscriptionExpiresAt && company.status !== 'Expired' && new Date(company.subscriptionExpiresAt) > new Date()
-          ? new Date(company.subscriptionExpiresAt)
-          : new Date();
-
-        newExpiry.setDate(newExpiry.getDate() + parseInt(upgradeReq.durationDays, 10));
-        company.subscriptionExpiresAt = newExpiry;
-        company.status = 'Active';
-
-        company.upgradeHistory.push({
-          plan: company.subscription,
-          startDate: new Date(),
-          endDate: company.subscriptionExpiresAt,
-          updatedBy: req.userRole || 'SaaS Super Admin'
+      if (!company) {
+        return res.status(404).json({
+          success: false,
+          message: 'Company not found'
         });
+      }
 
-        await company.save();
-
-        // Create Payment record
-        const Payment = require('../models/Payment');
-        const invoiceNo = `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-        const amount = upgradeReq.amount;
-        const gst = Math.round(amount * 0.18);
-        await Payment.create({
-          invoiceNo,
-          companyId: company.code,
-          companyName: company.name,
-          plan: company.subscription,
-          amount: amount,
-          gst: gst,
-          total: amount + gst,
-          expiryDate: company.subscriptionExpiresAt,
-          durationDays: upgradeReq.durationDays,
-          processedBy: req.userRole || 'SaaS Super Admin',
-          status: 'Paid'
+      try {
+        await startNewSubscriptionCycle({
+          company,
+          newPlan: upgradeReq.requestedPlan,
+          updatedBy:
+            req.userRole ||
+            req.userId ||
+            'SaaS Super Admin',
+          activationDate: new Date()
         });
+      } catch (subscriptionError) {
+        return res
+          .status(subscriptionError.statusCode || 400)
+          .json({
+            success: false,
+            message: subscriptionError.message
+          });
+      }
 
-        // Notify Tenant
-        const Notification = require('../models/Notification');
-        const newNotif = await Notification.create({
-          companyId: company.code,
-          type: 'success',
-          module: 'Subscription',
-          title: '🎉 Congratulations',
-          message: `Your subscription has been upgraded to ${company.subscription}. It expires on ${company.subscriptionExpiresAt.toLocaleDateString()}.`,
-          createdBy: req.userRole || 'System'
-        });
-        const io = req.app.get('io');
-        if (io) {
-          io.to(`company:${newNotif.companyId}`).emit('new_notification', newNotif);
-        }
+      // Create Payment record
+      const Payment = require('../models/Payment');
+      const invoiceNo = `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const amount = upgradeReq.amount;
+      const gst = Math.round(amount * 0.18);
+      await Payment.create({
+        invoiceNo,
+        companyId: company.code,
+        companyName: company.name,
+        plan: company.subscription,
+        amount: amount,
+        gst: gst,
+        total: amount + gst,
+        expiryDate: company.subscriptionExpiresAt,
+        durationDays: upgradeReq.durationDays,
+        processedBy: req.userRole || 'SaaS Super Admin',
+        status: 'Paid'
+      });
+
+      // Notify Tenant
+      const Notification = require('../models/Notification');
+      const newNotif = await Notification.create({
+        companyId: company.code,
+        type: 'success',
+        module: 'Subscription',
+        title: '🎉 Congratulations',
+        message: `Your subscription has been upgraded to ${company.subscription}. It expires on ${company.subscriptionExpiresAt.toLocaleDateString()}.`,
+        createdBy: req.userRole || 'System'
+      });
+      const io = req.app.get('io');
+      if (io) {
+        io.to(`company:${newNotif.companyId}`).emit('new_notification', newNotif);
       }
     }
 

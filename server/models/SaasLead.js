@@ -26,6 +26,46 @@ const saasLeadSchema = new mongoose.Schema({
     type: Number,
     default: 1
   },
+  requestedPlan: {
+    type: String,
+    enum: [
+      'One Day Trial',
+      'Basic',
+      'Standard',
+      'Enterprise'
+    ],
+    required: true,
+    default: 'One Day Trial'
+  },
+  paymentStatus: {
+    type: String,
+    enum: [
+      'Not Required',
+      'Pending',
+      'Paid',
+      'Failed',
+      'Refunded'
+    ],
+    default: function () {
+      return this.requestedPlan === 'One Day Trial'
+        ? 'Not Required'
+        : 'Pending';
+    }
+  },
+  activatedPlan: {
+    type: String,
+    enum: [
+      'One Day Trial',
+      'Basic',
+      'Standard',
+      'Enterprise'
+    ],
+    default: null
+  },
+  convertedAt: {
+    type: Date,
+    default: null
+  },
   message: String,
   status: {
     type: String,

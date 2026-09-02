@@ -82,6 +82,27 @@ const visitorSchema = new mongoose.Schema({
   checkOutTime: { type: Date },
   exitNotes: { type: String },
   qrCode: { type: String },
+
+  passUsageCounted: {
+    type: Boolean,
+    default: false,
+    index: true
+  },
+
+  passGeneratedAt: {
+    type: Date,
+    default: null
+  },
+
+  usageCycleStart: {
+    type: Date,
+    default: null
+  },
+
+  usageCycleEnd: {
+    type: Date,
+    default: null
+  },
   qrPayload: { type: Object },
   approvedBy: {
     type: mongoose.Schema.Types.Mixed,

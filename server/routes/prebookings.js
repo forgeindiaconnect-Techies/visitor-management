@@ -72,7 +72,23 @@ router.post('/', async (req, res) => {
       }
     }
 
-    const companyId = req.headers['x-company-id'] || 'FIC001';
+    const reqCompanyCode = String(
+      req.body.companyId || req.headers['x-company-id'] || 'FIC001'
+    ).trim().toUpperCase();
+
+    const Company = require('../models/Company');
+    const targetCompany = await Company.findOne({
+      code: reqCompanyCode
+    });
+
+    if (!targetCompany || targetCompany.status !== 'Active') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or inactive company pre-booking link. Registration cannot be completed.'
+      });
+    }
+
+    const companyId = targetCompany.code;
     const targetBranch = branch || 'Head Office(KRISHNAGIRI)';
     const profileId = 'VP-' + Date.now().toString().slice(-6);
 

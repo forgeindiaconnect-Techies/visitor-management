@@ -6,6 +6,7 @@ const logAction = require('../utils/auditLogger');
 const { sendEmail, EmailTemplates } = require('../utils/emailService');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
+const { calculateSubscriptionCycle } = require('../services/subscriptionCycleService');
 
 const rateLimit = require('express-rate-limit');
 
@@ -18,14 +19,19 @@ const loginLimiter = rateLimit({
 // POST login
 router.post('/login', loginLimiter, async (req, res) => {
   try {
-    const { email, password, fcmToken } = req.body;
+    const { email, password, fcmToken, companyId } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({ message: 'Email and password are required' });
     }
 
+    const queryFilter = { email: email.toLowerCase() };
+    if (companyId && String(companyId).trim() && String(companyId).trim().toUpperCase() !== 'SYSTEM') {
+      queryFilter.companyId = String(companyId).trim().toUpperCase();
+    }
+
     // Find user in MongoDB
-    const user = await User.findOne({ email: email.toLowerCase() });
+    const user = await User.findOne(queryFilter);
     
     if (!user) {
 
@@ -228,21 +234,58 @@ router.post('/register-company', async (req, res) => {
     if (!req.body.adminPassword && req.body.password) {
       req.body.adminPassword = req.body.password;
     }
-    if (!req.body.subscriptionExpiresAt) {
-      const expiry = new Date();
-      expiry.setDate(expiry.getDate() + (req.body.subscription === 'One Day Trial' ? 1 : 30));
-      req.body.subscriptionExpiresAt = expiry;
+    const selectedPlan =
+      req.body.subscription ||
+      req.body.plan ||
+      'Basic';
+
+    let subscriptionCycle;
+
+    try {
+      subscriptionCycle =
+        calculateSubscriptionCycle(
+          selectedPlan,
+          new Date()
+        );
+    } catch (cycleError) {
+      return res
+        .status(cycleError.statusCode || 400)
+        .json({
+          success: false,
+          message: cycleError.message
+        });
     }
 
     const company = await Company.create({
       name: req.body.companyName,
-      code: req.body.companyCode.trim().toUpperCase(),
-      subscription: req.body.subscription,
-      status: "Active",
-      subscriptionExpiresAt: req.body.subscriptionExpiresAt,
+      code: req.body.companyCode
+        .trim()
+        .toUpperCase(),
+
+      subscription: selectedPlan,
+      status: 'Active',
+
+      subscriptionStartedAt:
+        subscriptionCycle.subscriptionStartedAt,
+
+      subscriptionExpiresAt:
+        subscriptionCycle.subscriptionExpiresAt,
+
       features: {
         preBookingEnabled: true
-      }
+      },
+
+      upgradeHistory: [
+        {
+          plan: selectedPlan,
+          startDate:
+            subscriptionCycle.subscriptionStartedAt,
+          endDate:
+            subscriptionCycle.subscriptionExpiresAt,
+          updatedBy:
+            req.userId || 'SaaS Super Admin'
+        }
+      ]
     });
 
     const hashedPassword = await bcrypt.hash(req.body.adminPassword, 12);
@@ -398,6 +441,7 @@ router.post('/activate-account/:token', async (req, res) => {
 
     return res.json({
       success: true,
+      companyCode: user.companyId,
       message: 'Account activated successfully! You can now log in with your credentials.'
     });
   } catch (error) {
