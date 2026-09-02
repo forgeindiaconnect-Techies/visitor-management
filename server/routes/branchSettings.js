@@ -3,6 +3,7 @@ const router = express.Router();
 const BranchSetting = require('../models/BranchSetting');
 const authMiddleware = require('../middleware/authMiddleware');
 const logAction = require('../utils/auditLogger');
+const getTenantFilter = require('../utils/tenantFilter');
 
 // Public: Get active company branches for pre-booking dropdown
 router.get('/public/:companyId', async (req, res) => {
@@ -48,9 +49,8 @@ router.use(authMiddleware);
 // GET all branch settings
 router.get('/', async (req, res) => {
   try {
-    const branches = await BranchSetting.find({
-      companyId: req.companyId
-    }).sort({ createdAt: -1 });
+    const tenantFilter = getTenantFilter(req);
+    const branches = await BranchSetting.find(tenantFilter).sort({ createdAt: -1 });
 
     return res.json({
       success: true,

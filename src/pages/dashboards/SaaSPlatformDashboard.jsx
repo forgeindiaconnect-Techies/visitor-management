@@ -39,8 +39,11 @@ const SaaSPlatformDashboard = () => {
   // Form states for creating a new company
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedLead, setSelectedLead] = useState(null);
-  const [subscription, setSubscription] = useState('Basic');
+  const [subscription, setSubscription] = useState('Standard');
   const [expiryDate, setExpiryDate] = useState('');
+  const [primaryColor, setPrimaryColor] = useState('#1E1B6E');
+  const [initialBranch, setInitialBranch] = useState('Main Branch');
+  const [logoUrlInput, setLogoUrlInput] = useState('');
   const [creating, setCreating] = useState(false);
   const [emailSubject, setEmailSubject] = useState('');
   const [emailMessage, setEmailMessage] = useState('');
@@ -483,6 +486,8 @@ const SaaSPlatformDashboard = () => {
     }
   };
 
+  const updateStatus = handleUpdateLeadStatus;
+
   const handleSendEmail = async (e) => {
     e.preventDefault();
     if (!selectedLead || !emailSubject || !emailMessage) return;
@@ -532,7 +537,10 @@ const SaaSPlatformDashboard = () => {
           headers: getHeaders(),
           body: JSON.stringify({
             subscription,
-            subscriptionExpiresAt: expiryDate
+            subscriptionExpiresAt: expiryDate,
+            primaryColor,
+            initialBranch,
+            logoUrl: logoUrlInput || selectedLead.logoUrl || ''
           })
         }
       );
@@ -1100,15 +1108,18 @@ const SaaSPlatformDashboard = () => {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-xs">
-                        <select 
+                        <select
                           value={lead.status}
-                          disabled={lead.status === 'Won' || lead.status === 'Lost'}
-                          onChange={(e) => handleUpdateLeadStatus(lead._id, e.target.value)}
+                          onChange={(event) =>
+                            updateStatus(lead._id, event.target.value)
+                          }
                           className="px-2 py-1 border rounded bg-white text-xs"
                         >
                           <option value="New">New</option>
                           <option value="Contacted">Contacted</option>
-                          <option value="Demo Scheduled">Demo Scheduled</option>
+                          <option value="Demo Scheduled">
+                            Demo Scheduled
+                          </option>
                           <option value="Negotiation">Negotiation</option>
                           <option value="Won">Won</option>
                           <option value="Lost">Lost</option>
@@ -1117,20 +1128,26 @@ const SaaSPlatformDashboard = () => {
                       <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
                         <button 
                           onClick={() => { setSelectedLead(lead); setActiveLeadTab('details'); }}
-                          className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded transition-colors inline-block"
+                          className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded transition-colors inline-block mr-1"
                         >
                           View Details
                         </button>
-                        {lead.status === 'Won' && !lead.convertedCompanyId ? (
-                          <button 
+                        {lead.status === 'Won' &&
+                         !lead.convertedCompanyId && (
+                          <button
+                            type="button"
                             onClick={() => { setSelectedLead(lead); setActiveLeadTab('convert'); }}
-                            className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded transition-colors inline-block"
+                            className="rounded-lg bg-indigo-700 px-4 py-2 text-white text-xs font-bold shadow hover:bg-indigo-800 transition"
                           >
                             Create Dashboard
                           </button>
-                        ) : lead.convertedCompanyId ? (
-                          <span className="text-xs text-green-600 font-bold bg-green-50 px-2 py-1 rounded inline-block">Converted</span>
-                        ) : null}
+                        )}
+
+                        {lead.convertedCompanyId && (
+                          <span className="font-semibold text-green-700 text-xs bg-green-50 px-2.5 py-1 rounded inline-block">
+                            Dashboard Created
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -1274,12 +1291,29 @@ const SaaSPlatformDashboard = () => {
                             </select>
                           </div>
                           <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-1">Subscription Expiry</label>
+                            <label className="block text-sm font-semibold text-gray-700 mb-1">Expiry Date</label>
                             <input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} className="w-full rounded-lg border border-gray-200 bg-gray-50 p-2.5 outline-none focus:ring-1 focus:ring-green-500" required />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-1">Company Logo URL</label>
+                            <input type="text" value={logoUrlInput} onChange={e => setLogoUrlInput(e.target.value)} placeholder="https://example.com/logo.png" className="w-full rounded-lg border border-gray-200 bg-gray-50 p-2.5 outline-none focus:ring-1 focus:ring-green-500 text-sm" />
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-sm font-semibold text-gray-700 mb-1">Primary Colour</label>
+                              <div className="flex items-center gap-2">
+                                <input type="color" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} className="w-9 h-9 rounded cursor-pointer border-0" />
+                                <input type="text" value={primaryColor} onChange={e => setPrimaryColor(e.target.value)} className="w-full rounded-lg border border-gray-200 bg-gray-50 p-2 text-xs font-mono" />
+                              </div>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-semibold text-gray-700 mb-1">Initial Branch</label>
+                              <input type="text" value={initialBranch} onChange={e => setInitialBranch(e.target.value)} placeholder="Main Branch" className="w-full rounded-lg border border-gray-200 bg-gray-50 p-2.5 outline-none focus:ring-1 focus:ring-green-500 text-sm" required />
+                            </div>
                           </div>
                           
                           <button onClick={createCompanyDashboard} disabled={creating} className="w-full bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 transition-colors disabled:opacity-50 mt-4">
-                            {creating ? 'Provisioning...' : 'Create Dashboard & Send Activation Email'}
+                            {creating ? 'Creating...' : 'Create & Send Activation'}
                           </button>
                         </div>
                       </div>

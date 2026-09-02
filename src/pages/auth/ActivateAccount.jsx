@@ -20,11 +20,12 @@ const ActivateAccount = () => {
     try {
       setLoading(true);
 
-      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-      const rawBaseUrl = baseUrl.replace(/\/api\/?$/, ''); // Handle /api ending just in case
+      const baseUrl =
+        import.meta.env.VITE_API_URL ||
+        'http://localhost:5000';
 
       const response = await fetch(
-        `${rawBaseUrl}/api/auth/activate-account/${token}`,
+        `${baseUrl}/api/auth/activate-account/${token}`,
         {
           method: 'POST',
           headers: {

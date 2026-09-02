@@ -4,6 +4,7 @@ const User = require('../models/User');
 const Visitor = require('../models/Visitor');
 const authMiddleware = require('../middleware/authMiddleware');
 const logAction = require('../utils/auditLogger');
+const getTenantFilter = require('../utils/tenantFilter');
 
 // Public route to fetch HR users for dropdown (accessible without login)
 router.get('/hr', async (req, res) => {

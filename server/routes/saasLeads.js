@@ -170,11 +170,12 @@ router.post('/:leadId/convert', async (req, res) => {
       .toUpperCase()
       .padEnd(3, 'X');
 
-    let companyCode;
-
-    do {
-      companyCode = `${prefix}${Math.floor(100 + Math.random() * 900)}`;
-    } while (await Company.exists({ code: companyCode }));
+    let companyCode = `${prefix}123`;
+    if (await Company.exists({ code: companyCode })) {
+      do {
+        companyCode = `${prefix}${Math.floor(100 + Math.random() * 900)}`;
+      } while (await Company.exists({ code: companyCode }));
+    }
 
     const subscription = req.body.subscription || req.body.plan || 'Standard';
     
@@ -194,6 +195,10 @@ router.post('/:leadId/convert', async (req, res) => {
       });
     }
 
+    const logoUrl = req.body.logoUrl || lead.logoUrl || '';
+    const primaryColor = req.body.primaryColor || '#1E1B6E';
+    const initialBranchName = req.body.initialBranch?.trim() || 'Main Branch';
+
     const company = await Company.create({
       name: lead.companyName,
       code: companyCode,
@@ -202,10 +207,20 @@ router.post('/:leadId/convert', async (req, res) => {
       status: 'Active',
       createdBy: req.userId || 'SaaS Conversion',
       branding: {
-        logoUrl: lead.logoUrl || '',
-        primaryColor: req.body.primaryColor || '#1E1B6E'
+        logoUrl: logoUrl,
+        primaryColor: primaryColor
       }
     });
+
+    // Create Initial BranchSetting for this Company
+    const BranchSetting = require('../models/BranchSetting');
+    await BranchSetting.create({
+      companyId: company.code,
+      branchName: initialBranchName,
+      latitude: 12.9716,
+      longitude: 77.5946,
+      radius: 50
+    }).catch(err => console.warn('Initial BranchSetting creation note:', err.message));
 
     const crypto = require('crypto');
     const activationToken = crypto.randomBytes(32).toString('hex');
@@ -221,7 +236,8 @@ router.post('/:leadId/convert', async (req, res) => {
       mobileNumber: lead.mobileNumber,
       role: 'Super Admin',
       companyId: company.code,
-      branchId: 'All Branches', // matching old requirement
+      branch: initialBranchName,
+      branchId: initialBranchName,
       status: 'Active',
       password: hashedPassword,
       passwordSetupTokenHash: activationTokenHash,

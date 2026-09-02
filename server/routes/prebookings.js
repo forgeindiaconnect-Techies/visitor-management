@@ -149,11 +149,18 @@ router.post('/', async (req, res) => {
   }
 });
 
+// Apply authMiddleware for secured pre-booking endpoints
+router.use(authMiddleware);
+
 // 2. Get All Pre-Bookings (Super Admin / Admin Dashboard)
 router.get('/', async (req, res) => {
   try {
     const { status, branch } = req.query;
     const filter = {};
+
+    if (req.userRole !== 'SaaS Super Admin' && req.companyId !== 'SYSTEM') {
+      filter.companyId = req.companyId;
+    }
 
     if (status && status !== 'All') {
       filter.status = status;

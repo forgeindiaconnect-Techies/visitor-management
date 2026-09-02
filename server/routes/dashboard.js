@@ -6,15 +6,16 @@ const User = require('../models/User');
 const Visitor = require('../models/Visitor');
 const PreBooking = require('../models/PreBooking');
 const Blacklist = require('../models/Blacklist');
+const getTenantFilter = require('../utils/tenantFilter');
 
 router.use(authMiddleware);
 
 // GET dashboard statistics
 router.get('/stats', async (req, res) => {
   try {
-    const companyId = req.companyId;
+    const tenantFilter = getTenantFilter(req);
 
-    if (!companyId || companyId === 'SYSTEM') {
+    if (req.companyId === 'SYSTEM') {
       return res.json({
         success: true,
         data: {
@@ -29,6 +30,8 @@ router.get('/stats', async (req, res) => {
       });
     }
 
+    const companyId = tenantFilter.companyId;
+
     const [
       totalBranches,
       totalUsers,
@@ -38,23 +41,23 @@ router.get('/stats', async (req, res) => {
       pendingApprovals,
       blockedVisitors
     ] = await Promise.all([
-      BranchSetting.countDocuments({ companyId }),
-      User.countDocuments({ companyId }),
-      Visitor.countDocuments({ companyId }),
-      PreBooking.countDocuments({ companyId }),
+      BranchSetting.countDocuments(tenantFilter),
+      User.countDocuments(tenantFilter),
+      Visitor.countDocuments(tenantFilter),
+      PreBooking.countDocuments(tenantFilter),
 
       Visitor.countDocuments({
-        companyId,
+        ...tenantFilter,
         status: { $in: ["INSIDE", "Checked In", "CHECKED_IN", "Inside"] }
       }),
 
       PreBooking.countDocuments({
-        companyId,
+        ...tenantFilter,
         status: { $in: ["PENDING", "Pending"] }
       }),
 
       Blacklist.countDocuments({
-        companyId,
+        ...tenantFilter,
         status: "Active"
       })
     ]);
@@ -82,9 +85,8 @@ router.get('/stats', async (req, res) => {
 // GET recent visitor activity
 router.get('/recent-visitors', async (req, res) => {
   try {
-    const recentVisitors = await Visitor.find({
-      companyId: req.companyId
-    })
+    const tenantFilter = getTenantFilter(req);
+    const recentVisitors = await Visitor.find(tenantFilter)
       .sort({ createdAt: -1 })
       .limit(10);
 
@@ -104,9 +106,8 @@ router.get('/recent-visitors', async (req, res) => {
 // GET recent pre-bookings
 router.get('/recent-prebookings', async (req, res) => {
   try {
-    const recentPreBookings = await PreBooking.find({
-      companyId: req.companyId
-    })
+    const tenantFilter = getTenantFilter(req);
+    const recentPreBookings = await PreBooking.find(tenantFilter)
       .sort({ createdAt: -1 })
       .limit(10);
 

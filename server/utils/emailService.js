@@ -444,8 +444,9 @@ const sendCompanyActivationEmail = async ({
           </p>
 
           <div style="background:#f8fafc;padding:18px;border-radius:10px;">
-            <p><strong>Company:</strong> ${companyName}</p>
+            <p><strong>Company Name:</strong> ${companyName}</p>
             <p><strong>Company Code:</strong> ${companyCode}</p>
+            <p><strong>Login Email:</strong> ${email}</p>
             <p><strong>Plan:</strong> ${subscription}</p>
             <p><strong>Role:</strong> Super Admin</p>
           </div>

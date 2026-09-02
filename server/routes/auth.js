@@ -360,6 +360,52 @@ router.post('/mock-payment', async (req, res) => {
   }
 });
 
+// POST /activate-account/:token - Set password for new company activation
+router.post('/activate-account/:token', async (req, res) => {
+  try {
+    const { password, confirmPassword } = req.body;
+    const { token } = req.params;
+
+    if (!password || password.length < 8) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 8 characters long' });
+    }
+
+    if (confirmPassword && password !== confirmPassword) {
+      return res.status(400).json({ success: false, message: 'Passwords do not match' });
+    }
+
+    const crypto = require('crypto');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+    const User = require('../models/User');
+    const user = await User.findOne({
+      passwordSetupTokenHash: tokenHash,
+      passwordSetupExpiresAt: { $gt: new Date() }
+    });
+
+    if (!user) {
+      return res.status(400).json({ success: false, message: 'Activation token is invalid or has expired' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 12);
+
+    user.password = hashedPassword;
+    user.mustSetPassword = false;
+    user.passwordSetupTokenHash = undefined;
+    user.passwordSetupExpiresAt = undefined;
+    user.status = 'Active';
+    await user.save();
+
+    return res.json({
+      success: true,
+      message: 'Account activated successfully! You can now log in with your credentials.'
+    });
+  } catch (error) {
+    console.error('Account activation error:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Server error during account activation' });
+  }
+});
+
 module.exports = router;
 
 // POST /refresh - Refresh Access Token

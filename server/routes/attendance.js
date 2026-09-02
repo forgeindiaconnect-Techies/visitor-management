@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const SecurityAttendance = require('../models/SecurityAttendance');
 const authMiddleware = require('../middleware/authMiddleware');
+const getTenantFilter = require('../utils/tenantFilter');
 
 router.use(authMiddleware);
 
@@ -14,7 +15,8 @@ const generateAttendanceId = async (companyId) => {
 // GET attendance records
 router.get('/', async (req, res) => {
   try {
-    let query = { companyId: req.companyId };
+    const tenantFilter = getTenantFilter(req);
+    let query = { ...tenantFilter };
     
     if (req.userRole === 'Security') {
       query.securityId = req.userId;

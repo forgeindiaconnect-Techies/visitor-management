@@ -1,11 +1,15 @@
 const Notification = require('../models/Notification');
+const getTenantFilter = require('../utils/tenantFilter');
 
 const buildNotificationFilter = (req) => {
-  if (req.userRole === 'SaaS Super Admin') return { companyId: 'SYSTEM' };
+  const tenantFilter = getTenantFilter(req);
+  if (req.userRole === 'SaaS Super Admin' && req.companyId === 'SYSTEM') {
+    return { companyId: 'SYSTEM' };
+  }
 
   const userId = String(req.userId || req.user?.id || req.user?._id || '');
   return {
-    companyId: req.companyId,
+    ...tenantFilter,
     $or: [
       { recipient: req.userId },
       { 'recipients.user': req.userId },
