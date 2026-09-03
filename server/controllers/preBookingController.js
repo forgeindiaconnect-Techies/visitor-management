@@ -1193,23 +1193,27 @@ const checkInPreBooking = async (req, res) => {
     const isValidObjectId = require('mongoose').isValidObjectId(rawId);
     const searchRegex = new RegExp(`^${rawId.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')}$`, 'i');
 
-    const companyId = String(req.headers['x-company-id'] || '').trim().toUpperCase();
+    const headerCompany = String(req.headers['x-company-id'] || '').trim().toUpperCase();
 
-    const preBooking = await PreBooking.findOne({
-      $and: [
-        {
-          $or: [
-            { visitorId: searchRegex },
-            { visitorId: rawId.toUpperCase() },
-            { mobileNumber: rawId },
-            { qrToken: rawId },
-            { trackingToken: rawId },
-            ...(isValidObjectId ? [{ _id: rawId }] : [])
-          ]
-        },
-        { companyId: companyId }
+    const idFilter = {
+      $or: [
+        { visitorId: searchRegex },
+        { visitorId: rawId.toUpperCase() },
+        { mobileNumber: rawId },
+        { qrToken: rawId },
+        { trackingToken: rawId },
+        ...(isValidObjectId ? [{ _id: rawId }] : [])
       ]
-    });
+    };
+
+    let preBooking = null;
+    if (headerCompany && headerCompany !== 'FIC001' && headerCompany !== 'SYSTEM') {
+      preBooking = await PreBooking.findOne({ $and: [idFilter, { companyId: headerCompany }] });
+    }
+
+    if (!preBooking) {
+      preBooking = await PreBooking.findOne(idFilter);
+    }
 
     if (!preBooking) {
       return res.status(404).json({
@@ -1368,23 +1372,27 @@ const checkOutPreBooking = async (req, res) => {
     const isValidObjectId = require('mongoose').isValidObjectId(rawId);
     const searchRegex = new RegExp(`^${rawId.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')}$`, 'i');
 
-    const companyId = String(req.headers['x-company-id'] || '').trim().toUpperCase();
+    const headerCompany = String(req.headers['x-company-id'] || '').trim().toUpperCase();
 
-    const preBooking = await PreBooking.findOne({
-      $and: [
-        {
-          $or: [
-            { visitorId: searchRegex },
-            { visitorId: rawId.toUpperCase() },
-            { mobileNumber: rawId },
-            { qrToken: rawId },
-            { trackingToken: rawId },
-            ...(isValidObjectId ? [{ _id: rawId }] : [])
-          ]
-        },
-        { companyId: companyId }
+    const idFilter = {
+      $or: [
+        { visitorId: searchRegex },
+        { visitorId: rawId.toUpperCase() },
+        { mobileNumber: rawId },
+        { qrToken: rawId },
+        { trackingToken: rawId },
+        ...(isValidObjectId ? [{ _id: rawId }] : [])
       ]
-    });
+    };
+
+    let preBooking = null;
+    if (headerCompany && headerCompany !== 'FIC001' && headerCompany !== 'SYSTEM') {
+      preBooking = await PreBooking.findOne({ $and: [idFilter, { companyId: headerCompany }] });
+    }
+
+    if (!preBooking) {
+      preBooking = await PreBooking.findOne(idFilter);
+    }
 
     if (!preBooking) {
       return res.status(404).json({

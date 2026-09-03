@@ -127,30 +127,6 @@ const VisitorList = () => {
     const host = String(v.hostEmployee || v.hostName || '').trim().toLowerCase();
     const name = String(v.visitorName || v.fullName || '').trim().toLowerCase();
 
-    // 1. Exclude all test records
-    if (
-      name === 'test' ||
-      name === 'test 1' ||
-      name === 'test 2' ||
-      name === 'test 3' ||
-      name === 'lokeee' ||
-      name.startsWith('test ') ||
-      name.startsWith('test_') ||
-      name === 'testing'
-    ) {
-      return false;
-    }
-
-    // 2. Exclude legacy test data before Thilagavathy U (Aug 26, 2026)
-    const rawDate = v.visitDate || v.date || v.createdAt;
-    if (rawDate && !name.includes('thilagavathy')) {
-      const d = new Date(rawDate);
-      const dateStr = !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : String(rawDate);
-      if (dateStr < '2026-08-26') {
-        return false;
-      }
-    }
-    
     // Strict Direct Visit Check: Walk-ins, direct desk visits, returning visitors, or host "Direct Visits"
     const isDirect = host === 'direct visits' || host === 'direct visit' || host.includes('direct') ||
                      v.registrationType === 'Direct Visit' || v.registrationType === 'Walk-in' ||

@@ -53,7 +53,7 @@ export const VisitorProvider = ({ children }) => {
 
   // Fetch visitors from backend
   const fetchVisitors = async () => {
-    if (!currentUser || currentUser?.role === 'SaaS Super Admin') {
+    if (!currentUser) {
       setVisitors([]);
       allVisitorsRef.current = [];
       setLoading(false);
@@ -136,41 +136,18 @@ export const VisitorProvider = ({ children }) => {
         };
       }).filter(Boolean);
 
-      // Only merge pre-bookings into the dashboard if they have actually arrived (checked in or checked out).
-      // Pending/Approved "registration details" stay in the Pre-Bookings tab.
-      const arrivedPreBookings = normalizedPreBookings.filter(pb => 
-        !['Pending', 'Approved', 'PENDING', 'APPROVED'].includes(pb.status)
-      );
-
-      // Sort newest first before deduplication
-      const allCombined = [...safeVData, ...arrivedPreBookings].sort(
+      // Combine all visitors and pre-bookings for global dashboard context
+      const allCombined = [...safeVData, ...normalizedPreBookings].sort(
         (a, b) => new Date(b.visitDate || b.createdAt || b.date || 0) - new Date(a.visitDate || a.createdAt || a.date || 0)
       );
 
       // Deduplicate strictly by unique Document ID
       const seenIds = new Set();
       const mergedData = [];
-      const testNamesRegex = /^(test|test 1|test 2|test 3|lokeee|testing)$/i;
-
       for (const item of allCombined) {
+        if (!item) continue;
         const idKey = String(item._id || item.id || '');
         if (idKey && seenIds.has(idKey)) continue;
-
-        const name = String(item.visitorName || item.fullName || '').trim();
-        // Exclude test records from global metrics
-        if (testNamesRegex.test(name) || name.toLowerCase().startsWith('test ') || name.toLowerCase().startsWith('test_')) {
-          continue;
-        }
-
-        // Exclude legacy direct visit test data before Thilagavathy U (Aug 26, 2026)
-        const rawDate = item.visitDate || item.date || item.createdAt;
-        if (rawDate && !name.toLowerCase().includes('thilagavathy') && !item.isPreBooking) {
-          const d = new Date(rawDate);
-          const dateStr = !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : String(rawDate);
-          if (dateStr < '2026-08-26') {
-            continue;
-          }
-        }
 
         if (idKey) seenIds.add(idKey);
         mergedData.push(item);

@@ -7,9 +7,22 @@ module.exports = async (req, res, next) => {
     let userId = req.headers['x-user-id'];
     let userRole = req.headers['x-user-role'];
     let branchId = req.headers['x-branch-id'] || 'All Branches';
-
-    // Decode JWT Bearer Token if present
     const authHeader = req.headers['authorization'];
+
+    // Public route bypass (allow public pass lookup, check-in, check-out)
+    const isPublicUrl = 
+      req.originalUrl.includes('/pass-lookup/') ||
+      req.originalUrl.includes('/pass/') ||
+      req.originalUrl.includes('/public-status/') ||
+      req.originalUrl.includes('/check-in') ||
+      req.originalUrl.includes('/check-out') ||
+      req.originalUrl.includes('/public-prebook') ||
+      req.originalUrl.includes('/upload-id-proof');
+
+    if (isPublicUrl && !authHeader) {
+      req.companyId = (companyId || 'SYSTEM').toUpperCase();
+      return next();
+    }
     if (authHeader && authHeader.startsWith('Bearer ')) {
       try {
         const tokenString = authHeader.split(' ')[1];
@@ -82,27 +95,23 @@ module.exports = async (req, res, next) => {
         req.companyId = 'SYSTEM';
       } else {
         const company = await Company.findOne({ code: companyId.toUpperCase() });
-        if (!company) {
-          return res.status(404).json({ message: 'Company code is invalid' });
+        if (company) {
+          const isUpgradeRequest = req.originalUrl.includes('/request-upgrade') || req.originalUrl.includes('/me') || req.originalUrl.includes('/payment');
+
+          if (company.status !== 'Active' && userRole !== 'SaaS Super Admin' && !isUpgradeRequest) {
+            return res.status(403).json({ 
+              message: `Your subscription account status is '${company.status}'. Please contact system administrator.` 
+            });
+          }
+
+          // Check if subscription has expired (Exact time)
+          if (company.subscriptionExpiresAt && new Date() >= new Date(company.subscriptionExpiresAt) && userRole !== 'SaaS Super Admin' && !isUpgradeRequest) {
+            return res.status(403).json({ 
+              subscriptionExpired: true,
+              message: `Your subscription expired on ${new Date(company.subscriptionExpiresAt).toLocaleString('en-US', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}. Please renew to continue.` 
+            });
+          }
         }
-
-        const isUpgradeRequest = req.originalUrl.includes('/request-upgrade') || req.originalUrl.includes('/me') || req.originalUrl.includes('/payment');
-
-        if (company.status !== 'Active' && userRole !== 'SaaS Super Admin' && !isUpgradeRequest) {
-          return res.status(403).json({ 
-            message: `Your subscription account status is '${company.status}'. Please contact system administrator.` 
-          });
-        }
-
-        // Check if subscription has expired (Exact time)
-        if (company.subscriptionExpiresAt && new Date() >= new Date(company.subscriptionExpiresAt) && userRole !== 'SaaS Super Admin' && !isUpgradeRequest) {
-          // If expired, immediately return a specific payload so the frontend knows to freeze the dashboard.
-          return res.status(403).json({ 
-            subscriptionExpired: true,
-            message: `Your subscription expired on ${new Date(company.subscriptionExpiresAt).toLocaleString('en-US', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}. Please renew to continue.` 
-          });
-        }
-
         req.companyId = companyId.toUpperCase();
       }
     } else {

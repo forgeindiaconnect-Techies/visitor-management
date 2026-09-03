@@ -16,6 +16,28 @@ const TodaysVisitorsCard = () => {
   const queryBranch = activeBranch || 'All Branches';
   const safeVisitors = Array.isArray(visitors) ? visitors : [];
 
+  // Helper to extract YYYY-MM-DD from any date string or Date object
+  const getYYYYMMDD = (rawDate) => {
+    if (!rawDate) return '';
+    const str = String(rawDate).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+      return str;
+    }
+    if (str.includes('T')) {
+      return str.split('T')[0];
+    }
+    try {
+      const d = new Date(rawDate);
+      if (!isNaN(d.getTime())) {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      }
+    } catch (e) {}
+    return str.split('T')[0];
+  };
+
   // Filter visitors for the selected date and branch
   const filteredVisitors = safeVisitors.filter(v => {
     // Branch filter
@@ -26,9 +48,7 @@ const TodaysVisitorsCard = () => {
     // Date filter: check visitDate, date, or createdAt
     const rawDate = v.visitDate || v.date || v.createdAt;
     if (!rawDate) return false;
-    const vDateStr = typeof rawDate === 'string' && rawDate.includes('T') 
-      ? rawDate.split('T')[0] 
-      : (rawDate instanceof Date ? rawDate.toISOString().split('T')[0] : String(rawDate));
+    const vDateStr = getYYYYMMDD(rawDate);
 
     return vDateStr === selectedDate;
   });

@@ -57,12 +57,14 @@ const VisitorPass = () => {
       let response;
 
       if (action === 'checkIn') {
+        const compHeader = visitor.companyId || visitor.company || '';
+
         // 1. Try Pre-Booking Check-In
         response = await fetch(`${baseUrl}/api/prebookings/${encodeURIComponent(targetId)}/check-in`, {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
-            'X-Company-Id': visitor.companyId || 'FIC001'
+            ...(compHeader ? { 'X-Company-Id': compHeader } : {})
           }
         });
 
@@ -72,7 +74,7 @@ const VisitorPass = () => {
             method: 'POST',
             headers: { 
               'Content-Type': 'application/json',
-              'X-Company-Id': visitor.companyId || 'FIC001'
+              ...(compHeader ? { 'X-Company-Id': compHeader } : {})
             },
             body: JSON.stringify({
               status: 'Inside',
@@ -83,12 +85,14 @@ const VisitorPass = () => {
           });
         }
       } else if (action === 'checkOut') {
+        const compHeader = visitor.companyId || visitor.company || '';
+
         // 1. Try Pre-Booking Check-Out
         response = await fetch(`${baseUrl}/api/prebookings/${encodeURIComponent(targetId)}/check-out`, {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
-            'X-Company-Id': visitor.companyId || 'FIC001'
+            ...(compHeader ? { 'X-Company-Id': compHeader } : {})
           },
           body: JSON.stringify({ exitNotes: notes || 'Check out from gate', checkOutNotes: notes || 'Check out from gate' })
         });
@@ -99,7 +103,7 @@ const VisitorPass = () => {
             method: 'POST',
             headers: { 
               'Content-Type': 'application/json',
-              'X-Company-Id': visitor.companyId || 'FIC001'
+              ...(compHeader ? { 'X-Company-Id': compHeader } : {})
             },
             body: JSON.stringify({
               status: 'Exited',

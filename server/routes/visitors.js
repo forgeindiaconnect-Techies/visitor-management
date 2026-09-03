@@ -26,7 +26,7 @@ const {
 } = require('../services/idProofTokenService');
 
 router.use((req, res, next) => {
-  if (req.path.startsWith('/pass/') || req.path.startsWith('/status/') || req.path.startsWith('/public-status/') || req.path === '/public-prebook' || req.path === '/upload' || req.path === '/upload-id-proof' || req.path === '/clean-notifications-temp' || req.path.startsWith('/profile/')) {
+  if (req.path.startsWith('/pass/') || req.path.startsWith('/status/') || req.path.startsWith('/public-status/') || req.path === '/public-prebook' || req.path === '/upload' || req.path === '/upload-id-proof' || req.path.includes('/check-in') || req.path.includes('/check-out') || req.path === '/clean-notifications-temp' || req.path.startsWith('/profile/')) {
     return next();
   }
   authMiddleware(req, res, next);

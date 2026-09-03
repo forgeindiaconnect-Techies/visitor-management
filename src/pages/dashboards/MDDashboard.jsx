@@ -35,32 +35,6 @@ const MDDashboard = () => {
   const today = new Date().toISOString().split('T')[0];
   
   const isDirectVisit = (v) => {
-    const name = String(v.visitorName || v.fullName || '').trim().toLowerCase();
-    
-    // 1. Exclude all test records
-    if (
-      name === 'test' ||
-      name === 'test 1' ||
-      name === 'test 2' ||
-      name === 'test 3' ||
-      name === 'lokeee' ||
-      name.startsWith('test ') ||
-      name.startsWith('test_') ||
-      name === 'testing'
-    ) {
-      return false;
-    }
-
-    // 2. Exclude legacy test data before Thilagavathy U (Aug 26, 2026)
-    const rawDate = v.visitDate || v.date || v.createdAt;
-    if (rawDate && !name.includes('thilagavathy')) {
-      const d = new Date(rawDate);
-      const dateStr = !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : String(rawDate);
-      if (dateStr < '2026-08-26') {
-        return false;
-      }
-    }
-
     const host = String(v.hostEmployee || v.hostName || '').trim().toLowerCase();
     const isDirect = host === 'direct visits' || host === 'direct visit' || host.includes('direct') ||
                      v.registrationType === 'Direct Visit' || v.registrationType === 'Walk-in' ||
@@ -113,7 +87,10 @@ const MDDashboard = () => {
 
   // Branch Performance Data
   const branchData = chartBranches.map(b => {
-    const branchVisitors = safeVisitors.filter(v => isBranchMatch(v.branch || v.branchLocation, b)).length;
+    const branchVisitors = safeVisitors.filter(v => {
+      const vBranch = v.branch || v.branchLocation || chartBranches[0] || 'Main Office';
+      return isBranchMatch(vBranch, b);
+    }).length;
 
     return {
       name: b,
@@ -140,56 +117,68 @@ const MDDashboard = () => {
 
 
 
-      {pendingApprovals > 0 && hasApprovalPermission && (
-        <div className="bg-orange-50 border border-orange-200 rounded-xl p-6 shadow-sm mb-6">
-          <div className="flex items-center gap-3 mb-4">
-            <Clock className="text-orange-600" size={24} />
-            <h2 className="text-lg font-bold text-orange-900">Action Required: Final Approvals ({pendingApprovals})</h2>
-          </div>
-          <div className="overflow-x-auto pb-2">
-            <table className="w-full text-left bg-white rounded-lg overflow-hidden shadow-sm min-w-max">
-              <thead className="bg-orange-100/50">
-                <tr className="text-orange-800 text-xs uppercase tracking-wider">
-                  <th className="px-4 py-3 font-semibold">Visitor</th>
-                  <th className="px-4 py-3 font-semibold">Host</th>
-                  <th className="px-4 py-3 font-semibold">Branch</th>
-                  <th className="px-4 py-3 font-semibold">Purpose</th>
-                  <th className="px-4 py-3 font-semibold text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-orange-100">
-                {safeVisitors.filter(v => v.status?.toUpperCase() === 'PENDING').map(v => (
-                  <tr key={v._id || v.id}>
-                    <td className="px-4 py-3 font-medium text-gray-900">{v.visitorName}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{v.hostName}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{v.branch}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{v.purpose}</td>
-                    <td className="px-4 py-3 text-right">
-                      <button 
-                        onClick={() => updateVisitorStatus(v._id || v.id, 'Approved', { approvedBy: currentUser?.name, remarks: 'Final Approval by MD' })}
-                        className="px-3 py-1.5 bg-green-600 text-white text-xs font-bold rounded-lg hover:bg-green-700 mr-2"
-                      >
-                        Approve
-                      </button>
-                      <button 
-                        onClick={() => {
-                          const reason = window.prompt("Reason for rejection:");
-                          if (reason !== null) {
-                            updateVisitorStatus(v._id || v.id, 'Rejected', { approvedBy: currentUser?.name, remarks: reason });
-                          }
-                        }}
-                        className="px-3 py-1.5 bg-red-600 text-white text-xs font-bold rounded-lg hover:bg-red-700"
-                      >
-                        Reject
-                      </button>
-                    </td>
+      {hasApprovalPermission && (() => {
+        const pendingVisitorsList = safeVisitors.filter(v => {
+          if (!v.status) return false;
+          const s = String(v.status).toUpperCase();
+          return s.includes('PENDING') || s.includes('MANUAL') || s.includes('REVIEW') || s === 'SUBMITTED';
+        });
+
+        if (pendingVisitorsList.length === 0) return null;
+
+        return (
+          <div className="bg-orange-50 border border-orange-200 rounded-xl p-6 shadow-sm mb-6">
+            <div className="flex items-center gap-3 mb-4">
+              <Clock className="text-orange-600" size={24} />
+              <h2 className="text-lg font-bold text-orange-900">
+                Action Required: Final Approvals ({pendingVisitorsList.length})
+              </h2>
+            </div>
+            <div className="overflow-x-auto pb-2">
+              <table className="w-full text-left bg-white rounded-lg overflow-hidden shadow-sm min-w-max">
+                <thead className="bg-orange-100/50">
+                  <tr className="text-orange-800 text-xs uppercase tracking-wider">
+                    <th className="px-4 py-3 font-semibold">Visitor</th>
+                    <th className="px-4 py-3 font-semibold">Host</th>
+                    <th className="px-4 py-3 font-semibold">Branch</th>
+                    <th className="px-4 py-3 font-semibold">Purpose</th>
+                    <th className="px-4 py-3 font-semibold text-right">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-orange-100">
+                  {pendingVisitorsList.map(v => (
+                    <tr key={v._id || v.id}>
+                      <td className="px-4 py-3 font-medium text-gray-900">{v.visitorName || v.fullName}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{v.hostName || v.hostEmployee}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{v.branch || v.branchLocation}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{v.purpose || v.visitPurpose}</td>
+                      <td className="px-4 py-3 text-right">
+                        <button 
+                          onClick={() => updateVisitorStatus(v._id || v.id, 'Approved', { approvedBy: currentUser?.name, remarks: 'Final Approval by MD' })}
+                          className="px-3 py-1.5 bg-green-600 text-white text-xs font-bold rounded-lg hover:bg-green-700 mr-2 shadow-xs transition cursor-pointer"
+                        >
+                          Approve
+                        </button>
+                        <button 
+                          onClick={() => {
+                            const reason = window.prompt("Reason for rejection:");
+                            if (reason !== null) {
+                              updateVisitorStatus(v._id || v.id, 'Rejected', { approvedBy: currentUser?.name, remarks: reason });
+                            }
+                          }}
+                          className="px-3 py-1.5 bg-red-600 text-white text-xs font-bold rounded-lg hover:bg-red-700 shadow-xs transition cursor-pointer"
+                        >
+                          Reject
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
         <DashboardCard onClick={() => navigate('/visitors')} title="Direct Visits" value={totalDirectVisits} icon={Users} colorClass="bg-blue-100 text-blue-600" />

@@ -34,9 +34,36 @@ const SubscriptionModals = () => {
   if (mode === 'none') return null;
 
   const plans = [
-    { name: 'Basic', price: 999, features: ['500 Visitors', '2 Branches', '5 Security Users', 'Reports'], color: 'green' },
-    { name: 'Standard', price: 2999, features: ['Unlimited Visitors', '10 Branches', '20 Security Users', 'Analytics'], color: 'blue' },
-    { name: 'Enterprise', price: 6999, features: ['Unlimited Everything', 'Priority Support', 'Custom Branding'], color: 'purple' }
+    { 
+      name: 'Basic', 
+      price: 1999, 
+      features: ['500 Passes / Month', '1 Branch', '10 System Users (5 Security)', 'Standard Reports'], 
+      badgeBg: 'bg-green-100',
+      badgeText: 'text-green-700',
+      dotBg: 'bg-green-500',
+      iconColor: 'text-green-500',
+      btnBg: 'bg-green-600 hover:bg-green-700'
+    },
+    { 
+      name: 'Standard', 
+      price: 4999, 
+      features: ['3,000 Passes / Month', '5 Branches', '50 System Users (25 Security)', 'Advanced Analytics & Branding'], 
+      badgeBg: 'bg-blue-100',
+      badgeText: 'text-blue-700',
+      dotBg: 'bg-blue-500',
+      iconColor: 'text-blue-500',
+      btnBg: 'bg-blue-600 hover:bg-blue-700'
+    },
+    { 
+      name: 'Enterprise', 
+      price: 9999, 
+      features: ['Unlimited Passes', 'Unlimited Branches', 'Unlimited System Users', 'API Access & Priority Support'], 
+      badgeBg: 'bg-purple-100',
+      badgeText: 'text-purple-700',
+      dotBg: 'bg-purple-500',
+      iconColor: 'text-purple-500',
+      btnBg: 'bg-purple-600 hover:bg-purple-700'
+    }
   ];
 
   const handlePlanSelect = (plan) => {
@@ -299,12 +326,12 @@ const SubscriptionModals = () => {
             {plans.map((plan) => (
               <div key={plan.name} className="border-2 border-slate-100 hover:border-slate-300 rounded-2xl p-6 flex flex-col transition-all hover:shadow-xl bg-white">
                 <div className="mb-6">
-                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold bg-${plan.color}-100 text-${plan.color}-700 mb-4`}>
-                    <div className={`w-2 h-2 rounded-full bg-${plan.color}-500`}></div>
+                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold ${plan.badgeBg} ${plan.badgeText} mb-4`}>
+                    <div className={`w-2 h-2 rounded-full ${plan.dotBg}`}></div>
                     {plan.name}
                   </span>
                   <div className="flex items-baseline gap-1">
-                    <span className="text-3xl font-extrabold text-gray-900">₹{plan.price}</span>
+                    <span className="text-3xl font-extrabold text-gray-900">₹{plan.price.toLocaleString('en-IN')}</span>
                     <span className="text-gray-500 font-medium">/ Month</span>
                   </div>
                 </div>
@@ -312,7 +339,7 @@ const SubscriptionModals = () => {
                 <ul className="space-y-4 mb-8 flex-1">
                   {plan.features.map((feature, i) => (
                     <li key={i} className="flex items-start gap-3 text-gray-700">
-                      <CheckCircle className={`text-${plan.color}-500 shrink-0 mt-0.5`} size={18} />
+                      <CheckCircle className={`${plan.iconColor} shrink-0 mt-0.5`} size={18} />
                       <span className="font-medium">{feature}</span>
                     </li>
                   ))}
@@ -320,11 +347,7 @@ const SubscriptionModals = () => {
                 
                 <button
                   onClick={() => handlePlanSelect(plan)}
-                  className={`w-full py-3.5 rounded-xl font-bold text-white transition-all shadow-md hover:shadow-lg ${
-                    plan.name === 'Enterprise' ? 'bg-purple-600 hover:bg-purple-700' :
-                    plan.name === 'Standard' ? 'bg-blue-600 hover:bg-blue-700' :
-                    'bg-green-600 hover:bg-green-700'
-                  }`}
+                  className={`w-full py-3.5 rounded-xl font-bold text-white transition-all shadow-md hover:shadow-lg ${plan.btnBg}`}
                 >
                   Choose Plan
                 </button>
