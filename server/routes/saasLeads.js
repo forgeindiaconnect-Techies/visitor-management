@@ -729,38 +729,86 @@ router.post(
         </div>
       `;
 
-      const { sendEmail } = require('../utils/emailService');
-      const emailSent = await sendEmail(
-        lead.email,
-        subject.trim(),
-        htmlBody
-      );
+      const {
+        sendEmailDetailed
+      } = require('../utils/emailService');
 
-      if (!emailSent) {
-        return res.status(502).json({
-          success: false,
-          message: 'Brevo could not deliver the email'
-        });
-      }
+      const deliveryResult =
+        await sendEmailDetailed(
+          lead.email,
+          subject.trim(),
+          htmlBody
+        );
 
+      const attemptDate = new Date();
+
+      // Always record the attempt.
       lead.communicationHistory.push({
         subject: subject.trim(),
         message: message.trim(),
-        sentAt: new Date(),
-        sentBy: req.userName || 'SaaS Super Admin'
+
+        deliveryStatus:
+          deliveryResult.delivered
+            ? 'SENT'
+            : 'FAILED',
+
+        provider:
+          deliveryResult.provider ||
+          'UNKNOWN',
+
+        errorMessage:
+          deliveryResult.error || '',
+
+        attemptedAt: attemptDate,
+
+        sentAt:
+          deliveryResult.delivered
+            ? attemptDate
+            : null,
+
+        sentBy:
+          req.userName ||
+          req.user?.name ||
+          'SaaS Super Admin'
       });
 
-      lead.lastContactedAt = new Date();
+      // Mark Contacted only after real delivery.
+      if (deliveryResult.delivered) {
+        lead.lastContactedAt = attemptDate;
 
-      if (lead.status === 'New') {
-        lead.status = 'Contacted';
+        if (lead.status === 'New') {
+          lead.status = 'Contacted';
+        }
       }
 
       await lead.save();
 
-      return res.json({
+      // The request itself was processed successfully.
+      // `delivered` tells the frontend the actual email result.
+      return res.status(200).json({
         success: true,
-        message: 'Email sent successfully',
+        delivered: deliveryResult.delivered,
+
+        message: deliveryResult.delivered
+          ? 'Email delivered successfully.'
+          : 'Email was not delivered. The failed attempt was saved in communication history.',
+
+        delivery: {
+          status:
+            deliveryResult.delivered
+              ? 'SENT'
+              : 'FAILED',
+
+          provider:
+            deliveryResult.provider,
+
+          messageId:
+            deliveryResult.messageId,
+
+          error:
+            deliveryResult.error
+        },
+
         data: lead
       });
     } catch (error) {

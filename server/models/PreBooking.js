@@ -112,6 +112,42 @@ const preBookingSchema = new mongoose.Schema(
       trim: true,
     },
 
+    idVerificationStatus: {
+      type: String,
+      enum: [
+        'VERIFIED',
+        'MANUAL_REVIEW',
+        'REJECTED'
+      ],
+      required: true
+    },
+
+    idVerifiedAt: {
+      type: Date,
+      required: true
+    },
+
+    idReviewedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
+
+    idReviewedByRole: {
+      type: String,
+      default: ''
+    },
+
+    idReviewedAt: {
+      type: Date,
+      default: null
+    },
+
+    idRejectionReason: {
+      type: String,
+      default: ''
+    },
+
     assignedHr: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",

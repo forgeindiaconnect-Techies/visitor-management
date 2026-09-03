@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
+import { createWorker } from 'tesseract.js';
 import { 
   Calendar, User, Clock, Building, CheckCircle2, Phone, Mail, 
   Car, ShieldAlert, ArrowLeft, Printer, QrCode, Sparkles, Upload, FileText, Download
@@ -49,6 +50,8 @@ const PublicPreBooking = () => {
   const location = useLocation();
   const { companyCode: routeCodeParam, companyId: routeCompanyId } = useParams();
   const fileInputRef = useRef(null);
+  const ocrWorkerRef = useRef(null);
+  const [ocrProgress, setOcrProgress] = useState(0);
 
   // Company Validation State
   const [isValidatingCompany, setIsValidatingCompany] = useState(true);
@@ -75,6 +78,8 @@ const PublicPreBooking = () => {
     branch: '',
     idType: '',
     idProofUrl: '',
+    idVerificationStatus: '',
+    idVerificationToken: '',
   });
 
   const [capturedPhoto, setCapturedPhoto] = useState(null);
@@ -133,18 +138,46 @@ const PublicPreBooking = () => {
           return;
         }
 
-        setTargetCompany(data.company);
+        const normalizedCompany = {
+          ...data.company,
 
-        const dynamicHosts = data.company.hosts || [];
-        const dynamicBranches = data.company.branches || [];
+          companyId:
+            data.company.companyId ||
+            data.company.code ||
+            companyCode,
+
+          code:
+            data.company.code ||
+            data.company.companyId ||
+            companyCode,
+
+          companyName:
+            data.company.companyName ||
+            data.company.name ||
+            'Registered Company',
+
+          name:
+            data.company.name ||
+            data.company.companyName ||
+            'Registered Company'
+        };
+
+        setTargetCompany(normalizedCompany);
+
+        const dynamicHosts =
+          normalizedCompany.hosts || [];
+
+        const dynamicBranches =
+          normalizedCompany.branches || [];
         setAvailableHosts(dynamicHosts);
         setAvailableBranches(dynamicBranches);
 
         setFormData((previousData) => ({
           ...previousData,
-          companyId: data.company.companyId,
+          companyId:
+            normalizedCompany.companyId,
           companyName:
-            data.company.companyName || previousData.companyName,
+            normalizedCompany.companyName,
           branch: dynamicBranches?.[0] || ''
         }));
       } catch (error) {
@@ -320,43 +353,358 @@ const PublicPreBooking = () => {
     }
   };
 
-  const handleIdProofChange = async (e) => {
-    const file = e.target.files[0];
+  const validateSelectedDocument = (selectedType, extractedText) => {
+    const normalizedText = String(extractedText || '')
+      .toUpperCase()
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (normalizedText.length < 15) {
+      return {
+        valid: false,
+        message: 'The document text is unclear. Upload a brighter, sharper image showing the complete ID.'
+      };
+    }
+
+    if (selectedType === 'PAN Card') {
+      const hasPanNumber = /\b[A-Z]{5}[0-9]{4}[A-Z]\b/.test(
+        normalizedText.replace(/\s/g, '')
+      );
+      const hasPanWords =
+        normalizedText.includes('INCOME TAX') ||
+        normalizedText.includes('PERMANENT ACCOUNT');
+
+      return {
+        valid: hasPanNumber && hasPanWords,
+        message: 'The uploaded document does not appear to be a PAN Card. Upload a clear PAN Card image.'
+      };
+    }
+
+    if (selectedType === 'Aadhaar Card') {
+      const digitsOnly = normalizedText.replace(/\D/g, '');
+      const hasAadhaarNumber = /\d{12}/.test(digitsOnly);
+      const hasAadhaarWords =
+        normalizedText.includes('AADHAAR') ||
+        normalizedText.includes('UNIQUE IDENTIFICATION') ||
+        normalizedText.includes('GOVERNMENT OF INDIA');
+
+      return {
+        valid: hasAadhaarNumber && hasAadhaarWords,
+        message: 'The uploaded document does not appear to be an Aadhaar Card. Upload a clear Aadhaar Card image.'
+      };
+    }
+
+    if (selectedType === 'Driving Licence') {
+      const hasLicenceWords =
+        normalizedText.includes('DRIVING LICENCE') ||
+        normalizedText.includes('DRIVING LICENSE') ||
+        normalizedText.includes('DL NO') ||
+        normalizedText.includes('LICENCE NO');
+
+      return {
+        valid: hasLicenceWords,
+        message: 'The uploaded document does not appear to be a Driving Licence. Upload a clear Driving Licence image.'
+      };
+    }
+
+    if (selectedType === 'Passport') {
+      const hasPassportWord = normalizedText.includes('PASSPORT');
+      const hasPassportDetails =
+        normalizedText.includes('REPUBLIC OF INDIA') ||
+        normalizedText.includes('NATIONALITY') ||
+        normalizedText.includes('DATE OF BIRTH');
+
+      return {
+        valid: hasPassportWord && hasPassportDetails,
+        message: 'The uploaded document does not appear to be a Passport. Upload the Passport information page.'
+      };
+    }
+
+    if (selectedType === 'Other') {
+      return {
+        valid: true,
+        requiresManualReview: true,
+        message: 'This document will require manual verification.'
+      };
+    }
+
+    return {
+      valid: false,
+      message: 'Please select a valid ID proof type.'
+    };
+  };
+
+  const handleIdProofChange = async (event) => {
+    const inputElement = event.target;
+    const file = inputElement.files?.[0];
+
     if (!file) return;
 
-    // Show local preview
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setIdProofPreview(reader.result);
+    const clearSelectedFile = () => {
+      inputElement.value = '';
+      setIdProofPreview('');
+
+      setFormData((previous) => ({
+        ...previous,
+        idProofUrl: '',
+        idVerificationStatus: '',
+        idVerificationToken: ''
+      }));
     };
-    reader.readAsDataURL(file);
 
-    // Upload to Cloudinary
+    if (!formData.idType) {
+      clearSelectedFile();
+
+      setErrorMsg(
+        'Please select an ID proof type before uploading.'
+      );
+
+      return;
+    }
+
+    const allowedTypes = [
+      'image/jpeg',
+      'image/png',
+      'image/webp'
+    ];
+
+    if (!allowedTypes.includes(file.type)) {
+      clearSelectedFile();
+
+      setErrorMsg(
+        'Upload only a PNG, JPG, JPEG, or WebP image.'
+      );
+
+      return;
+    }
+
+    const maximumSize = 5 * 1024 * 1024;
+
+    if (file.size > maximumSize) {
+      clearSelectedFile();
+
+      setErrorMsg(
+        'The ID proof image must be smaller than 5 MB.'
+      );
+
+      return;
+    }
+
+    if (file.size < 20 * 1024) {
+      clearSelectedFile();
+
+      setErrorMsg(
+        'The selected image is too small or invalid.'
+      );
+
+      return;
+    }
+
     setUploadingIdProof(true);
+    setOcrProgress(0);
     setErrorMsg('');
+    setIdProofPreview('');
+
     try {
-      const formDataUpload = new FormData();
-      formDataUpload.append("photo", file);
+      // Validate image dimensions.
+      const temporaryUrl =
+        URL.createObjectURL(file);
 
-      const uploadResponse = await fetch(`${API_BASE}/api/visitors/upload`, {
-        method: "POST",
-        body: formDataUpload
-      });
+      const dimensions = await new Promise(
+        (resolve, reject) => {
+          const image = new Image();
 
-      const uploadResult = await uploadResponse.json();
-      if (uploadResponse.ok && uploadResult.url) {
-        setFormData(prev => ({ ...prev, idProofUrl: uploadResult.url }));
-      } else {
-        console.error("Cloudinary upload failed: ", uploadResult.message);
-        setErrorMsg("Failed to upload ID proof photo. Please try again.");
+          image.onload = () => {
+            resolve({
+              width: image.naturalWidth,
+              height: image.naturalHeight
+            });
+
+            URL.revokeObjectURL(
+              temporaryUrl
+            );
+          };
+
+          image.onerror = () => {
+            URL.revokeObjectURL(
+              temporaryUrl
+            );
+
+            reject(
+              new Error(
+                'The selected file is not a valid image.'
+              )
+            );
+          };
+
+          image.src = temporaryUrl;
+        }
+      );
+
+      if (
+        dimensions.width < 500 ||
+        dimensions.height < 300
+      ) {
+        throw new Error(
+          'The image resolution is too low. Upload a clear image of at least 500 × 300 pixels.'
+        );
       }
-    } catch (uploadErr) {
-      console.error("Error uploading ID proof:", uploadErr);
-      setErrorMsg("Error uploading ID proof photo.");
+
+      // Create and reuse one OCR worker.
+      if (!ocrWorkerRef.current) {
+        ocrWorkerRef.current =
+          await createWorker(
+            'eng',
+            undefined,
+            {
+              logger: (progress) => {
+                if (
+                  progress.status ===
+                  'recognizing text'
+                ) {
+                  setOcrProgress(
+                    Math.round(
+                      progress.progress * 100
+                    )
+                  );
+                }
+              }
+            }
+          );
+      }
+
+      // Read the document locally.
+      const ocrResult =
+        await ocrWorkerRef.current.recognize(
+          file
+        );
+
+      const extractedText =
+        ocrResult?.data?.text || '';
+
+      const documentValidation =
+        validateSelectedDocument(
+          formData.idType,
+          extractedText
+        );
+
+      if (!documentValidation.valid) {
+        throw new Error(
+          documentValidation.message
+        );
+      }
+
+      // OCR text must not be saved or logged.
+      const previewData =
+        await new Promise(
+          (resolve, reject) => {
+            const reader = new FileReader();
+
+            reader.onload = () =>
+              resolve(reader.result);
+
+            reader.onerror = () =>
+              reject(
+                new Error(
+                  'Unable to preview the ID image.'
+                )
+              );
+
+            reader.readAsDataURL(file);
+          }
+        );
+
+      setIdProofPreview(previewData);
+
+      // Upload only after validation succeeds.
+      const uploadData = new FormData();
+
+      uploadData.append('photo', file);
+      uploadData.append(
+        'idType',
+        formData.idType
+      );
+      uploadData.append(
+        'companyId',
+        targetCompany?.companyId || targetCompany?.code || routeCodeParam || routeCompanyId || ''
+      );
+
+      const uploadResponse = await fetch(
+        `${API_BASE}/api/visitors/upload-id-proof`,
+        {
+          method: 'POST',
+          body: uploadData
+        }
+      );
+
+      const uploadResult =
+        await uploadResponse.json();
+
+      if (
+        !uploadResponse.ok ||
+        !uploadResult.url
+      ) {
+        throw new Error(
+          uploadResult.message ||
+          'Failed to upload the ID proof.'
+        );
+      }
+
+      if (!uploadResult.verificationToken) {
+        throw new Error(
+          'The server did not return ID verification proof. Please upload the document again.'
+        );
+      }
+
+      setFormData((previous) => ({
+        ...previous,
+
+        idProofUrl:
+          uploadResult.url,
+
+        idVerificationStatus:
+          uploadResult.verificationStatus,
+
+        idVerificationToken:
+          uploadResult.verificationToken
+      }));
+
+      if (
+        documentValidation
+          .requiresManualReview
+      ) {
+        setErrorMsg(
+          'The other government ID was uploaded and will require manual verification.'
+        );
+      } else {
+        setErrorMsg('');
+      }
+    } catch (error) {
+      console.error(
+        'ID proof validation failed:',
+        error
+      );
+
+      clearSelectedFile();
+
+      setErrorMsg(
+        error.message ||
+        'The selected ID proof could not be validated.'
+      );
     } finally {
       setUploadingIdProof(false);
+      setOcrProgress(0);
     }
   };
+
+  useEffect(() => {
+    return () => {
+      if (ocrWorkerRef.current) {
+        ocrWorkerRef.current.terminate();
+        ocrWorkerRef.current = null;
+      }
+    };
+  }, []);
 
   const handlePrintPass = () => {
     window.print();
@@ -409,6 +757,44 @@ const PublicPreBooking = () => {
       setErrorMsg('Face photo capture is mandatory to pre-book a visit pass.');
       return;
     }
+    if (!formData.idType) {
+      setErrorMsg(
+        'Please select an ID proof type.'
+      );
+      return;
+    }
+
+    if (
+      !formData.idProofUrl ||
+      !idProofPreview
+    ) {
+      setErrorMsg(
+        `Please upload your selected ${formData.idType}.`
+      );
+      return;
+    }
+
+    if (
+      ![
+        'VERIFIED',
+        'MANUAL_REVIEW'
+      ].includes(
+        formData.idVerificationStatus
+      )
+    ) {
+      setErrorMsg(
+        'Your ID proof has not been validated. Please upload it again.'
+      );
+      return;
+    }
+
+    if (!formData.idVerificationToken) {
+      setErrorMsg(
+        'ID proof verification is missing. Please upload the document again.'
+      );
+      return;
+    }
+
     if (uploadingIdProof) {
       setErrorMsg('Please wait for the ID proof photo to finish uploading.');
       return;
@@ -442,7 +828,15 @@ const PublicPreBooking = () => {
         }
       }
 
-      if (!targetCompany?.companyId) {
+      const verifiedCompanyId =
+        targetCompany?.companyId ||
+        targetCompany?.code;
+
+      const verifiedCompanyName =
+        targetCompany?.companyName ||
+        targetCompany?.name;
+
+      if (!verifiedCompanyId) {
         setErrorMsg(
           "Company validation failed. Please reopen the official company pre-booking link."
         );
@@ -451,11 +845,14 @@ const PublicPreBooking = () => {
 
       // 2. Submit payload to backend
       const payload = {
-        companyId: targetCompany?.companyId,
+        companyId: verifiedCompanyId,
         fullName: formData.visitorName,
         mobileNumber: formData.mobileNumber,
         email: formData.email,
-        visitingCompany: formData.companyName || targetCompany?.companyName || '',
+        visitingCompany:
+          verifiedCompanyName ||
+          formData.companyName ||
+          '',
         hostEmployee: formData.hostName,
         visitPurpose: formData.purpose,
         visitDate: formData.visitDate,
@@ -465,13 +862,20 @@ const PublicPreBooking = () => {
         facePhoto: finalPhotoUrl,
         idType: formData.idType,
         idProofUrl: formData.idProofUrl,
+        idVerificationStatus:
+          formData.idVerificationStatus,
+        idVerificationToken:
+          formData.idVerificationToken,
         assignedHr: formData.assignedHr,
         returningVisitor: Boolean(returningVisitor),
         isReturningVisitor: Boolean(returningVisitor),
         isReturning: Boolean(returningVisitor),
         // Compatibility fields:
         visitorName: formData.visitorName,
-        companyName: formData.companyName || 'Forge India Connect Private Limited',
+        companyName:
+          verifiedCompanyName ||
+          formData.companyName ||
+          '',
         hostName: formData.hostName,
         purpose: formData.purpose,
         branch: formData.branch,
@@ -493,8 +897,18 @@ const PublicPreBooking = () => {
         return;
       }
 
-      if (response.ok && (data.success || data.visitor || data.data)) {
-        const savedRecord = data.data || data.visitor;
+      const savedRecord =
+        data.data ||
+        data.visitor ||
+        data.preBooking ||
+        data.booking ||
+        null;
+
+      if (
+        response.ok &&
+        data.success &&
+        savedRecord
+      ) {
         const newVisitorId = savedRecord.visitorId || savedRecord.visitId || "Generated Successfully";
 
         setPreBookResult({
@@ -502,7 +916,14 @@ const PublicPreBooking = () => {
           visitorName: savedRecord.fullName || savedRecord.visitorName,
           mobileNumber: savedRecord.mobileNumber,
           email: savedRecord.email,
-          companyName: savedRecord.visitingCompany || savedRecord.companyName,
+          companyName:
+            savedRecord.visitingCompany ||
+            savedRecord.companyName ||
+            verifiedCompanyName ||
+            'Registered Company',
+          companyId:
+            savedRecord.companyId ||
+            verifiedCompanyId,
           hostName: savedRecord.hostEmployee || savedRecord.hostName,
           purpose: savedRecord.visitPurpose || savedRecord.purpose,
           visitDate: savedRecord.visitDate ? new Date(savedRecord.visitDate).toISOString().split('T')[0] : formData.visitDate,
@@ -535,6 +956,8 @@ const PublicPreBooking = () => {
           branch: availableBranches[0] || '',
           idType: '',
           idProofUrl: '',
+          idVerificationStatus: '',
+          idVerificationToken: ''
         });
 
         setStep(2);
@@ -960,40 +1383,92 @@ const PublicPreBooking = () => {
 
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wider">ID Proof Type (Optional)</label>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wider">ID Proof Type *</label>
                 <select
                   name="idType"
                   value={formData.idType}
-                  onChange={handleChange}
+                  onChange={(event) => {
+                    const newIdType = event.target.value;
+
+                    setFormData((previous) => ({
+                      ...previous,
+                      idType: newIdType,
+
+                      // Remove the previous document when type changes.
+                      idProofUrl: '',
+                      idVerificationStatus: '',
+                      idVerificationToken: ''
+                    }));
+
+                    setIdProofPreview('');
+
+                    if (fileInputRef.current) {
+                      fileInputRef.current.value = '';
+                    }
+                  }}
                   className={selectClassName}
+                  required
                 >
-                  <option value="">-- Select ID Type --</option>
-                  <option value="Aadhaar Card">Aadhaar Card</option>
-                  <option value="PAN Card">PAN Card</option>
-                  <option value="Driving License">Driving License</option>
-                  <option value="Ration Card">Ration Card</option>
-                  <option value="Passport">Passport</option>
-                  <option value="Other">Other ID Proof</option>
+                  <option value="">
+                    -- Select ID Type --
+                  </option>
+
+                  <option value="Aadhaar Card">
+                    Aadhaar Card
+                  </option>
+
+                  <option value="PAN Card">
+                    PAN Card
+                  </option>
+
+                  <option value="Driving Licence">
+                    Driving Licence
+                  </option>
+
+                  <option value="Passport">
+                    Passport
+                  </option>
+
+                  <option value="Other">
+                    Other Government ID
+                  </option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wider">Upload ID Photo (Optional)</label>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wider">Upload Selected ID Proof *</label>
                 <div className="relative flex items-center gap-3">
                   <input
                     type="file"
                     ref={fileInputRef}
                     onChange={handleIdProofChange}
-                    accept="image/*"
+                    accept="image/jpeg,image/png,image/webp"
+                    required={!formData.idProofUrl}
                     className="hidden"
                   />
                   <button
                     type="button"
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => {
+                      if (!formData.idType) {
+                        setErrorMsg(
+                          'Please select an ID proof type before uploading the document.'
+                        );
+                        return;
+                      }
+
+                      setErrorMsg('');
+                      fileInputRef.current?.click();
+                    }}
                     className="flex-grow flex items-center justify-center gap-2 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 text-xs font-bold py-3 px-4 rounded-xl transition-all shadow-sm h-11"
                   >
                     <Upload size={14} className="text-[var(--color-brand-indigo)]" />
-                    {uploadingIdProof ? 'Uploading ID...' : 'Choose / Capture'}
+                    {uploadingIdProof
+                      ? ocrProgress > 0
+                        ? `Checking ${formData.idType} — ${ocrProgress}%`
+                        : `Preparing ${formData.idType} check...`
+                      : formData.idType
+                        ? `Upload ${formData.idType}`
+                        : 'Select ID Type First'}
                   </button>
                   {idProofPreview && (
                     <div className="w-11 h-11 rounded-xl overflow-hidden border border-gray-200 relative group flex-shrink-0">
@@ -1002,7 +1477,17 @@ const PublicPreBooking = () => {
                         type="button"
                         onClick={() => {
                           setIdProofPreview('');
-                          setFormData(prev => ({ ...prev, idProofUrl: '' }));
+
+                          setFormData((previous) => ({
+                            ...previous,
+                            idProofUrl: '',
+                            idVerificationStatus: '',
+                            idVerificationToken: ''
+                          }));
+
+                          if (fileInputRef.current) {
+                            fileInputRef.current.value = '';
+                          }
                         }}
                         className="absolute inset-0 bg-black/50 text-white text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
                       >
@@ -1057,6 +1542,74 @@ const PublicPreBooking = () => {
               </p>
             </div>
 
+            <div className="mx-auto grid max-w-xl grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm sm:grid-cols-2">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                  Visiting Company
+                </p>
+
+                <p className="mt-1 text-sm font-bold text-slate-900">
+                  {preBookResult.companyName ||
+                    targetCompany?.companyName ||
+                    targetCompany?.name ||
+                    'Registered Company'}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                  Company Code
+                </p>
+
+                <p className="mt-1 text-sm font-bold text-slate-900">
+                  {preBookResult.companyId ||
+                    targetCompany?.companyId ||
+                    targetCompany?.code ||
+                    '—'}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                  Visitor
+                </p>
+
+                <p className="mt-1 text-sm font-semibold text-slate-800">
+                  {preBookResult.visitorName || '—'}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                  Host
+                </p>
+
+                <p className="mt-1 text-sm font-semibold text-slate-800">
+                  {preBookResult.hostName || '—'}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                  Branch
+                </p>
+
+                <p className="mt-1 text-sm font-semibold text-slate-800">
+                  {preBookResult.branch || '—'}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                  Visit Date
+                </p>
+
+                <p className="mt-1 text-sm font-semibold text-slate-800">
+                  {preBookResult.visitDate || '—'}
+                </p>
+              </div>
+            </div>
+
             {/* QR Card */}
             <div className="bg-slate-50 border border-gray-200/80 rounded-3xl p-6 shadow-xl flex flex-col items-center justify-center space-y-4 max-w-sm mx-auto">
               <div className="px-4 py-1.5 rounded-full bg-indigo-50 text-[var(--color-brand-indigo)] text-xs font-mono font-bold border border-indigo-100 shadow-sm">
@@ -1094,19 +1647,43 @@ const PublicPreBooking = () => {
               <button
                 onClick={() => {
                   setCapturedPhoto(null);
-                  setStep(1);
+                  setIdProofPreview('');
                   setFormData({
                     visitorName: '',
                     mobileNumber: '',
                     email: '',
-                    companyName: targetCompany?.companyName || '',
+
+                    companyId:
+                      targetCompany?.companyId ||
+                      targetCompany?.code ||
+                      '',
+
+                    companyName:
+                      targetCompany?.companyName ||
+                      targetCompany?.name ||
+                      '',
+
                     hostName: '',
+                    assignedHr: '',
+                    selectedHostLabel: '',
+
                     purpose: 'Business Meeting',
-                    visitDate: new Date().toISOString().split('T')[0],
-                    expectedArrivalTime: '10:00 AM',
+                    visitDate: getNextAllowedVisitDate(),
+                    expectedArrivalTime: '10:00',
+
                     vehicleNumber: '',
-                    branch: availableBranches?.[0] || '',
+
+                    branch:
+                      availableBranches?.[0] ||
+                      branches?.[0]?.branchName ||
+                      '',
+
+                    idType: '',
+                    idProofUrl: '',
+                    idVerificationStatus: '',
+                    idVerificationToken: ''
                   });
+                  setStep(1);
                 }}
                 className="px-5 py-2.5 rounded-xl bg-[var(--color-brand-indigo)] hover:bg-[var(--color-brand-indigo-light)] text-white font-semibold text-xs transition-colors shadow-md"
               >

@@ -99,15 +99,61 @@ const saasLeadSchema = new mongoose.Schema({
     type: Date,
     default: null
   },
-  communicationHistory: [{
-    subject: String,
-    message: String,
-    sentAt: {
-      type: Date,
-      default: Date.now
-    },
-    sentBy: String
-  }]
+  communicationHistory: [
+    {
+      subject: {
+        type: String,
+        required: true,
+        trim: true
+      },
+
+      message: {
+        type: String,
+        required: true
+      },
+
+      deliveryStatus: {
+        type: String,
+        enum: [
+          'SENT',
+          'FAILED'
+        ],
+        required: true
+      },
+
+      provider: {
+        type: String,
+        enum: [
+          'BREVO_API',
+          'BREVO_SMTP',
+          'GMAIL_SMTP',
+          'CONSOLE',
+          'UNKNOWN'
+        ],
+        default: 'UNKNOWN'
+      },
+
+      errorMessage: {
+        type: String,
+        default: ''
+      },
+
+      attemptedAt: {
+        type: Date,
+        default: Date.now
+      },
+
+      sentAt: {
+        type: Date,
+        default: null
+      },
+
+      sentBy: {
+        type: String,
+        default: 'SaaS Super Admin'
+      }
+    }
+  ]
 }, { timestamps: true });
 
 module.exports = mongoose.model('SaasLead', saasLeadSchema);

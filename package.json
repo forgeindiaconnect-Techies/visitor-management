@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@getbrevo/brevo": "^6.0.3",
+    "@mediapipe/tasks-vision": "^1.0.1",
     "@react-native-firebase/app": "^25.1.0",
     "@react-native-firebase/messaging": "^25.1.0",
     "date-fns": "^4.4.0",
@@ -42,6 +43,7 @@
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.0",
     "react-webcam": "^7.2.0",
-    "socket.io-client": "^4.8.3"
+    "socket.io-client": "^4.8.3",
+    "tesseract.js": "^7.0.0"
   }
 }

@@ -471,22 +471,87 @@ export default function SuperAdminPreBookings() {
       }
 
       setApprovedQR(
-        result.data ||
-        result.preBooking ||
-        result
-      );
+      result.data ||
+      result.preBooking ||
+      result
+    );
 
-      setSelectedVisitor(null);
-      await fetchPreBookings();
-    } catch (error) {
-      console.error('Approve error:', error);
+    setSelectedVisitor(null);
+    await fetchPreBookings();
+  } catch (error) {
+    console.error('Approval Error:', error);
+    alert(error.message || 'Failed to approve visitor.');
+  }
+};
 
+const reviewVisitorId = async (
+  visitor,
+  action
+) => {
+  let reason = '';
+
+  if (action === 'REJECT') {
+    reason = window.prompt(
+      'Enter the reason for rejecting this ID proof:'
+    );
+
+    if (reason === null) return;
+
+    if (!reason.trim()) {
       alert(
-        error.message ||
-        'Unable to approve the visitor.'
+        'A rejection reason is required.'
+      );
+      return;
+    }
+  }
+
+  try {
+    const response = await fetch(
+      `${API_URL}/api/prebookings/${visitor._id}/id-review`,
+      {
+        method: 'PATCH',
+
+        headers: {
+          'Content-Type':
+            'application/json',
+          ...getHeaders()
+        },
+
+        body: JSON.stringify({
+          action,
+          reason: reason.trim()
+        })
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      throw new Error(
+        result.message ||
+        'Failed to review the ID proof.'
       );
     }
-  };
+
+    alert(result.message);
+
+    setSelectedVisitor(
+      result.data
+    );
+
+    await fetchPreBookings();
+  } catch (error) {
+    console.error(
+      'ID review error:',
+      error
+    );
+
+    alert(
+      error.message ||
+      'Unable to review the ID proof.'
+    );
+  }
+};
 
   const rejectVisitor = async (id) => {
     try {
@@ -1348,6 +1413,90 @@ export default function SuperAdminPreBookings() {
                   )}
                 </div>
               )}
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      ID Proof
+                    </p>
+
+                    <p className="mt-1 font-semibold text-slate-900">
+                      {selectedVisitor.idType ||
+                        'Not provided'}
+                    </p>
+
+                    <span
+                      className={`mt-2 inline-block rounded-full px-3 py-1 text-xs font-bold ${
+                        selectedVisitor.idVerificationStatus ===
+                        'VERIFIED'
+                          ? 'bg-green-100 text-green-700'
+                          : selectedVisitor.idVerificationStatus ===
+                              'REJECTED'
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-orange-100 text-orange-700'
+                      }`}
+                    >
+                      {selectedVisitor.idVerificationStatus ===
+                      'VERIFIED'
+                        ? 'Verified'
+                        : selectedVisitor.idVerificationStatus ===
+                            'REJECTED'
+                          ? 'Rejected'
+                          : 'Manual Review Required'}
+                    </span>
+                  </div>
+
+                  {selectedVisitor.idProofUrl && (
+                    <a
+                      href={selectedVisitor.idProofUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-lg bg-indigo-600 px-4 py-2 text-center text-sm font-semibold text-white hover:bg-indigo-700"
+                    >
+                      View ID Proof
+                    </a>
+                  )}
+                </div>
+
+                {selectedVisitor.idRejectionReason && (
+                  <div className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+                    <strong>Rejection reason:</strong>{' '}
+                    {selectedVisitor.idRejectionReason}
+                  </div>
+                )}
+
+                {selectedVisitor.idVerificationStatus ===
+                  'MANUAL_REVIEW' && (
+                  <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        reviewVisitorId(
+                          selectedVisitor,
+                          'VERIFY'
+                        )
+                      }
+                      className="flex-1 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-700"
+                    >
+                      Verify ID
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        reviewVisitorId(
+                          selectedVisitor,
+                          'REJECT'
+                        )
+                      }
+                      className="flex-1 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700"
+                    >
+                      Reject ID
+                    </button>
+                  </div>
+                )}
+              </div>
 
               {/* Approval Summary */}
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">

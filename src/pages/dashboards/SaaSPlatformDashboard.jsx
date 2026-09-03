@@ -629,34 +629,93 @@ const SaaSPlatformDashboard = () => {
 
   const updateStatus = handleUpdateLeadStatus;
 
-  const handleSendEmail = async (e) => {
-    e.preventDefault();
-    if (!selectedLead || !emailSubject || !emailMessage) return;
+  const handleSendEmail = async (event) => {
+    event.preventDefault();
+
+    if (
+      !selectedLead ||
+      !emailSubject.trim() ||
+      !emailMessage.trim()
+    ) {
+      showToast(
+        'Subject and message are required.',
+        'warning'
+      );
+      return;
+    }
 
     try {
       setSendingEmail(true);
-      const response = await fetch(`${API_BASE}/api/saas-leads/${selectedLead._id}/send-email`, {
-        method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify({ subject: emailSubject, message: emailMessage })
-      });
-      
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'Failed to send email');
-      
-      showToast('Email sent successfully!', 'success');
-      
-      // Update local state
-      setSaasLeads((current) =>
-        current.map((lead) =>
-          lead._id === selectedLead._id ? data.data : lead
-        )
+
+      const response = await fetch(
+        `${API_BASE}/api/saas-leads/${selectedLead._id}/send-email`,
+        {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({
+            subject: emailSubject.trim(),
+            message: emailMessage.trim()
+          })
+        }
       );
-      setSelectedLead(data.data);
-      setEmailSubject('');
-      setEmailMessage('');
-    } catch (err) {
-      showToast(err.message, 'error');
+
+      let data = {};
+
+      try {
+        data = await response.json();
+      } catch {
+        data = {};
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          data.message ||
+          'Failed to process the email request.'
+        );
+      }
+
+      // Update communication history for both sent and failed attempts.
+      if (data.data) {
+        setSaasLeads((currentLeads) =>
+          currentLeads.map((lead) =>
+            lead._id === selectedLead._id
+              ? data.data
+              : lead
+          )
+        );
+
+        setSelectedLead(data.data);
+      }
+
+      if (data.delivered) {
+        showToast(
+          data.message ||
+          'Email delivered successfully.',
+          'success'
+        );
+
+        setEmailSubject('');
+        setEmailMessage('');
+      } else {
+        showToast(
+          data.message ||
+          'Email was not delivered. The failed attempt was saved.',
+          'warning'
+        );
+
+        // Keep the subject and message so the admin can retry.
+      }
+    } catch (error) {
+      console.error(
+        'Send lead email error:',
+        error
+      );
+
+      showToast(
+        error.message ||
+        'Unable to process the email request.',
+        'error'
+      );
     } finally {
       setSendingEmail(false);
     }

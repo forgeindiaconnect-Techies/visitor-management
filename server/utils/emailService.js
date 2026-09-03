@@ -41,15 +41,16 @@ if (isBrevoApiKey) {
   }
 }
 
-const sendEmail = async (to, subject, htmlBody) => {
+const sendEmailDetailed = async (to, subject, htmlBody) => {
   const senderEmail = process.env.BREVO_SENDER_EMAIL || SMTP_USER || 'forgeindiaconnectfic@gmail.com';
   const senderName = process.env.BREVO_SENDER_NAME || 'ForgeIndiaConnect';
+  let lastError = '';
 
   // 1. Primary Attempt: Brevo REST API (when xkeysib- key is provided)
   if (isBrevoApiKey && (brevoClient || process.env.BREVO_API_KEY)) {
     try {
       const client = brevoClient || new BrevoClient({ apiKey: process.env.BREVO_API_KEY });
-      await client.transactionalEmails.sendTransacEmail({
+      const apiRes = await client.transactionalEmails.sendTransacEmail({
         subject: subject,
         htmlContent: htmlBody,
         sender: {
@@ -60,13 +61,19 @@ const sendEmail = async (to, subject, htmlBody) => {
         replyTo: { email: senderEmail, name: senderName }
       });
       console.log(`⚡ Instant Brevo API email dispatched to ${to} (${subject})`);
-      return true;
+      return {
+        delivered: true,
+        provider: 'BREVO_API',
+        messageId: apiRes?.messageId || apiRes?.body?.messageId || null,
+        error: ''
+      };
     } catch (brevoErr) {
+      lastError = `Brevo API error: ${brevoErr.message}`;
       console.warn(`⚠️ Brevo API delivery notice (${brevoErr.message}). Falling back to SMTP...`);
     }
   }
 
-  // 2. SMTP Delivery (Brevo SMTP relay or Gmail SMTP)
+  // 2. Secondary Attempt: Configured SMTP Delivery (Brevo SMTP relay)
   try {
     const info = await transporter.sendMail({
       from: `"${senderName}" <${senderEmail}>`,
@@ -76,19 +83,68 @@ const sendEmail = async (to, subject, htmlBody) => {
       html: htmlBody
     });
     console.log(`📧 SMTP (${SMTP_HOST}) email sent to ${to}. MessageId: ${info.messageId}`);
-    return true;
+    return {
+      delivered: true,
+      provider: 'BREVO_SMTP',
+      messageId: info.messageId,
+      error: ''
+    };
   } catch (smtpErr) {
-    console.warn(`⚠️ SMTP (${SMTP_HOST}) failed (${smtpErr.message}). Logging email to console:`);
-    console.log('\n' + '='.repeat(60));
-    console.log('📧 EMAIL DISPATCH LOG');
-    console.log('='.repeat(60));
-    console.log(`To:      ${to}`);
-    console.log(`Subject: ${subject}`);
-    console.log('-'.repeat(60));
-    console.log(htmlBody.replace(/<[^>]*>?/gm, ''));
-    console.log('='.repeat(60) + '\n');
-    return false;
+    lastError = lastError ? `${lastError} | Brevo SMTP error: ${smtpErr.message}` : `Brevo SMTP error: ${smtpErr.message}`;
+    console.warn(`⚠️ Primary SMTP (${SMTP_HOST}) failed (${smtpErr.message}). Attempting Gmail SMTP fallback...`);
   }
+
+  // 3. Tertiary Attempt: Fallback Gmail SMTP
+  try {
+    const fallbackTransporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: 'forgeindiaconnectfic@gmail.com',
+        pass: 'nuyy dzpp ysfp tcdl'
+      },
+      tls: { rejectUnauthorized: false }
+    });
+
+    const info = await fallbackTransporter.sendMail({
+      from: `"${senderName}" <${senderEmail}>`,
+      to: to,
+      replyTo: `"${senderName}" <${senderEmail}>`,
+      subject: subject,
+      html: htmlBody
+    });
+    console.log(`📧 Fallback Gmail SMTP email sent to ${to}. MessageId: ${info.messageId}`);
+    return {
+      delivered: true,
+      provider: 'GMAIL_SMTP',
+      messageId: info.messageId,
+      error: ''
+    };
+  } catch (fallbackErr) {
+    lastError = `${lastError} | Gmail SMTP error: ${fallbackErr.message}`;
+    console.warn(`⚠️ Fallback Gmail SMTP failed (${fallbackErr.message}). Logging email to console.`);
+  }
+
+  // 4. Ultimate Fallback: Log email to server console
+  console.log('\n' + '='.repeat(60));
+  console.log('📧 EMAIL DISPATCH LOG (Console Fallback)');
+  console.log('='.repeat(60));
+  console.log(`To:      ${to}`);
+  console.log(`Subject: ${subject}`);
+  console.log('-'.repeat(60));
+  console.log(htmlBody.replace(/<[^>]*>?/gm, ''));
+  console.log('='.repeat(60) + '\n');
+
+  return {
+    delivered: false,
+    provider: 'CONSOLE',
+    messageId: null,
+    error: lastError || 'All email delivery providers failed'
+  };
+};
+
+const sendEmail = async (to, subject, htmlBody) => {
+  const res = await sendEmailDetailed(to, subject, htmlBody);
+  return res.delivered;
 };
 
 const sendPreBookingInvitation = async ({ visitorName, email, registrationLink, expiryDate, companyName }) => {
@@ -503,6 +559,7 @@ const sendCompanyActivationEmail = async ({
 
 module.exports = {
   sendEmail,
+  sendEmailDetailed,
   sendCompanyActivationEmail,
   sendPreBookingInvitation,
   sendRegistrationConfirmation,

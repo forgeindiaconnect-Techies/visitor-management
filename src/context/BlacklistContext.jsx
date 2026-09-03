@@ -35,6 +35,12 @@ export const BlacklistProvider = ({ children }) => {
   };
 
   React.useEffect(() => {
+    if (!currentUser || !currentUser.token) {
+      setBlacklisted([]);
+      setLoading(false);
+      return;
+    }
+
     fetchBlacklist();
     const interval = setInterval(fetchBlacklist, 10000); // Auto-refresh every 10 seconds
     return () => clearInterval(interval);

@@ -14,6 +14,9 @@ const {
   reserveVisitorPass,
   releaseVisitorPass
 } = require('../services/subscriptionUsageService');
+const {
+  verifyIdProofToken
+} = require('../services/idProofTokenService');
 
 const createVisitorId = async (companyCode) => {
   const normalizedCode = String(companyCode).trim().toUpperCase();
@@ -117,6 +120,88 @@ const createPreBooking = async (req, res) => {
       return res.status(403).json({
         success: false,
         message: "Pre-booking is unavailable for this company. Please contact the administrator."
+      });
+    }
+
+    const {
+      idVerificationToken
+    } = req.body;
+
+    const tokenVerification =
+      verifyIdProofToken(
+        idVerificationToken
+      );
+
+    if (!tokenVerification.valid) {
+      return res.status(400).json({
+        success: false,
+        code:
+          'ID_PROOF_VERIFICATION_REQUIRED',
+        message:
+          tokenVerification.message ||
+          'Please upload and verify your ID proof.'
+      });
+    }
+
+    const verifiedId =
+      tokenVerification.payload;
+
+    const requestCompanyId = String(
+      targetCompany.code
+    )
+      .trim()
+      .toUpperCase();
+
+    if (
+      verifiedId.companyId !==
+      requestCompanyId
+    ) {
+      return res.status(403).json({
+        success: false,
+        code: 'ID_COMPANY_MISMATCH',
+        message:
+          'This ID verification does not belong to the selected company.'
+      });
+    }
+
+    if (
+      verifiedId.idType !==
+      req.body.idType
+    ) {
+      return res.status(400).json({
+        success: false,
+        code: 'ID_TYPE_MISMATCH',
+        message:
+          'The verified document does not match the selected ID type. Please upload it again.'
+      });
+    }
+
+    if (
+      verifiedId.idProofUrl !==
+      req.body.idProofUrl
+    ) {
+      return res.status(400).json({
+        success: false,
+        code: 'ID_URL_MISMATCH',
+        message:
+          'The submitted ID proof does not match the verified upload.'
+      });
+    }
+
+    if (
+      ![
+        'VERIFIED',
+        'MANUAL_REVIEW'
+      ].includes(
+        verifiedId.verificationStatus
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        code:
+          'INVALID_ID_VERIFICATION_STATUS',
+        message:
+          'The ID proof has not been verified.'
       });
     }
 
@@ -258,8 +343,13 @@ const createPreBooking = async (req, res) => {
       branchLocation,
       vehicleNumber,
       facePhoto,
-      idType: idType || "",
-      idProofUrl: idProofUrl || "",
+      idType: verifiedId.idType,
+      idProofUrl: verifiedId.idProofUrl,
+
+      idVerificationStatus:
+        verifiedId.verificationStatus,
+
+      idVerifiedAt: new Date(),
       assignedHr: finalAssignedHr,
       visitorType,
       bookingType: "PRE_BOOKING",
@@ -440,6 +530,44 @@ const approvePreBooking = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: `Cannot approve a booking with status ${preBooking.status}.`,
+      });
+    }
+
+    if (
+      preBooking.idVerificationStatus ===
+      'MANUAL_REVIEW'
+    ) {
+      return res.status(409).json({
+        success: false,
+        code:
+          'ID_MANUAL_REVIEW_REQUIRED',
+        message:
+          'This visitor uploaded an Other Government ID. Review and verify the document before approving the pre-booking.'
+      });
+    }
+
+    if (
+      preBooking.idVerificationStatus ===
+      'REJECTED'
+    ) {
+      return res.status(403).json({
+        success: false,
+        code: 'ID_PROOF_REJECTED',
+        message:
+          'This visitor’s ID proof was rejected. Ask the visitor to upload a valid document.'
+      });
+    }
+
+    if (
+      preBooking.idVerificationStatus !==
+      'VERIFIED'
+    ) {
+      return res.status(400).json({
+        success: false,
+        code:
+          'ID_PROOF_NOT_VERIFIED',
+        message:
+          'A verified ID proof is required before approval.'
       });
     }
 
@@ -2346,6 +2474,175 @@ const createAndSendVisitorInvitation = async (req, res) => {
   }
 };
 
+const reviewPreBookingId = async (
+  req,
+  res
+) => {
+  try {
+    const { id } = req.params;
+    const { action, reason = '' } = req.body;
+
+    const rawRole =
+      req.user?.role ||
+      req.userRole ||
+      '';
+
+    const normalizedRole = String(rawRole)
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, '_');
+
+    const allowedRoles = [
+      'SUPER_ADMIN',
+      'COMPANY_ADMIN',
+      'ADMIN',
+      'MD',
+      'SECURITY'
+    ];
+
+    if (
+      !allowedRoles.includes(
+        normalizedRole
+      )
+    ) {
+      return res.status(403).json({
+        success: false,
+        message:
+          'You do not have permission to review visitor ID proofs.'
+      });
+    }
+
+    const normalizedAction = String(
+      action || ''
+    )
+      .trim()
+      .toUpperCase();
+
+    if (
+      !['VERIFY', 'REJECT'].includes(
+        normalizedAction
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Review action must be VERIFY or REJECT.'
+      });
+    }
+
+    if (
+      normalizedAction === 'REJECT' &&
+      !reason.trim()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'A rejection reason is required.'
+      });
+    }
+
+    const mongoose = require('mongoose');
+
+    const identifierQuery =
+      mongoose.isValidObjectId(id)
+        ? {
+            $or: [
+              { _id: id },
+              { visitorId: id },
+              { visitId: id }
+            ]
+          }
+        : {
+            $or: [
+              { visitorId: id },
+              { visitId: id }
+            ]
+          };
+
+    const preBooking =
+      await PreBooking.findOne({
+        ...identifierQuery,
+        companyId: req.companyId
+      });
+
+    if (!preBooking) {
+      return res.status(404).json({
+        success: false,
+        message:
+          'Pre-booking was not found in your company.'
+      });
+    }
+
+    if (
+      preBooking.idVerificationStatus !==
+      'MANUAL_REVIEW'
+    ) {
+      return res.status(409).json({
+        success: false,
+        message:
+          `This ID proof is already marked as ${preBooking.idVerificationStatus}.`
+      });
+    }
+
+    const reviewerId =
+      mongoose.isValidObjectId(
+        req.userId
+      )
+        ? req.userId
+        : mongoose.isValidObjectId(
+              req.user?._id
+            )
+          ? req.user._id
+          : null;
+
+    const reviewDate = new Date();
+
+    preBooking.idVerificationStatus =
+      normalizedAction === 'VERIFY'
+        ? 'VERIFIED'
+        : 'REJECTED';
+
+    preBooking.idReviewedBy =
+      reviewerId;
+
+    preBooking.idReviewedByRole =
+      rawRole;
+
+    preBooking.idReviewedAt =
+      reviewDate;
+
+    preBooking.idRejectionReason =
+      normalizedAction === 'REJECT'
+        ? reason.trim()
+        : '';
+
+    await preBooking.save();
+
+    return res.status(200).json({
+      success: true,
+
+      message:
+        normalizedAction === 'VERIFY'
+          ? 'ID proof verified successfully. The pre-booking can now be approved.'
+          : 'ID proof rejected successfully.',
+
+      data: preBooking
+    });
+  } catch (error) {
+    console.error(
+      'ID proof review failed:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        'Failed to review the ID proof.'
+    });
+  }
+};
+
 module.exports = {
   createPreBooking,
   getAllPreBookings,
@@ -2365,4 +2662,5 @@ module.exports = {
   getReturningVisitor,
   updatePreBooking,
   createAndSendVisitorInvitation,
+  reviewPreBookingId,
 };

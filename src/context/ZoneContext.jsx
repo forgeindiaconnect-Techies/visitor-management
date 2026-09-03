@@ -36,6 +36,12 @@ export const ZoneProvider = ({ children }) => {
   };
 
   useEffect(() => {
+    if (!currentUser || !currentUser.token) {
+      setZones([]);
+      setLoading(false);
+      return;
+    }
+
     fetchZones();
     const interval = setInterval(fetchZones, 10000);
     return () => clearInterval(interval);

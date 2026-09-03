@@ -57,6 +57,12 @@ export const AttendanceProvider = ({ children }) => {
   };
 
   useEffect(() => {
+    if (!user || !user.token) {
+      setAttendance(null);
+      setAllAttendance([]);
+      return;
+    }
+
     fetchAttendance();
     const interval = setInterval(fetchAttendance, 10000);
     return () => clearInterval(interval);

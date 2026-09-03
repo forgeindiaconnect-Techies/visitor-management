@@ -20,6 +20,7 @@ const {
   getReturningVisitor,
   updatePreBooking,
   createAndSendVisitorInvitation,
+  reviewPreBookingId,
 } = require("../controllers/preBookingController");
 
 const router = express.Router();
@@ -156,6 +157,9 @@ router.post("/:id/check-in", checkInPreBooking);
 router.put("/visitor/:visitorId/check-out", checkOutPreBooking);
 router.post("/visitor/:visitorId/check-out", checkOutPreBooking);
 router.post("/:id/check-out", checkOutPreBooking);
+
+// ID Proof Review (Verify or Reject Manual Review)
+router.patch("/:id/id-review", authMiddleware, reviewPreBookingId);
 
 // Approve Pre-Booking
 router.put("/:id/approve", authMiddleware, approvePreBooking);

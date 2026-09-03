@@ -18,9 +18,15 @@ const {
   releaseVisitorPass,
   getVisitorPassUsage
 } = require('../services/subscriptionUsageService');
+const {
+  validateIdProof
+} = require('../services/idProofValidationService');
+const {
+  createIdProofToken
+} = require('../services/idProofTokenService');
 
 router.use((req, res, next) => {
-  if (req.path.startsWith('/pass/') || req.path.startsWith('/status/') || req.path.startsWith('/public-status/') || req.path === '/public-prebook' || req.path === '/upload' || req.path === '/clean-notifications-temp' || req.path.startsWith('/profile/')) {
+  if (req.path.startsWith('/pass/') || req.path.startsWith('/status/') || req.path.startsWith('/public-status/') || req.path === '/public-prebook' || req.path === '/upload' || req.path === '/upload-id-proof' || req.path === '/clean-notifications-temp' || req.path.startsWith('/profile/')) {
     return next();
   }
   authMiddleware(req, res, next);
@@ -152,6 +158,80 @@ const upload = multer({
     }
   }
 });
+
+const idProofUpload = multer({
+  storage: multer.memoryStorage(),
+
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+    files: 1
+  },
+
+  fileFilter: (req, file, callback) => {
+    const allowedMimeTypes = [
+      'image/jpeg',
+      'image/png',
+      'image/webp'
+    ];
+
+    if (!allowedMimeTypes.includes(file.mimetype)) {
+      return callback(
+        new Error(
+          'Only PNG, JPG, JPEG, and WebP images are allowed.'
+        )
+      );
+    }
+
+    callback(null, true);
+  }
+});
+
+const uploadBufferToCloudinary = ({
+  buffer,
+  companyId,
+  idType
+}) => {
+  return new Promise((resolve, reject) => {
+    const safeCompanyId = String(companyId)
+      .replace(/[^a-zA-Z0-9_-]/g, '_');
+
+    const safeIdType = String(idType)
+      .replace(/[^a-zA-Z0-9_-]/g, '_');
+
+    const uploadStream =
+      cloudinary.uploader.upload_stream(
+        {
+          folder:
+            `fic-vms/${safeCompanyId}/id-proofs`,
+
+          public_id:
+            `${safeIdType}_${uuidv4()}`,
+
+          resource_type: 'image',
+
+          transformation: [
+            {
+              width: 1600,
+              height: 1600,
+              crop: 'limit',
+              quality: 'auto:good'
+            }
+          ]
+        },
+
+        (error, result) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve(result);
+        }
+      );
+
+    uploadStream.end(buffer);
+  });
+};
 
 
 // Public Pre-Booking endpoint for Landing Page
@@ -314,6 +394,161 @@ router.post('/public-prebook', async (req, res) => {
     res.status(500).json({ message: err.message || 'Failed to complete pre-booking' });
   }
 });
+
+router.post(
+  '/upload-id-proof',
+  idProofUpload.single('photo'),
+  async (req, res) => {
+    try {
+      const {
+        idType,
+        companyId
+      } = req.body;
+
+      if (!idType) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Please select an ID proof type.'
+        });
+      }
+
+      if (!companyId) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Company ID is required.'
+        });
+      }
+
+      const normalizedCompanyId =
+        String(companyId)
+          .trim()
+          .toUpperCase();
+
+      const company = await Company.findOne({
+        code: normalizedCompanyId
+      });
+
+      if (!company) {
+        return res.status(404).json({
+          success: false,
+          message:
+            'The company pre-booking link is invalid.'
+        });
+      }
+
+      if (
+        company.status !== 'Active' ||
+        new Date(
+          company.subscriptionExpiresAt
+        ).getTime() <= Date.now()
+      ) {
+        return res.status(403).json({
+          success: false,
+          message:
+            'This company subscription is not active.'
+        });
+      }
+
+      if (
+        company.features?.preBookingEnabled ===
+        false
+      ) {
+        return res.status(403).json({
+          success: false,
+          message:
+            'Pre-booking is disabled for this company.'
+        });
+      }
+
+      if (!req.file?.buffer) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Please upload an ID proof image.'
+        });
+      }
+
+      const validation =
+        await validateIdProof({
+          idType,
+          imageBuffer: req.file.buffer
+        });
+
+      if (!validation.valid) {
+        return res.status(422).json({
+          success: false,
+          code:
+            'ID_DOCUMENT_TYPE_MISMATCH',
+          message: validation.message
+        });
+      }
+
+      // The image reaches Cloudinary only after
+      // backend document validation succeeds.
+      const cloudinaryResult =
+        await uploadBufferToCloudinary({
+          buffer: req.file.buffer,
+          companyId: normalizedCompanyId,
+          idType
+        });
+
+      const verificationStatus =
+        validation.requiresManualReview
+          ? 'MANUAL_REVIEW'
+          : 'VERIFIED';
+
+      const verificationToken =
+        createIdProofToken({
+          companyId: normalizedCompanyId,
+          idType,
+          idProofUrl:
+            cloudinaryResult.secure_url,
+          verificationStatus
+        });
+
+      return res.status(200).json({
+        success: true,
+
+        message:
+          validation.requiresManualReview
+            ? 'ID proof uploaded and marked for manual verification.'
+            : `${idType} verified and uploaded successfully.`,
+
+        url: cloudinaryResult.secure_url,
+
+        verificationStatus,
+
+        verificationToken
+      });
+    } catch (error) {
+      console.error(
+        'Validated ID upload failed:',
+        error.message
+      );
+
+      if (
+        error instanceof multer.MulterError
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            error.code === 'LIMIT_FILE_SIZE'
+              ? 'The ID proof must be smaller than 5 MB.'
+              : error.message
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        message:
+          error.message ||
+          'Failed to validate the ID proof.'
+      });
+    }
+  }
+);
 
 // Upload Visitor Photo Endpoint
 router.post('/upload', upload.single('photo'), (req, res) => {
