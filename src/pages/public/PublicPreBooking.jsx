@@ -490,16 +490,6 @@ const PublicPreBooking = () => {
       return;
     }
 
-    if (file.size < 20 * 1024) {
-      clearSelectedFile();
-
-      setErrorMsg(
-        'The selected image is too small or invalid.'
-      );
-
-      return;
-    }
-
     setUploadingIdProof(true);
     setOcrProgress(0);
     setErrorMsg('');
@@ -542,11 +532,11 @@ const PublicPreBooking = () => {
       );
 
       if (
-        dimensions.width < 500 ||
-        dimensions.height < 300
+        dimensions.width < 300 ||
+        dimensions.height < 200
       ) {
         throw new Error(
-          'The image resolution is too low. Upload a clear image of at least 500 × 300 pixels.'
+          'The image resolution is too low. Upload a clear image of at least 300 × 200 pixels.'
         );
       }
 
