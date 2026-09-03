@@ -129,8 +129,8 @@ router.get("/my", authMiddleware, getMyPreBookings);
 // Get Pre-Bookings report (Super Admin only)
 router.get("/reports", authMiddleware, getPreBookingReports);
 
-// Create Pre-Booking
-router.post("/", authMiddleware, createPreBooking);
+// Create Pre-Booking (Public submission from visitors OR logged-in users)
+router.post("/", createPreBooking);
 
 // Get all Pre-Bookings
 router.get("/", authMiddleware, getAllPreBookings);

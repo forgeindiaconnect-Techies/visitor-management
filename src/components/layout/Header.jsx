@@ -430,61 +430,11 @@ const Header = ({ toggleSidebar, isSidebarOpen }) => {
           </button>
         )}
         
-        {company?.branding?.logoUrl ? (
-          <img
-            src={company.branding.logoUrl}
-            alt={`${company.name} logo`}
-            className="h-9 max-w-[160px] object-contain"
-          />
-        ) : (
-          company?.name && (
-            <span className="font-extrabold text-gray-800 text-sm hidden md:inline-block">
-              {company.name}
-            </span>
-          )
-        )}
-
         <div className="flex flex-col hidden sm:block">
           <h2 className="text-xl font-semibold text-gray-800">
             Welcome back, {formatDisplayName(user?.name, 'User')}
           </h2>
         </div>
-
-        {company?.code && user?.role !== 'SaaS Super Admin' && (
-          <div className="hidden lg:flex items-center space-x-2 border-l border-r px-3 py-1 border-gray-200">
-            <button
-              type="button"
-              onClick={() => {
-                const preBookingLink = `${window.location.origin}/pre-booking/${company.code}`;
-                navigator.clipboard.writeText(preBookingLink);
-                alert('Pre-booking link copied');
-              }}
-              className="px-2.5 py-1 bg-indigo-50 text-indigo-700 font-bold text-xs rounded-lg hover:bg-indigo-100 transition shadow-2xs"
-            >
-              Copy Pre-Booking Link
-            </button>
-
-            <button
-              type="button"
-              onClick={async () => {
-                const preBookingLink = `${window.location.origin}/pre-booking/${company.code}`;
-                if (navigator.share) {
-                  await navigator.share({
-                    title: `${company.name} Visitor Registration`,
-                    text: `Register your visit to ${company.name}`,
-                    url: preBookingLink
-                  });
-                } else {
-                  await navigator.clipboard.writeText(preBookingLink);
-                  alert('Link copied');
-                }
-              }}
-              className="px-2.5 py-1 bg-indigo-700 text-white font-bold text-xs rounded-lg hover:bg-indigo-800 transition shadow-2xs"
-            >
-              Share Link
-            </button>
-          </div>
-        )}
         
         {user?.role !== 'SaaS Super Admin' && (
           <div className="flex items-center space-x-1 sm:space-x-2 bg-slate-50 px-2 sm:px-3 py-1.5 rounded-lg border border-gray-200">

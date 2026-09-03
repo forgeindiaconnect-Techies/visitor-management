@@ -79,12 +79,14 @@ const createPreBooking = async (req, res) => {
     // Resolve and validate the company
     const Company = require("../models/Company");
 
-    const targetCompanyId = req.companyId;
+    const targetCompanyId = String(
+      req.body?.companyId || req.companyId || req.body?.company || ''
+    ).trim().toUpperCase();
 
     if (!targetCompanyId) {
       return res.status(400).json({
         success: false,
-        message: "Company ID is required."
+        message: "Company information is missing. Please reopen the official company pre-booking link."
       });
     }
 
