@@ -363,84 +363,96 @@ const PublicPreBooking = () => {
   };
 
   const validateSelectedDocument = (selectedType, extractedText) => {
-    const normalizedText = String(extractedText || '')
+    const text = String(extractedText || '')
       .toUpperCase()
       .replace(/\s+/g, ' ')
       .trim();
 
-    if (normalizedText.length < 15) {
-      return {
-        valid: false,
-        message: 'The document text is unclear. Upload a brighter, sharper image showing the complete ID.'
-      };
-    }
+    const compactText = text.replace(/[^A-Z0-9]/g, '');
+    const digitsOnly = text.replace(/\D/g, '');
 
-    if (selectedType === 'PAN Card') {
-      const hasPanNumber = /\b[A-Z]{5}[0-9]{4}[A-Z]\b/.test(
-        normalizedText.replace(/\s/g, '')
-      );
-      const hasPanWords =
-        normalizedText.includes('INCOME TAX') ||
-        normalizedText.includes('PERMANENT ACCOUNT');
+    const aadhaarNumber =
+      /\d{12}/.test(digitsOnly) ||
+      /X{4}\s*X{4}\s*\d{4}/.test(text) ||
+      /\d{4}\s+\d{4}\s+\d{4}/.test(text);
 
-      return {
-        valid: hasPanNumber && hasPanWords,
-        message: 'The uploaded document does not appear to be a PAN Card. Upload a clear PAN Card image.'
-      };
+    const aadhaarWords = [
+      'AADHAAR',
+      'AADHAR',
+      'UIDAI',
+      'UNIQUE IDENTIFICATION',
+      'GOVERNMENT OF INDIA',
+      'GOVT OF INDIA',
+      'MERI PEHCHAAN',
+      'YEAR OF BIRTH',
+      'DOB'
+    ].some((word) => text.includes(word));
+
+    const panNumber = /[A-Z]{5}[0-9]{4}[A-Z]/.test(compactText);
+
+    const panWords = [
+      'INCOME TAX',
+      'PERMANENT ACCOUNT NUMBER',
+      'PERMANENT ACCOUNT'
+    ].some((word) => text.includes(word));
+
+    const drivingLicenceWords = [
+      'DRIVING LICENCE',
+      'DRIVING LICENSE',
+      'DL NO',
+      'DL NUMBER',
+      'LICENCE NO',
+      'LICENSE NO'
+    ].some((word) => text.includes(word));
+
+    const passportWords = [
+      'PASSPORT',
+      'REPUBLIC OF INDIA',
+      'NATIONALITY',
+      'PLACE OF BIRTH'
+    ].some((word) => text.includes(word));
+
+    const strongAadhaar = aadhaarNumber && aadhaarWords;
+    const strongPan = panNumber && panWords;
+    const passport = text.includes('PASSPORT') && passportWords;
+
+    if (text.length < 15) {
+      return { valid: true, requiresManualReview: true };
     }
 
     if (selectedType === 'Aadhaar Card') {
-      const digitsOnly = normalizedText.replace(/\D/g, '');
-      const hasAadhaarNumber = /\d{12}/.test(digitsOnly);
-      const hasAadhaarWords =
-        normalizedText.includes('AADHAAR') ||
-        normalizedText.includes('UNIQUE IDENTIFICATION') ||
-        normalizedText.includes('GOVERNMENT OF INDIA');
+      if (strongAadhaar) return { valid: true };
+      if (strongPan || drivingLicenceWords || passport) {
+        return { valid: false, message: `The selected document does not match Aadhaar Card.` };
+      }
+      return { valid: true, requiresManualReview: true };
+    }
 
-      return {
-        valid: hasAadhaarNumber && hasAadhaarWords,
-        message: 'The uploaded document does not appear to be an Aadhaar Card. Upload a clear Aadhaar Card image.'
-      };
+    if (selectedType === 'PAN Card') {
+      if (strongPan) return { valid: true };
+      if (strongAadhaar || drivingLicenceWords || passport) {
+        return { valid: false, message: `The selected document does not match PAN Card.` };
+      }
+      return { valid: true, requiresManualReview: true };
     }
 
     if (selectedType === 'Driving Licence') {
-      const hasLicenceWords =
-        normalizedText.includes('DRIVING LICENCE') ||
-        normalizedText.includes('DRIVING LICENSE') ||
-        normalizedText.includes('DL NO') ||
-        normalizedText.includes('LICENCE NO');
-
-      return {
-        valid: hasLicenceWords,
-        message: 'The uploaded document does not appear to be a Driving Licence. Upload a clear Driving Licence image.'
-      };
+      if (drivingLicenceWords) return { valid: true };
+      if (strongAadhaar || strongPan || passport) {
+        return { valid: false, message: `The selected document does not match Driving Licence.` };
+      }
+      return { valid: true, requiresManualReview: true };
     }
 
     if (selectedType === 'Passport') {
-      const hasPassportWord = normalizedText.includes('PASSPORT');
-      const hasPassportDetails =
-        normalizedText.includes('REPUBLIC OF INDIA') ||
-        normalizedText.includes('NATIONALITY') ||
-        normalizedText.includes('DATE OF BIRTH');
-
-      return {
-        valid: hasPassportWord && hasPassportDetails,
-        message: 'The uploaded document does not appear to be a Passport. Upload the Passport information page.'
-      };
+      if (passport) return { valid: true };
+      if (strongAadhaar || strongPan || drivingLicenceWords) {
+        return { valid: false, message: `The selected document does not match Passport.` };
+      }
+      return { valid: true, requiresManualReview: true };
     }
 
-    if (selectedType === 'Other') {
-      return {
-        valid: true,
-        requiresManualReview: true,
-        message: 'This document will require manual verification.'
-      };
-    }
-
-    return {
-      valid: false,
-      message: 'Please select a valid ID proof type.'
-    };
+    return { valid: true, requiresManualReview: true };
   };
 
   const showIdValidationPopup = (
@@ -646,18 +658,18 @@ const PublicPreBooking = () => {
           'Document Verified',
           `Your ${formData.idType} has been verified successfully.`
         );
+      } else if (
+        uploadResult.verificationStatus ===
+        'MANUAL_REVIEW'
+      ) {
+        showIdValidationPopup(
+          'success',
+          'Document Uploaded',
+          `Your ${formData.idType} has been uploaded successfully and is awaiting manual verification.`
+        );
       }
 
-      if (
-        documentValidation
-          .requiresManualReview
-      ) {
-        setErrorMsg(
-          'The other government ID was uploaded and will require manual verification.'
-        );
-      } else {
-        setErrorMsg('');
-      }
+      setErrorMsg('');
     } catch (error) {
       console.error(
         'ID proof validation failed:',

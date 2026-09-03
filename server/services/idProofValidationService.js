@@ -19,263 +19,192 @@ const getWorker = async () => {
   return workerPromise;
 };
 
-const validateExtractedText = (
-  idType,
-  extractedText,
-  ocrConfidence = 0
-) => {
-  const text = String(extractedText || '')
+const getDocumentMatches = (text) => {
+  const normalizedText = String(text || '')
     .toUpperCase()
-    .replace(/[|]/g, 'I')
     .replace(/\s+/g, ' ')
     .trim();
 
-  const compactText = text.replace(
-    /[^A-Z0-9]/g,
-    ''
-  );
+  const compactText = normalizedText.replace(/[^A-Z0-9]/g, '');
+  const digitsOnly = normalizedText.replace(/\D/g, '');
 
-  if (
-    text.length < 30 ||
-    Number(ocrConfidence) < 45
-  ) {
-    return {
-      valid: false,
-      requiresManualReview: false,
-      detectedType: 'UNKNOWN',
-      message:
-        'The document is unclear or does not contain enough readable information. Upload a clear photo of the complete ID.'
-    };
+  const aadhaarNumber =
+    /\d{12}/.test(digitsOnly) ||
+    /X{4}\s*X{4}\s*\d{4}/.test(normalizedText) ||
+    /\d{4}\s+\d{4}\s+\d{4}/.test(normalizedText);
+
+  const aadhaarWords = [
+    'AADHAAR',
+    'AADHAR',
+    'UIDAI',
+    'UNIQUE IDENTIFICATION',
+    'GOVERNMENT OF INDIA',
+    'GOVT OF INDIA',
+    'MERI PEHCHAAN',
+    'YEAR OF BIRTH',
+    'DOB'
+  ].some((word) => normalizedText.includes(word));
+
+  const panNumber = /[A-Z]{5}[0-9]{4}[A-Z]/.test(compactText);
+
+  const panWords = [
+    'INCOME TAX',
+    'PERMANENT ACCOUNT NUMBER',
+    'PERMANENT ACCOUNT'
+  ].some((word) => normalizedText.includes(word));
+
+  const drivingLicenceWords = [
+    'DRIVING LICENCE',
+    'DRIVING LICENSE',
+    'DL NO',
+    'DL NUMBER',
+    'LICENCE NO',
+    'LICENSE NO'
+  ].some((word) => normalizedText.includes(word));
+
+  const passportWords = [
+    'PASSPORT',
+    'REPUBLIC OF INDIA',
+    'NATIONALITY',
+    'PLACE OF BIRTH'
+  ].some((word) => normalizedText.includes(word));
+
+  return {
+    aadhaar: aadhaarNumber || aadhaarWords,
+    strongAadhaar: aadhaarNumber && aadhaarWords,
+
+    pan: panNumber || panWords,
+    strongPan: panNumber && panWords,
+
+    drivingLicence: drivingLicenceWords,
+
+    passport:
+      normalizedText.includes('PASSPORT') &&
+      passportWords
+  };
+};
+
+const manualReviewResult = (idType) => ({
+  valid: true,
+  requiresManualReview: true,
+  message:
+    `${idType} uploaded successfully and is awaiting manual verification.`
+});
+
+const invalidResult = (idType) => ({
+  valid: false,
+  requiresManualReview: false,
+  message:
+    `The selected document does not match ${idType}. Please upload the correct document.`
+});
+
+const validateExtractedText = (
+  idType,
+  extractedText,
+  confidence = 0
+) => {
+  const text = String(extractedText || '')
+    .toUpperCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const matches = getDocumentMatches(text);
+
+  // OCR could not read enough text. Do not falsely reject
+  // the document as an incorrect Aadhaar/PAN/etc.
+  if (text.length < 15 || Number(confidence) < 25) {
+    return manualReviewResult(idType);
   }
 
-  const containsPanIndicators =
-    text.includes('INCOME TAX') ||
-    text.includes(
-      'PERMANENT ACCOUNT NUMBER'
-    );
-
-  const containsAadhaarIndicators =
-    text.includes('AADHAAR') ||
-    text.includes('AADHAR') ||
-    text.includes('UIDAI') ||
-    text.includes(
-      'UNIQUE IDENTIFICATION AUTHORITY'
-    );
-
-  const containsDrivingIndicators =
-    text.includes('DRIVING LICENCE') ||
-    text.includes('DRIVING LICENSE') ||
-    text.includes('DL NO') ||
-    text.includes('LICENCE NO') ||
-    text.includes('LICENSE NO');
-
-  const containsPassportIndicators =
-    text.includes('PASSPORT') ||
-    text.includes('PASSPORT NO') ||
-    text.includes('REPUBLIC OF INDIA');
-
-  // PAN Card
-  if (idType === 'PAN Card') {
-    const hasPanNumber =
-      /[A-Z]{5}[0-9]{4}[A-Z]/.test(
-        compactText
-      );
-
-    const hasSupportingDetails =
-      text.includes('DATE OF BIRTH') ||
-      text.includes('FATHER') ||
-      text.includes('SIGNATURE');
-
-    const wrongDocument =
-      containsAadhaarIndicators ||
-      containsDrivingIndicators ||
-      containsPassportIndicators;
-
-    const valid =
-      containsPanIndicators &&
-      hasPanNumber &&
-      hasSupportingDetails &&
-      !wrongDocument;
-
-    return {
-      valid,
-      requiresManualReview: false,
-      detectedType:
-        valid ? 'PAN Card' : 'UNKNOWN',
-      message:
-        'The uploaded image does not match PAN Card requirements. Upload the complete PAN Card showing its heading, PAN number and identity details.'
-    };
-  }
-
-  // Aadhaar Card
   if (idType === 'Aadhaar Card') {
-    const hasFormattedAadhaarNumber =
-      /\b[0-9]{4}\s+[0-9]{4}\s+[0-9]{4}\b/.test(
-        text
-      );
+    if (matches.strongAadhaar) {
+      return {
+        valid: true,
+        requiresManualReview: false,
+        message: 'Aadhaar Card verified successfully.'
+      };
+    }
 
-    const hasCompactAadhaarNumber =
-      /\b[0-9]{12}\b/.test(text);
+    // Reject only when OCR clearly identifies another ID.
+    if (
+      matches.strongPan ||
+      matches.drivingLicence ||
+      matches.passport
+    ) {
+      return invalidResult(idType);
+    }
 
-    const hasMaskedAadhaarNumber =
-      /\bX{4}\s*X{4}\s*[0-9]{4}\b/.test(
-        text
-      );
-
-    const hasGovernmentHeading =
-      text.includes(
-        'GOVERNMENT OF INDIA'
-      ) ||
-      text.includes(
-        'GOVT OF INDIA'
-      ) ||
-      text.includes(
-        'भारत सरकार'
-      );
-
-    const hasIdentityDetails =
-      text.includes('DATE OF BIRTH') ||
-      text.includes('DOB') ||
-      text.includes('YEAR OF BIRTH') ||
-      text.includes('YOB') ||
-      text.includes('MALE') ||
-      text.includes('FEMALE') ||
-      text.includes('ADDRESS');
-
-    const wrongDocument =
-      containsPanIndicators ||
-      containsDrivingIndicators ||
-      (
-        text.includes('PASSPORT') &&
-        !text.includes('AADHAAR')
-      );
-
-    const valid =
-      containsAadhaarIndicators &&
-      hasGovernmentHeading &&
-      (
-        hasFormattedAadhaarNumber ||
-        hasCompactAadhaarNumber ||
-        hasMaskedAadhaarNumber
-      ) &&
-      hasIdentityDetails &&
-      !wrongDocument;
-
-    return {
-      valid,
-      requiresManualReview: false,
-      detectedType:
-        valid ? 'Aadhaar Card' : 'UNKNOWN',
-      message:
-        'The uploaded image does not match Aadhaar Card requirements. Upload the complete Aadhaar Card showing the Aadhaar heading, number and identity details.'
-    };
+    return manualReviewResult(idType);
   }
 
-  // Driving Licence
+  if (idType === 'PAN Card') {
+    if (matches.strongPan) {
+      return {
+        valid: true,
+        requiresManualReview: false,
+        message: 'PAN Card verified successfully.'
+      };
+    }
+
+    if (
+      matches.strongAadhaar ||
+      matches.drivingLicence ||
+      matches.passport
+    ) {
+      return invalidResult(idType);
+    }
+
+    return manualReviewResult(idType);
+  }
+
   if (idType === 'Driving Licence') {
-    const hasHeading =
-      text.includes('DRIVING LICENCE') ||
-      text.includes('DRIVING LICENSE');
+    if (matches.drivingLicence) {
+      return {
+        valid: true,
+        requiresManualReview: false,
+        message: 'Driving Licence verified successfully.'
+      };
+    }
 
-    const hasNumberLabel =
-      text.includes('DL NO') ||
-      text.includes('DL NUMBER') ||
-      text.includes('LICENCE NO') ||
-      text.includes('LICENSE NO');
+    if (
+      matches.strongAadhaar ||
+      matches.strongPan ||
+      matches.passport
+    ) {
+      return invalidResult(idType);
+    }
 
-    const hasSupportingDetails =
-      text.includes('VALID') ||
-      text.includes('DATE OF BIRTH') ||
-      text.includes('DOB') ||
-      text.includes('TRANSPORT') ||
-      text.includes(
-        'NON-TRANSPORT'
-      ) ||
-      text.includes(
-        'BLOOD GROUP'
-      );
-
-    const wrongDocument =
-      containsPanIndicators ||
-      containsAadhaarIndicators ||
-      containsPassportIndicators;
-
-    const valid =
-      hasHeading &&
-      hasNumberLabel &&
-      hasSupportingDetails &&
-      !wrongDocument;
-
-    return {
-      valid,
-      requiresManualReview: false,
-      detectedType:
-        valid
-          ? 'Driving Licence'
-          : 'UNKNOWN',
-      message:
-        'The uploaded image does not match Driving Licence requirements. Upload the complete licence showing its heading, licence number and validity details.'
-    };
+    return manualReviewResult(idType);
   }
 
-  // Passport
   if (idType === 'Passport') {
-    const hasHeading =
-      text.includes('PASSPORT');
+    if (matches.passport) {
+      return {
+        valid: true,
+        requiresManualReview: false,
+        message: 'Passport verified successfully.'
+      };
+    }
 
-    const hasRepublicHeading =
-      text.includes(
-        'REPUBLIC OF INDIA'
-      );
+    if (
+      matches.strongAadhaar ||
+      matches.strongPan ||
+      matches.drivingLicence
+    ) {
+      return invalidResult(idType);
+    }
 
-    const hasPassportFields =
-      text.includes('PASSPORT NO') ||
-      text.includes('SURNAME') ||
-      text.includes('NATIONALITY');
-
-    const hasIdentityDetails =
-      text.includes('DATE OF BIRTH') ||
-      text.includes('PLACE OF BIRTH') ||
-      text.includes('DATE OF EXPIRY');
-
-    const wrongDocument =
-      containsPanIndicators ||
-      containsAadhaarIndicators ||
-      containsDrivingIndicators;
-
-    const valid =
-      hasHeading &&
-      hasRepublicHeading &&
-      hasPassportFields &&
-      hasIdentityDetails &&
-      !wrongDocument;
-
-    return {
-      valid,
-      requiresManualReview: false,
-      detectedType:
-        valid ? 'Passport' : 'UNKNOWN',
-      message:
-        'The uploaded image does not match Passport requirements. Upload the complete Passport information page.'
-    };
+    return manualReviewResult(idType);
   }
 
   if (idType === 'Other') {
-    return {
-      valid: false,
-      requiresManualReview: true,
-      detectedType: 'OTHER',
-      message:
-        'Other government IDs cannot be automatically verified. Please select Aadhaar Card, PAN Card, Driving Licence, or Passport.'
-    };
+    return manualReviewResult(idType);
   }
 
   return {
     valid: false,
     requiresManualReview: false,
-    detectedType: 'UNKNOWN',
-    message:
-      'Please select a valid ID proof type.'
+    message: 'Please select a valid ID proof type.'
   };
 };
 
@@ -287,8 +216,7 @@ const validateIdProof = async ({
     return {
       valid: false,
       requiresManualReview: false,
-      message:
-        'Please select a valid ID proof type.'
+      message: 'Please select a valid ID proof type.'
     };
   }
 
@@ -296,35 +224,25 @@ const validateIdProof = async ({
     return {
       valid: false,
       requiresManualReview: false,
-      message: 'ID proof image is required.'
+      message: 'Please upload the selected ID proof.'
     };
   }
 
-  // Process OCR requests one at a time because one shared
-  // Tesseract worker should not run overlapping jobs.
   const processOcr = async () => {
     const worker = await getWorker();
+    const result = await worker.recognize(imageBuffer);
 
-    const result = await worker.recognize(
-      imageBuffer
-    );
-
-    const extractedText =
-      result?.data?.text || '';
-
-    const ocrConfidence =
-      result?.data?.confidence || 0;
-
-    // Never return or log extracted government-ID text.
     return validateExtractedText(
       idType,
-      extractedText,
-      ocrConfidence
+      result?.data?.text || '',
+      result?.data?.confidence || 0
     );
   };
 
-  const queuedResult =
-    ocrQueue.then(processOcr, processOcr);
+  const queuedResult = ocrQueue.then(
+    processOcr,
+    processOcr
+  );
 
   ocrQueue = queuedResult.catch(() => {});
 
@@ -336,12 +254,9 @@ const validateIdProof = async ({
       error.message
     );
 
-    return {
-      valid: false,
-      requiresManualReview: false,
-      message:
-        'Unable to verify the ID proof. Please upload a clearer image.'
-    };
+    // OCR technical failure must not incorrectly claim
+    // that a genuine document is the wrong type.
+    return manualReviewResult(idType);
   }
 };
 
