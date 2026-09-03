@@ -91,6 +91,15 @@ const PublicPreBooking = () => {
   const [alreadyRegisteredModal, setAlreadyRegisteredModal] = useState(false);
   const [preBookResult, setPreBookResult] = useState(null);
   const [step, setStep] = useState(1); // 1: Form, 2: Success QR Pass
+  const [
+    idValidationPopup,
+    setIdValidationPopup
+  ] = useState({
+    open: false,
+    type: '',
+    title: '',
+    message: ''
+  });
 
   // Returning visitor states
   const [checkingVisitor, setCheckingVisitor] = useState(false);
@@ -434,6 +443,19 @@ const PublicPreBooking = () => {
     };
   };
 
+  const showIdValidationPopup = (
+    type,
+    title,
+    message
+  ) => {
+    setIdValidationPopup({
+      open: true,
+      type,
+      title,
+      message
+    });
+  };
+
   const handleIdProofChange = async (event) => {
     const inputElement = event.target;
     const file = inputElement.files?.[0];
@@ -496,50 +518,6 @@ const PublicPreBooking = () => {
     setIdProofPreview('');
 
     try {
-      // Validate image dimensions.
-      const temporaryUrl =
-        URL.createObjectURL(file);
-
-      const dimensions = await new Promise(
-        (resolve, reject) => {
-          const image = new Image();
-
-          image.onload = () => {
-            resolve({
-              width: image.naturalWidth,
-              height: image.naturalHeight
-            });
-
-            URL.revokeObjectURL(
-              temporaryUrl
-            );
-          };
-
-          image.onerror = () => {
-            URL.revokeObjectURL(
-              temporaryUrl
-            );
-
-            reject(
-              new Error(
-                'The selected file is not a valid image.'
-              )
-            );
-          };
-
-          image.src = temporaryUrl;
-        }
-      );
-
-      if (
-        dimensions.width < 300 ||
-        dimensions.height < 200
-      ) {
-        throw new Error(
-          'The image resolution is too low. Upload a clear image of at least 300 × 200 pixels.'
-        );
-      }
-
       // Create and reuse one OCR worker.
       if (!ocrWorkerRef.current) {
         ocrWorkerRef.current =
@@ -660,6 +638,17 @@ const PublicPreBooking = () => {
       }));
 
       if (
+        uploadResult.verificationStatus ===
+        'VERIFIED'
+      ) {
+        showIdValidationPopup(
+          'success',
+          'Document Verified',
+          `Your ${formData.idType} has been verified successfully.`
+        );
+      }
+
+      if (
         documentValidation
           .requiresManualReview
       ) {
@@ -677,10 +666,15 @@ const PublicPreBooking = () => {
 
       clearSelectedFile();
 
-      setErrorMsg(
-        error.message ||
-        'The selected ID proof could not be validated.'
+      showIdValidationPopup(
+        'error',
+        'Incorrect Document',
+        formData.idType === 'Aadhaar Card'
+          ? 'This image is not recognized as an Aadhaar Card. Please upload your correct Aadhaar Card.'
+          : `This image does not match ${formData.idType}. Please upload the correct document.`
       );
+
+      setErrorMsg('');
     } finally {
       setUploadingIdProof(false);
       setOcrProgress(0);
@@ -1711,6 +1705,87 @@ const PublicPreBooking = () => {
               className="w-full py-3 bg-[var(--color-brand-indigo)] hover:bg-[var(--color-brand-indigo-light)] text-white font-bold rounded-xl transition-all shadow-md text-sm cursor-pointer"
             >
               OK / Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ID Proof Validation Popup Modal */}
+      {idValidationPopup.open && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 text-center shadow-2xl">
+            <div
+              className={`mx-auto flex h-16 w-16 items-center justify-center rounded-full ${
+                idValidationPopup.type === 'success'
+                  ? 'bg-green-100'
+                  : 'bg-red-100'
+              }`}
+            >
+              {idValidationPopup.type === 'success' ? (
+                <CheckCircle2 className="h-8 w-8 text-green-600" />
+              ) : (
+                <ShieldAlert className="h-8 w-8 text-red-600" />
+              )}
+            </div>
+
+            <h3 className="mt-4 text-xl font-black text-slate-900">
+              {idValidationPopup.title}
+            </h3>
+
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              {idValidationPopup.message}
+            </p>
+
+            {idValidationPopup.type === 'error' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIdValidationPopup({
+                    open: false,
+                    type: '',
+                    title: '',
+                    message: ''
+                  });
+
+                  fileInputRef.current?.click();
+                }}
+                className="mt-6 w-full rounded-xl bg-indigo-700 px-5 py-3 text-sm font-bold text-white hover:bg-indigo-800"
+              >
+                Upload Correct{' '}
+                {formData.idType || 'Document'}
+              </button>
+            )}
+
+            {idValidationPopup.type === 'success' && (
+              <button
+                type="button"
+                onClick={() =>
+                  setIdValidationPopup({
+                    open: false,
+                    type: '',
+                    title: '',
+                    message: ''
+                  })
+                }
+                className="mt-6 w-full rounded-xl bg-green-600 px-5 py-3 text-sm font-bold text-white hover:bg-green-700"
+              >
+                Continue
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() =>
+                setIdValidationPopup({
+                  open: false,
+                  type: '',
+                  title: '',
+                  message: ''
+                })
+              }
+              className="mt-3 w-full rounded-xl border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Cancel
             </button>
           </div>
         </div>
