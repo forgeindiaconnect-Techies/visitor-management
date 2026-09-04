@@ -636,6 +636,10 @@ const PublicPreBooking = () => {
         );
       }
 
+      if (uploadResult.url) {
+        setIdProofPreview((prev) => prev || uploadResult.url);
+      }
+
       setFormData((previous) => ({
         ...previous,
 
@@ -760,10 +764,9 @@ const PublicPreBooking = () => {
       return;
     }
 
-    if (
-      !formData.idProofUrl ||
-      !idProofPreview
-    ) {
+    const activeIdProof = formData.idProofUrl || idProofPreview;
+
+    if (!activeIdProof) {
       setErrorMsg(
         `Please upload your selected ${formData.idType}.`
       );
@@ -799,25 +802,36 @@ const PublicPreBooking = () => {
     setLoading(true);
 
     try {
-      // 1. Upload captured photo to Cloudinary
+      // 1. Upload captured photo to Cloudinary with fast timeout fallback
       let finalPhotoUrl = capturedPhoto;
       if (capturedPhoto.startsWith('data:image')) {
         try {
-          const formDataUpload = new FormData();
-          const responsePhoto = await fetch(capturedPhoto);
-          const blob = await responsePhoto.blob();
-          formDataUpload.append("photo", blob, "visitor-photo.jpg");
+          const uploadPromise = (async () => {
+            const formDataUpload = new FormData();
+            const responsePhoto = await fetch(capturedPhoto);
+            const blob = await responsePhoto.blob();
+            formDataUpload.append("photo", blob, "visitor-photo.jpg");
 
-          const uploadResponse = await fetch(`${API_BASE}/api/visitors/upload`, {
-            method: "POST",
-            body: formDataUpload
-          });
+            const uploadResponse = await fetch(`${API_BASE}/api/visitors/upload`, {
+              method: "POST",
+              body: formDataUpload
+            });
 
-          const uploadResult = await uploadResponse.json();
-          if (uploadResponse.ok && uploadResult.url) {
-            finalPhotoUrl = uploadResult.url;
-          } else {
-            console.warn("Cloudinary upload failed: ", uploadResult.message);
+            const uploadResult = await uploadResponse.json();
+            if (uploadResponse.ok && uploadResult.url) {
+              return uploadResult.url;
+            }
+            return null;
+          })();
+
+          // Wait up to 1.5s for Cloudinary upload, otherwise use data URL for instant pass generation
+          const fastUrl = await Promise.race([
+            uploadPromise,
+            new Promise((res) => setTimeout(() => res(null), 1500))
+          ]);
+
+          if (fastUrl) {
+            finalPhotoUrl = fastUrl;
           }
         } catch (uploadErr) {
           console.error("Error uploading photo to Cloudinary:", uploadErr);
@@ -1466,9 +1480,9 @@ const PublicPreBooking = () => {
                         ? `Upload ${formData.idType}`
                         : 'Select ID Type First'}
                   </button>
-                  {idProofPreview && (
+                  {(idProofPreview || formData.idProofUrl) && (
                     <div className="w-11 h-11 rounded-xl overflow-hidden border border-gray-200 relative group flex-shrink-0">
-                      <img src={idProofPreview} alt="ID Preview" className="w-full h-full object-cover" />
+                      <img src={idProofPreview || formData.idProofUrl} alt="ID Preview" className="w-full h-full object-cover" />
                       <button
                         type="button"
                         onClick={() => {

@@ -36,6 +36,7 @@ import ApprovalList from './pages/approvals/ApprovalList';
 import ApprovalDetails from './pages/approvals/ApprovalDetails';
 import SuperAdminPreBookings from './pages/SuperAdminPreBookings';
 import SaaSLanding from './pages/saas/SaaSLanding';
+import SaasPlanManagement from './pages/SaasPlanManagement';
 import ActivateAccount from './pages/auth/ActivateAccount';
 import EmployeeActivate from './pages/auth/EmployeeActivate';
 import ZoneList from './pages/zones/ZoneList';
@@ -115,6 +116,8 @@ const AppRoutes = () => {
         <Route path="saas/payments" element={<ProtectedRoute allowedRoles={['SaaS Super Admin']}><Dashboard /></ProtectedRoute>} />
         <Route path="saas/upgrades" element={<ProtectedRoute allowedRoles={['SaaS Super Admin']}><Dashboard /></ProtectedRoute>} />
         <Route path="saas/leads" element={<ProtectedRoute allowedRoles={['SaaS Super Admin']}><Dashboard /></ProtectedRoute>} />
+        <Route path="saas/plans" element={<ProtectedRoute allowedRoles={['SaaS Super Admin']}><SaasPlanManagement /></ProtectedRoute>} />
+        <Route path="saas-admin/plans" element={<ProtectedRoute allowedRoles={['SaaS Super Admin']}><SaasPlanManagement /></ProtectedRoute>} />
         <Route path="notifications" element={<ProtectedRoute allowedRoles={['SaaS Super Admin', 'Super Admin', 'MD', 'Admin', 'Branch Admin', 'Security', 'HR']}><NotificationsPage /></ProtectedRoute>} />
         
         {/* User Management */}

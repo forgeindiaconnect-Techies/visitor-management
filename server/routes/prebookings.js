@@ -185,17 +185,47 @@ router.get('/', async (req, res) => {
       filter.branch = branch;
     }
 
-    let prebookings;
+    const prebookingFilter = {
+      ...filter,
+      $or: [
+        { registrationType: { $in: ['Pre-Booking', 'PreBooking', 'Invitation'] } },
+        { visitType: 'PRE_BOOKING' },
+        { bookingType: 'PRE_BOOKING' },
+        { isPreBooking: true }
+      ]
+    };
+
+    let visitorPreBookings = [];
     try {
-      prebookings = await Visitor.find(filter)
+      visitorPreBookings = await Visitor.find(prebookingFilter)
         .populate('approvedBy', 'name email role')
         .populate('statusHistory.changedBy', 'name email role')
         .sort({ createdAt: -1 });
     } catch (popErr) {
       console.warn('Populate failed on prebookings query, returning raw results:', popErr.message);
-      prebookings = await Visitor.find(filter).sort({ createdAt: -1 });
+      visitorPreBookings = await Visitor.find(prebookingFilter).sort({ createdAt: -1 });
     }
-    res.json(prebookings);
+
+    const PreBookingModel = require('../models/PreBooking');
+    let modelPreBookings = [];
+    try {
+      modelPreBookings = await PreBookingModel.find({ ...filter, bookingType: { $ne: 'DIRECT_VISIT' } }).sort({ createdAt: -1 });
+    } catch (err) {
+      modelPreBookings = [];
+    }
+
+    const seenIds = new Set();
+    const combined = [];
+    for (const item of [...(visitorPreBookings || []), ...(modelPreBookings || [])]) {
+      if (!item) continue;
+      const idKey = String(item._id || item.id || '');
+      if (idKey && !seenIds.has(idKey)) {
+        seenIds.add(idKey);
+        combined.push(item);
+      }
+    }
+
+    res.json(combined);
   } catch (err) {
     console.error('Error fetching prebookings:', err);
     res.status(500).json({ message: err.message });

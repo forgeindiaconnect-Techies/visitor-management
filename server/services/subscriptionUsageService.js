@@ -1,5 +1,6 @@
 const Company = require('../models/Company');
 const SubscriptionUsage = require('../models/SubscriptionUsage');
+const Plan = require('../models/Plan');
 const planLimits = require('../config/plans');
 
 const LIMIT_REACHED_MESSAGE =
@@ -144,7 +145,11 @@ const getOrCreateUsage = async (company) => {
  */
 const reserveVisitorPass = async (companyId) => {
   const company = await getCompany(companyId);
-  const plan = planLimits[company.subscription];
+  
+  let plan = await Plan.findOne({ name: company.subscription });
+  if (!plan) {
+    plan = planLimits[company.subscription];
+  }
 
   if (!plan) {
     const error = new Error(
@@ -256,7 +261,11 @@ const getVisitorPassUsage = async (companyId) => {
     companyId,
     { allowExpired: true }
   );
-  const plan = planLimits[company.subscription];
+
+  let plan = await Plan.findOne({ name: company.subscription });
+  if (!plan) {
+    plan = planLimits[company.subscription];
+  }
 
   if (!plan) {
     const error = new Error(

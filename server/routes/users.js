@@ -305,10 +305,14 @@ router.post('/', async (req, res) => {
     // Enforce Plan Limits for Security and Admin Staff
     if (['Security', 'Admin', 'Branch Admin', 'MD', 'Company Admin'].includes(role)) {
       const Company = require('../models/Company');
+      const Plan = require('../models/Plan');
       const planLimits = require('../config/plans');
       const company = await Company.findOne({ code: loggedInCompanyId });
       if (company && company.subscription) {
-        const limits = planLimits[company.subscription];
+        let limits = await Plan.findOne({ name: company.subscription });
+        if (!limits) {
+          limits = planLimits[company.subscription];
+        }
 
         if (role === 'Security' && limits && limits.securityUsers !== -1) {
           const count = await User.countDocuments({ companyId: loggedInCompanyId, role: 'Security' });

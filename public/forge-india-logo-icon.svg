@@ -1,0 +1,37 @@
+<svg viewBox="40 40 420 460" xmlns="http://www.w3.org/2000/svg">
+  <!-- Blue 'F' Frame -->
+  <path d="M 60,60 L 440,60 L 360,140 L 140,140 L 140,390 L 60,470 Z" fill="#0056B3" />
+
+  <!-- Yellow Rectangle -->
+  <rect x="210" y="215" width="140" height="80" fill="#F5B800" />
+
+  <!-- Blue Elephant Silhouette facing left with trunk up -->
+  <g fill="#0056B3">
+    <!-- Trunk curling up to the left -->
+    <path d="
+      M 252,230 
+      C 247,234 246,242 254,247 
+      C 258,249 261,247 263,243 
+      C 265,239 260,237 257,239 
+      C 253,241 251,236 254,233 Z
+    "/>
+    <!-- Head, Ear & Body -->
+    <path d="
+      M 254,247 
+      C 258,242 268,240 274,243 
+      C 285,241 300,243 306,250 
+      C 309,254 309,260 307,265 
+      L 303,278 L 295,278 L 295,265 
+      C 290,265 284,265 277,265 
+      L 277,278 L 269,278 L 269,256 
+      C 264,256 258,252 254,247 Z
+    "/>
+    <!-- Ear overlay detail -->
+    <path d="M 264,245 C 262,250 266,255 270,253 C 272,250 270,246 266,244 Z" fill="#F5B800"/>
+    <!-- Tail -->
+    <path d="M 306,252 C 309,255 310,260 308,264 L 306,264 C 307,260 306,256 304,253 Z"/>
+  </g>
+
+  <!-- Yellow Triangle -->
+  <polygon points="280,325 435,480 125,480" fill="#F5B800" />
+</svg>

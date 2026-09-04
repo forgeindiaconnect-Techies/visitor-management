@@ -12,7 +12,7 @@ export const BranchProvider = ({ children }) => {
 
   useEffect(() => {
     const fetchBranches = async () => {
-      if (!user) {
+      if (!user || user.isExpired) {
         setBranches(['All Branches']);
         setActiveBranch('All Branches');
         setLoadingBranches(false);

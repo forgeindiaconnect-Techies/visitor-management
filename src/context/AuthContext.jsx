@@ -13,9 +13,12 @@ export const AuthProvider = ({ children }) => {
   const [approvalRoles, setApprovalRoles] = useState([]);
   const [hasApprovalPermission, setHasApprovalPermission] = useState(false);
 
-  // Set current user's approval permissions locally
+  // Set current user's approval permissions locally & ensure token persistence
   useEffect(() => {
     if (user) {
+      if (user.token && !localStorage.getItem('token')) {
+        localStorage.setItem('token', user.token);
+      }
       const allowedRoles = ['Super Admin', 'SaaS Super Admin', 'MD', 'Admin'];
       const isAllowed = allowedRoles.includes(user.role);
       setHasApprovalPermission(isAllowed);
@@ -74,7 +77,7 @@ export const AuthProvider = ({ children }) => {
         const clone = response.clone();
         try {
           const data = await clone.json();
-          if (data.subscriptionExpired) {
+          if (data.subscriptionExpired || (data.message && data.message.toLowerCase().includes('subscription'))) {
             updateUser({ isExpired: true });
           }
         } catch (err) { }

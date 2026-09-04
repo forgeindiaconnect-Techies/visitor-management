@@ -12,6 +12,7 @@ export const BlacklistProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   const fetchBlacklist = async () => {
+    if (!currentUser || currentUser.isExpired) return;
     try {
       const response = await fetch(API_URL, { 
         cache: 'no-store',
@@ -35,7 +36,7 @@ export const BlacklistProvider = ({ children }) => {
   };
 
   React.useEffect(() => {
-    if (!currentUser || !currentUser.token) {
+    if (!currentUser || !currentUser.token || currentUser.isExpired) {
       setBlacklisted([]);
       setLoading(false);
       return;

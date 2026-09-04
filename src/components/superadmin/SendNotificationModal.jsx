@@ -16,20 +16,29 @@ const SendNotificationModal = ({ isOpen, onClose, company, onSend }) => {
     setIsSending(true);
     
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com')}/api/super-admin/notify-company`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'X-User-Role': user?.role
-        },
-        body: JSON.stringify({
-          companyId: company.code,
-          title,
-          message,
-          type
-        })
-      });
+      const response = await fetch(
+        `${
+          import.meta.env.VITE_API_URL ||
+          (window.location.hostname === 'localhost'
+            ? 'http://localhost:5000'
+            : 'https://fic-visitor-1.onrender.com')
+        }/api/super-admin/notify-company`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${localStorage.getItem('token') || user?.token}`,
+            'X-Company-Id': 'SYSTEM',
+            'X-User-Role': user?.role || 'SaaS Super Admin'
+          },
+          body: JSON.stringify({
+            companyId: company.code,
+            title: title.trim(),
+            message: message.trim(),
+            type
+          })
+        }
+      );
 
       if (response.ok) {
         onSend && onSend();

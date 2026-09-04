@@ -26,12 +26,12 @@ const planLimits = {
   Basic: {
     durationDays: 30,
 
-    visitorPasses: 500,
-    visitors: 500,
+    visitorPasses: 150,
+    visitors: 150,
 
-    users: 10,
-    securityUsers: 5,
-    admins: 2,
+    users: 5,
+    securityUsers: 2,
+    admins: 1,
     branches: 1,
 
     reports: true,
@@ -50,12 +50,12 @@ const planLimits = {
   Standard: {
     durationDays: 30,
 
-    visitorPasses: 3000,
-    visitors: 3000,
+    visitorPasses: 1000,
+    visitors: 1000,
 
-    users: 50,
-    securityUsers: 25,
-    admins: 10,
+    users: 15,
+    securityUsers: 8,
+    admins: 3,
     branches: 5,
 
     reports: true,

@@ -92,10 +92,14 @@ router.post('/', async (req, res) => {
 
     // Check plan limits
     const Company = require('../models/Company');
+    const Plan = require('../models/Plan');
     const planLimits = require('../config/plans');
     const company = await Company.findOne({ code: req.companyId });
     if (company && company.subscription) {
-      const limits = planLimits[company.subscription];
+      let limits = await Plan.findOne({ name: company.subscription });
+      if (!limits) {
+        limits = planLimits[company.subscription];
+      }
       if (limits && limits.branches !== -1) {
         const existing = await BranchSetting.findOne({
           companyId: req.companyId,

@@ -361,8 +361,22 @@ const FaceCamera = ({ onCapture }) => {
         );
       }
 
-      canvas.width = frameWidth;
-      canvas.height = frameHeight;
+      const maxDim = 640;
+      let targetWidth = frameWidth;
+      let targetHeight = frameHeight;
+
+      if (targetWidth > maxDim || targetHeight > maxDim) {
+        if (targetWidth > targetHeight) {
+          targetHeight = Math.round((targetHeight * maxDim) / targetWidth);
+          targetWidth = maxDim;
+        } else {
+          targetWidth = Math.round((targetWidth * maxDim) / targetHeight);
+          targetHeight = maxDim;
+        }
+      }
+
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
 
       context.drawImage(
         video,
@@ -375,7 +389,7 @@ const FaceCamera = ({ onCapture }) => {
       const imageData =
         canvas.toDataURL(
           'image/jpeg',
-          0.85
+          0.75
         );
 
       stream

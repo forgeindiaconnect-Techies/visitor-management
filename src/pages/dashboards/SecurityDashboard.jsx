@@ -516,43 +516,24 @@ const SecurityDashboard = () => {
   const today = new Date().toISOString().split('T')[0];
   const safeVisitors = Array.isArray(visitors) ? visitors : [];
   
-  const isDirectVisit = (v) => {
-    const name = String(v.visitorName || v.fullName || '').trim().toLowerCase();
-    
-    // 1. Exclude all test records
-    if (
-      name === 'test' ||
-      name === 'test 1' ||
-      name === 'test 2' ||
-      name === 'test 3' ||
-      name === 'lokeee' ||
-      name.startsWith('test ') ||
-      name.startsWith('test_') ||
-      name === 'testing'
-    ) {
+  const isPreBookingVisit = (v) => {
+    const regType = String(v?.registrationType || '').trim();
+    const visitType = String(v?.visitType || '').trim();
+    const bookingType = String(v?.bookingType || '').trim();
+
+    if (regType === 'Walk-in' || regType === 'Direct Visit' || visitType === 'DIRECT_VISIT' || bookingType === 'DIRECT_VISIT') {
       return false;
     }
 
-    // 2. Exclude legacy test data before Thilagavathy U (Aug 26, 2026)
-    const rawDate = v.visitDate || v.date || v.createdAt;
-    if (rawDate && !name.includes('thilagavathy')) {
-      const d = new Date(rawDate);
-      const dateStr = !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : String(rawDate);
-      if (dateStr < '2026-08-26') {
-        return false;
-      }
-    }
+    if (regType === 'Pre-Booking' || regType === 'PreBooking' || regType === 'Invitation') return true;
+    if (visitType === 'PRE_BOOKING' || bookingType === 'PRE_BOOKING') return true;
+    if (v?.isPreBooking === true) return true;
 
-    const host = String(v.hostEmployee || v.hostName || '').trim().toLowerCase();
-    const isDirect = host === 'direct visits' || host === 'direct visit' || host.includes('direct') ||
-                     v.registrationType === 'Direct Visit' || v.registrationType === 'Walk-in' ||
-                     v.visitType === 'DIRECT_VISIT' || v.visitorType === 'NEW_VISITOR' || v.bookingType === 'DIRECT_VISIT' ||
-                     !v.isPreBooking || v.isReturning || v.returningVisitor;
-    return isDirect;
+    return false;
   };
 
-  const totalDirectVisits = safeVisitors.filter(v => isDirectVisit(v)).length;
-  const totalPreBookings = safeVisitors.filter(v => !isDirectVisit(v)).length;
+  const totalDirectVisits = safeVisitors.filter(v => !isPreBookingVisit(v)).length;
+  const totalPreBookings = safeVisitors.filter(v => isPreBookingVisit(v)).length;
   const visitorsInside = safeVisitors.filter(v => ['Inside', 'Checked In', 'CHECKED_IN'].includes(v.status));
   const qrScans = safeVisitors.filter(v => ['Inside', 'Checked In', 'CHECKED_IN', 'Exited', 'Checked Out', 'CHECKED_OUT'].includes(v.status)).length;
   const blockedAttempts = safeVisitors.filter(v => ['Rejected', 'REJECTED', 'Blocked'].includes(v.status)).length;

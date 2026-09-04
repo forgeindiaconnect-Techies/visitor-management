@@ -30,6 +30,7 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
     { name: 'Companies', path: '/saas/companies', icon: <Building size={20} />, roles: ['SaaS Super Admin'] },
     { name: 'Registrations', path: '/saas/leads', icon: <UserPlus size={20} />, roles: ['SaaS Super Admin'] },
     { name: 'Subscriptions', path: '/saas/subscriptions', icon: <CreditCard size={20} />, roles: ['SaaS Super Admin'] },
+    { name: 'Plan Management', path: '/saas-admin/plans', icon: <CreditCard size={20} />, roles: ['SaaS Super Admin'] },
     { name: 'Payments', path: '/saas/payments', icon: <Activity size={20} />, roles: ['SaaS Super Admin'] },
     { name: 'Upgrade Requests', path: '/saas/upgrades', icon: <CheckSquare size={20} />, roles: ['SaaS Super Admin'] },
     { name: 'Pre-Bookings', path: '/pre-bookings', icon: <CalendarCheck size={20} />, roles: ['Super Admin', 'Company Admin', 'MD', 'Admin', 'HR', 'Receptionist', 'Security'] },
@@ -79,7 +80,7 @@ const Sidebar = ({ isOpen, setIsOpen }) => {
           {branding.logoUrl ? (
             <img src={branding.logoUrl} alt="Logo" className="h-10 w-auto max-w-[80px] object-contain drop-shadow-md shrink-0" />
           ) : (
-            <img src="/forge-india-logo.svg" alt="Forge India Connect Logo" className="h-8 w-auto object-contain shrink-0" />
+            <img src="/forge-india-logo-icon.svg" alt="Forge India Connect Logo" className="h-9 w-auto object-contain shrink-0" />
           )}
           <h1 className="text-lg font-bold tracking-wider truncate">
             {user?.companyName || 'FIC VMS'}

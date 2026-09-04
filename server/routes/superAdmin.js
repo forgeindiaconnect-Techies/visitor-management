@@ -9,10 +9,11 @@ const {
   startNewSubscriptionCycle
 } = require('../services/subscriptionCycleService');
 
-// Require SaaS Super Admin role for all super-admin endpoints
+// Require SaaS Super Admin / Super Admin role for all super-admin endpoints
 router.use(authMiddleware);
 router.use((req, res, next) => {
-  if (req.userRole !== 'SaaS Super Admin') {
+  const allowedRoles = ['SaaS Super Admin', 'Super Admin'];
+  if (!allowedRoles.includes(req.userRole)) {
     return res.status(403).json({ message: 'Forbidden: SaaS Super Admin access required' });
   }
   next();
@@ -94,7 +95,17 @@ router.get('/companies', async (req, res) => {
     const PreBooking = require('../models/PreBooking');
     const planLimits = require('../config/plans');
 
+    const now = new Date();
     const enriched = await Promise.all(companies.map(async (comp) => {
+      let status = comp.status || 'Active';
+      if (comp.subscriptionExpiresAt && now >= new Date(comp.subscriptionExpiresAt)) {
+        if (status === 'Active') {
+          status = 'Expired';
+          comp.status = 'Expired';
+          await comp.save().catch(() => {});
+        }
+      }
+
       const [adminUser, userCount, securityCount, visitorCount, branchCount, preBookingCount] = await Promise.all([
         User.findOne({ companyId: comp.code, role: { $in: ['Super Admin', 'Company Admin'] } }).select('email'),
         User.countDocuments({ companyId: comp.code }),
@@ -112,7 +123,7 @@ router.get('/companies', async (req, res) => {
         companyName: comp.name,
         adminEmail: adminUser ? adminUser.email : 'N/A',
         plan: comp.subscription,
-        status: comp.status,
+        status: status,
         expiryDate: comp.subscriptionExpiresAt,
         branchCount,
         userCount,
@@ -334,25 +345,58 @@ router.delete('/companies/:id', async (req, res) => {
 // POST Send custom notification to a tenant
 router.post('/notify-company', async (req, res) => {
   try {
-    const { companyId, title, message, type } = req.body;
-
-    if (!companyId || !title || !message) {
-      return res.status(400).json({ message: 'Missing required fields' });
+    const allowedRoles = ['SaaS Super Admin', 'Super Admin'];
+    if (!allowedRoles.includes(req.userRole)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only SaaS Super Admin can send company notifications.'
+      });
     }
 
+    const {
+      companyId,
+      title,
+      message,
+      type = 'System'
+    } = req.body;
+
+    if (
+      !companyId ||
+      !title?.trim() ||
+      !message?.trim()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Company, title and message are required.'
+      });
+    }
+
+    const normalizedCompanyId = String(companyId)
+      .trim()
+      .toUpperCase();
+
+    const notificationType =
+      type === 'Warning' ? 'warning' : 'info';
+
     const Notification = require('../models/Notification');
+
     const newNotif = await Notification.create({
-      companyId: companyId,
-      type: 'info',
-      module: type || 'System',
-      title: title,
-      message: message,
-      createdBy: req.userRole || 'SaaS Super Admin'
+      companyId: normalizedCompanyId,
+      type: notificationType,
+      module: type,
+      title: title.trim(),
+      message: message.trim(),
+      createdBy:
+        req.userName ||
+        'SaaS Super Admin',
+      createdByRole: 'SaaS Super Admin',
+      roles: ['SaaS Super Admin', 'Super Admin']
     });
 
     const io = req.app.get('io');
     if (io) {
       io.to(`company:${newNotif.companyId}`).emit('new_notification', newNotif);
+      io.to('company:SYSTEM').emit('new_notification', newNotif);
     }
     
     // Trigger mobile push notification for the targeted company's super admins
@@ -360,7 +404,7 @@ router.post('/notify-company', async (req, res) => {
       const sendPushNotification = require('../utils/pushNotificationService');
       // Fetch target company admins
       const companyAdmins = await User.find({
-        companyId: companyId,
+        companyId: normalizedCompanyId,
         role: { $in: ['Super Admin', 'Company Admin'] },
         fcmToken: { $exists: true, $ne: '' }
       });
@@ -375,7 +419,7 @@ router.post('/notify-company', async (req, res) => {
       const tokens = allAdminsToNotify.map(admin => admin.fcmToken);
       
       if (tokens.length > 0) {
-        await sendPushNotification(tokens, title, message, {
+        await sendPushNotification(tokens, title.trim(), message.trim(), {
           notificationId: newNotif._id,
           module: newNotif.module,
           type: newNotif.type
@@ -389,7 +433,7 @@ router.post('/notify-company', async (req, res) => {
       companyId: 'SYSTEM',
       companyName: 'System Administration',
       userId: req.user ? req.user._id : undefined,
-      description: `Sent ${type || 'System'} notification to company ${companyId}`,
+      description: `Sent ${type || 'System'} notification to company ${normalizedCompanyId}`,
       status: 'Success'
     });
 
@@ -402,9 +446,22 @@ router.post('/notify-company', async (req, res) => {
 // GET platform analytics
 router.get('/analytics', async (req, res) => {
   try {
-    const totalCompanies = await Company.countDocuments();
-    const activeCompanies = await Company.countDocuments({ status: 'Active' });
-    const inactiveCompanies = await Company.countDocuments({ status: { $ne: 'Active' } });
+    const allCompanies = await Company.find();
+    const now = new Date();
+
+    let activeCompanies = 0;
+    let inactiveCompanies = 0;
+
+    allCompanies.forEach((comp) => {
+      const isExpired = comp.subscriptionExpiresAt && now >= new Date(comp.subscriptionExpiresAt);
+      if (comp.status === 'Active' && !isExpired) {
+        activeCompanies++;
+      } else {
+        inactiveCompanies++;
+      }
+    });
+
+    const totalCompanies = allCompanies.length;
 
     // Platform-wide visitor count
     const totalVisitors = await Visitor.countDocuments();

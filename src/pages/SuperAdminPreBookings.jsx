@@ -783,7 +783,8 @@ const reviewVisitorId = async (
                   type="date" 
                   value={reportDateFilter}
                   onChange={(e) => setReportDateFilter(e.target.value)}
-                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-indigo)]"
+                  onClick={(e) => e.currentTarget.showPicker?.()}
+                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-indigo)] cursor-pointer"
                 />
 
                 <button
@@ -949,7 +950,8 @@ const reviewVisitorId = async (
                 type="date" 
                 value={dateFilter}
                 onChange={(e) => setDateFilter(e.target.value)}
-                className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-indigo)]"
+                onClick={(e) => e.currentTarget.showPicker?.()}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-indigo)] cursor-pointer"
               />
               {dateFilter && (
                 <button 

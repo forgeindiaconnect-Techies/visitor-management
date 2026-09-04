@@ -3,6 +3,8 @@ require('dotenv').config({ path: path.join(__dirname, '../.env') });
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 require('dotenv').config();
 
+console.log("💳 Active Razorpay Key ID:", process.env.RAZORPAY_KEY_ID || 'Not Configured');
+
 const dns = require('dns');
 try {
   dns.setServers(['8.8.8.8', '1.1.1.1']);
@@ -87,6 +89,7 @@ io.on('connection', (socket) => {
       socket.join('saas-admins');
 
       console.log(
+        
         `SaaS Super Admin joined real-time room: ${socket.id}`
       );
     } catch (error) {
@@ -164,83 +167,77 @@ mongoose.connect(process.env.MONGO_URI)
         );
       }
 
-      // Cleanup test data on startup (TEST 1, Lokeee, TEST 3, Test)
-      const PreBooking = require('./models/PreBooking');
-      const Visitor = require('./models/Visitor');
-      const Notification = require('./models/Notification');
-      const User = require('./models/User');
-      const namesRegex = /^(test|test\s*\d*|tet|teest|lokeee|sample|demo)$/i;
-      const cutoffDate = new Date('2026-08-26T00:00:00.000Z');
-
-      await PreBooking.deleteMany({ 
-        $or: [
-          { fullName: { $regex: namesRegex } },
-          { mobileNumber: { $in: ['6985471278', '6985471236', '9585712541'] } }
-        ]
-      });
-      await Visitor.deleteMany({
-        $or: [
-          { visitorName: { $regex: namesRegex } },
-          { fullName: { $regex: namesRegex } },
-          { mobileNumber: { $in: ['6985471278', '6985471236', '9585712541'] } }
-        ]
-      });
-      await Notification.deleteMany({
-        $or: [
-          { message: { $in: ["Is is waiting for approval.", "Has checked in has checked in.", "Has checked out has checked out.", "Visitor is waiting for approval.", "Visitor has checked in.", "Visitor has checked out."] } },
-          { message: { $regex: /(^Is is waiting|^Has checked in has checked in|^Has checked out has checked out|^Visitor is waiting|^Visitor has checked|visitor Visitor waiting)/i } },
-          { visitorName: { $in: ["Is", "Has checked in", "Has checked out", "is", "has", "was", "Visitor", "visitor"] } },
-          { visitorName: { $regex: namesRegex } },
-          { message: { $regex: /(test 1|test 3|lokeee|\btest\b|\btet\b|\bteest\b)/i } }
-        ]
-      });
-
-      // Prune any legacy duplicate notifications by eventId / (preBookingId + type)
-      const allNotifications = await Notification.find({}).sort({ createdAt: -1 });
-      const seenNotifs = new Set();
-      const duplicateIdsToDelete = [];
-      for (const n of allNotifications) {
-        const key = n.eventId || `${n.type || ''}_${n.preBookingId || ''}_${n.title || ''}`;
-        if (seenNotifs.has(key)) {
-          duplicateIdsToDelete.push(n._id);
-        } else {
-          seenNotifs.add(key);
+      // Initialize default subscription plans
+      const Plan = require('./models/Plan');
+      const defaultPlans = [
+        {
+          name: 'One Day Trial',
+          price: 0,
+          durationDays: 1,
+          visitorPasses: 25,
+          branches: 1,
+          users: 3,
+          securityUsers: 1,
+          admins: 1,
+          reports: false,
+          description: 'Try the essential visitor management features for 24 hours.',
+          features: { qrPass: true, preBooking: true, emailNotifications: true, advancedReports: false, customBranding: false, apiAccess: false, prioritySupport: false },
+          isActive: true
+        },
+        {
+          name: 'Basic',
+          price: 1999,
+          durationDays: 30,
+          visitorPasses: 500,
+          branches: 1,
+          users: 10,
+          securityUsers: 5,
+          admins: 2,
+          reports: true,
+          description: 'Suitable for small companies with one branch.',
+          features: { qrPass: true, preBooking: true, emailNotifications: true, advancedReports: false, customBranding: false, apiAccess: false, prioritySupport: false },
+          isActive: true
+        },
+        {
+          name: 'Standard',
+          price: 4999,
+          durationDays: 30,
+          visitorPasses: 3000,
+          branches: 5,
+          users: 50,
+          securityUsers: 25,
+          admins: 10,
+          reports: true,
+          description: 'Advanced reporting and branding for growing companies.',
+          features: { qrPass: true, preBooking: true, emailNotifications: true, advancedReports: true, customBranding: true, apiAccess: false, prioritySupport: false },
+          isActive: true
+        },
+        {
+          name: 'Enterprise',
+          price: 9999,
+          durationDays: 30,
+          visitorPasses: -1,
+          branches: -1,
+          users: -1,
+          securityUsers: -1,
+          admins: -1,
+          reports: true,
+          description: 'Unlimited usage with API access and priority support.',
+          features: { qrPass: true, preBooking: true, emailNotifications: true, advancedReports: true, customBranding: true, apiAccess: true, prioritySupport: true },
+          isActive: true
         }
-      }
-      if (duplicateIdsToDelete.length > 0) {
-        await Notification.deleteMany({ _id: { $in: duplicateIdsToDelete } });
-      }
+      ];
 
-      // Purge any visitor / pre-booking notifications that were erroneously saved under SYSTEM
-      await Notification.deleteMany({
-        companyId: 'SYSTEM',
-        $or: [
-          { module: { $in: ['PreBooking', 'Visitors', 'Visitor', 'Tracking'] } },
-          { type: { $in: ['Visitor', 'PREBOOKING_REGISTERED', 'PREBOOKING_APPROVED', 'PREBOOKING_REJECTED', 'VISITOR_REGISTERED', 'VISITOR_CHECKED_IN', 'VISITOR_CHECKED_OUT', 'PREBOOKING_CHECKIN', 'PREBOOKING_CHECKOUT'] } },
-          { title: { $regex: /pre-booking|visitor|appointment|approval|checked/i } },
-          { message: { $regex: /waiting for approval|checked in|checked out/i } }
-        ]
-      });
-
-      // Correct Vaidee's companyId if mistakenly saved under FIC001
-      const poojaCompany = await mongoose.model('Company').findOne({
-        $or: [{ name: /pooja/i }, { code: 'PO0347' }]
-      });
-      if (poojaCompany) {
-        await User.updateMany(
-          {
-            $or: [
-              { email: 'poojatamilarasan28@gmail.com' },
-              { name: new RegExp('^Vaidee$', 'i') }
-            ],
-            companyId: { $ne: poojaCompany.code }
-          },
-          { $set: { companyId: poojaCompany.code } }
+      for (const p of defaultPlans) {
+        await Plan.updateOne(
+          { name: p.name },
+          { $setOnInsert: { ...p, updatedBy: 'Initial Setup' } },
+          { upsert: true }
         );
-        console.log(`✅ Corrected Vaidee's companyId to ${poojaCompany.code}`);
       }
+      console.log('✅ Subscription plans auto-seeded and verified.');
 
-      console.log('🧹 Cleaned up test records, notifications, and legacy visitor data before Aug 26.');
+
     } catch (err) {
       console.error('Error initializing default approval permissions or cleanup:', err);
     }
@@ -382,49 +379,9 @@ app.use('/api/saas-leads', saasLeadsRouter);
 const userInvitationRoutes = require('./routes/userInvitationRoutes');
 app.use('/api/user-invitations', userInvitationRoutes);
 
-app.all('/api/cleanup-test-data', async (req, res) => {
-  try {
-    const PreBooking = require('./models/PreBooking');
-    const Visitor = require('./models/Visitor');
-    const Notification = require('./models/Notification');
-    const namesRegex = /^(test|test\s*\d*|tet|teest|lokeee|sample|demo)$/i;
+const planRoutes = require('./routes/planRoutes');
+app.use('/api/plans', planRoutes);
 
-    const [pbRes, visRes, notifRes] = await Promise.all([
-      PreBooking.deleteMany({ 
-        $or: [
-          { fullName: { $regex: namesRegex } },
-          { mobileNumber: { $in: ['6985471278', '6985471236', '9585712541'] } }
-        ]
-      }),
-      Visitor.deleteMany({
-        $or: [
-          { visitorName: { $regex: namesRegex } },
-          { fullName: { $regex: namesRegex } },
-          { mobileNumber: { $in: ['6985471278', '6985471236', '9585712541'] } }
-        ]
-      }),
-      Notification.deleteMany({
-        $or: [
-          { message: { $in: ["Is is waiting for approval.", "Has checked in has checked in.", "Has checked out has checked out.", "Visitor is waiting for approval.", "Visitor has checked in.", "Visitor has checked out."] } },
-          { message: { $regex: /(^Is is waiting|^Has checked in has checked in|^Has checked out has checked out|^Visitor is waiting|^Visitor has checked|visitor Visitor waiting)/i } },
-          { visitorName: { $in: ["Is", "Has checked in", "Has checked out", "is", "has", "was", "Visitor", "visitor"] } },
-          { visitorName: { $regex: namesRegex } },
-          { message: { $regex: /(test 1|test 3|lokeee|\btest\b|\btet\b|\bteest\b)/i } }
-        ]
-      })
-    ]);
-
-    return res.json({
-      success: true,
-      message: 'Test data cleaned up successfully.',
-      preBookingsDeleted: pbRes.deletedCount,
-      visitorsDeleted: visRes.deletedCount,
-      notificationsDeleted: notifRes.deletedCount
-    });
-  } catch (err) {
-    return res.status(500).json({ success: false, error: err.message });
-  }
-});
 
 app.get('/api/network-ip', (req, res) => {
   const os = require('os');

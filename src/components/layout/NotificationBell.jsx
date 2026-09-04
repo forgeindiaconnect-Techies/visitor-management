@@ -195,9 +195,16 @@ const NotificationBell = () => {
 
       const loggedInRole = user?.role;
 
-      // SaaS receives only SYSTEM notifications
-      if (loggedInRole === 'SaaS Super Admin') {
-        if (notificationCompanyId !== 'SYSTEM') {
+      // SaaS Super Admin receives SYSTEM notifications as well as sent tenant notifications
+      const isSaasRole = loggedInRole === 'SaaS Super Admin' || loggedInRole === 'Super Admin';
+      const isSaasNotif =
+        notificationCompanyId === 'SYSTEM' ||
+        notification.createdByRole === 'SaaS Super Admin' ||
+        notification.createdBy === 'SaaS Super Admin' ||
+        (Array.isArray(notification.roles) && (notification.roles.includes('SaaS Super Admin') || notification.roles.includes('Super Admin')));
+
+      if (isSaasRole && (loggedInCompanyId === 'SYSTEM' || !loggedInCompanyId)) {
+        if (!isSaasNotif) {
           return;
         }
       } else {

@@ -335,50 +335,93 @@ router.post('/register-company', async (req, res) => {
 // POST mock payment success (Simulates Razorpay/Stripe success webhook or callback)
 router.post('/mock-payment', async (req, res) => {
   try {
-    const { companyCode, plan, paymentId } = req.body;
+    const requestedPlan = req.body.requestedPlan || req.body.plan;
+    const companyCode = req.companyId || req.body.companyCode;
 
-    if (!companyCode || !plan) {
-      return res.status(400).json({ message: 'Company code and plan selection are required' });
+    if (!requestedPlan) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please select a subscription plan.'
+      });
     }
 
     const Company = require('../models/Company');
-    const company = await Company.findOne({ code: companyCode.toUpperCase() });
-    if (!company) {
-      return res.status(404).json({ message: 'Company not found' });
-    }
+    const Notification = require('../models/Notification');
+    const User = require('../models/User');
+    const Plan = require('../models/Plan');
 
-    // Create Upgrade Request instead of automatically activating
-    const UpgradeRequest = require('../models/UpgradeRequest');
-    
-    // Calculate amount based on plan
-    const amount = plan === 'Enterprise' ? 6999 : (plan === 'Standard' ? 2999 : 999);
-    
-    const upgradeReq = await UpgradeRequest.create({
-      companyId: company.code,
-      companyName: company.name,
-      requestedPlan: plan,
-      amount: amount,
-      durationDays: 30,
-      status: 'Pending',
-      requestedBy: 'System Simulator'
+    const plan = await Plan.findOne({
+      name: requestedPlan,
+      isActive: true
     });
 
-    // Trigger Notification for Subscription Requested
-    const Notification = require('../models/Notification');
+    if (!plan) {
+      return res.status(404).json({
+        success: false,
+        message:
+          'The selected subscription plan is unavailable.'
+      });
+    }
+
+    if (plan.name === 'One Day Trial') {
+      return res.status(400).json({
+        success: false,
+        message:
+          'The free trial cannot be purchased.'
+      });
+    }
+
+    const company = await Company.findOne({
+      code: String(companyCode || '').trim().toUpperCase()
+    });
+
+    if (!company) {
+      return res.status(404).json({
+        success: false,
+        message: 'Company not found.'
+      });
+    }
+
+    const cycleStart = new Date();
+
+    const cycleEnd = new Date(
+      cycleStart.getTime() +
+      plan.durationDays * 24 * 60 * 60 * 1000
+    );
+
+    company.subscription = plan.name;
+    company.status = 'Active';
+    company.subscriptionExpiresAt = cycleEnd;
+
+    company.upgradeHistory.push({
+      plan: plan.name,
+      startDate: cycleStart,
+      endDate: cycleEnd,
+      updatedBy:
+        req.userName ||
+        req.userRole ||
+        'Automatic Payment'
+    });
+
+    await company.save();
+
+    const amount = plan.price;
+    const durationDays = plan.durationDays;
+
     const newNotification = await Notification.create({
       companyId: 'SYSTEM',
       type: 'Subscription',
-      title: '📈 Subscription Upgrade Requested',
-      message: `${company.name} requested to upgrade to ${plan} Plan.`,
-      createdBy: 'System Simulator'
+      title: '📈 Subscription Upgraded',
+      message: `${company.name} upgraded to ${plan.name} Plan.`,
+      createdBy: 'Payment System'
     });
-    
+
     const companyNotification = await Notification.create({
       companyId: company.code,
       type: 'Subscription',
-      title: '📈 Subscription Upgrade Requested',
-      message: `Your company requested to upgrade to ${plan} Plan. Pending Approval.`,
-      createdBy: 'System Simulator'
+      title: '🎉 Subscription Activated',
+      message: `Your company has successfully upgraded to the ${plan.name} Plan.`,
+      createdBy: 'Payment System'
     });
 
     const io = req.app.get('io');
@@ -387,19 +430,27 @@ router.post('/mock-payment', async (req, res) => {
       io.to(`company:${companyNotification.companyId}`).emit('new_notification', companyNotification);
     }
 
-    res.json({
-      message: 'Payment simulation successful. Upgrade request created and is pending approval.',
-      company: {
-        name: company.name,
-        code: company.code,
-        subscription: company.subscription,
-        status: company.status,
-        subscriptionExpiresAt: company.subscriptionExpiresAt
+    return res.json({
+      success: true,
+      message:
+        'Payment successful. Subscription is now active.',
+
+      subscription: company.subscription,
+      subscriptionExpiresAt:
+        company.subscriptionExpiresAt,
+
+      plan: {
+        name: plan.name,
+        price: plan.price,
+        durationDays: plan.durationDays,
+        visitorPasses: plan.visitorPasses,
+        branches: plan.branches,
+        users: plan.users
       }
     });
   } catch (err) {
     console.error('Mock payment error:', err);
-    res.status(500).json({ message: err.message || 'Server error during mock payment' });
+    res.status(500).json({ success: false, message: err.message || 'Server error during mock payment' });
   }
 });
 

@@ -563,8 +563,7 @@ const SaaSPlatformDashboard = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           companyCode: paymentSimulation.companyCode,
-          plan: paymentSimulation.plan,
-          paymentId: `PAY-${Math.random().toString(36).substr(2, 9).toUpperCase()}`
+          requestedPlan: paymentSimulation.plan
         })
       });
       const data = await response.json();
@@ -1122,7 +1121,7 @@ const SaaSPlatformDashboard = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {payments.map((pay) => (
+                  {payments.filter(pay => pay.status !== 'Created').map((pay) => (
                     <tr key={`pay-${pay._id}`} className="hover:bg-slate-50/50 transition-colors">
                       <td className="px-6 py-4 font-semibold text-gray-900">
                         {pay.companyName}
@@ -1157,7 +1156,7 @@ const SaaSPlatformDashboard = () => {
                       </td>
                     </tr>
                   ))}
-                  {payments.length === 0 && !loading && (
+                  {payments.filter(pay => pay.status !== 'Created').length === 0 && !loading && (
                     <tr>
                       <td colSpan="6" className="px-6 py-12 text-center text-gray-500 font-medium bg-slate-50/50">
                         No payment records found.
@@ -1320,9 +1319,9 @@ const SaaSPlatformDashboard = () => {
                             {lead.requestedPlan === 'Enterprise'
                               ? 'Unlimited passes'
                               : lead.requestedPlan === 'Standard'
-                                ? '3,000 passes'
+                                ? '1,000 passes'
                                 : lead.requestedPlan === 'Basic'
-                                  ? '500 passes'
+                                  ? '150 passes'
                                   : '25 passes · 24 hours'}
                           </span>
                         </div>

@@ -34,17 +34,24 @@ const MDDashboard = () => {
   // Metrics calculations
   const today = new Date().toISOString().split('T')[0];
   
-  const isDirectVisit = (v) => {
-    const host = String(v.hostEmployee || v.hostName || '').trim().toLowerCase();
-    const isDirect = host === 'direct visits' || host === 'direct visit' || host.includes('direct') ||
-                     v.registrationType === 'Direct Visit' || v.registrationType === 'Walk-in' ||
-                     v.visitType === 'DIRECT_VISIT' || v.visitorType === 'NEW_VISITOR' || v.bookingType === 'DIRECT_VISIT' ||
-                     !v.isPreBooking || v.isReturning || v.returningVisitor;
-    return isDirect;
+  const isPreBookingVisit = (v) => {
+    const regType = String(v?.registrationType || '').trim();
+    const visitType = String(v?.visitType || '').trim();
+    const bookingType = String(v?.bookingType || '').trim();
+
+    if (regType === 'Walk-in' || regType === 'Direct Visit' || visitType === 'DIRECT_VISIT' || bookingType === 'DIRECT_VISIT') {
+      return false;
+    }
+
+    if (regType === 'Pre-Booking' || regType === 'PreBooking' || regType === 'Invitation') return true;
+    if (visitType === 'PRE_BOOKING' || bookingType === 'PRE_BOOKING') return true;
+    if (v?.isPreBooking === true) return true;
+
+    return false;
   };
 
-  const directVisitors = safeVisitors.filter(v => isDirectVisit(v));
-  const preBookedVisitors = safeVisitors.filter(v => !isDirectVisit(v));
+  const directVisitors = safeVisitors.filter(v => !isPreBookingVisit(v));
+  const preBookedVisitors = safeVisitors.filter(v => isPreBookingVisit(v));
   
   const totalDirectVisits = directVisitors.length;
   const totalPreBookings = preBookedVisitors.length;

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { ShieldAlert, CheckCircle, CreditCard, Loader2, X } from 'lucide-react';
+import { ShieldAlert, CheckCircle, CreditCard, Loader2, X, Lock, Sparkles, ArrowRight, Building2, Clock, Headset, LogOut, CheckCircle2 } from 'lucide-react';
+import { io } from 'socket.io-client';
 
 const SubscriptionModals = () => {
   const { user, logout, updateUser } = useAuth();
@@ -10,6 +11,10 @@ const SubscriptionModals = () => {
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [transactionId, setTransactionId] = useState('');
+
+  const [plans, setPlans] = useState([]);
+  const [plansLoading, setPlansLoading] = useState(true);
+  const [plansError, setPlansError] = useState('');
 
   useEffect(() => {
     const handleLock = (e) => {
@@ -30,41 +35,159 @@ const SubscriptionModals = () => {
     };
   }, [user]);
 
+  useEffect(() => {
+    const fetchPlans = async () => {
+      try {
+        setPlansLoading(true);
+        setPlansError('');
+
+        const baseUrl = String(
+          import.meta.env.VITE_API_URL ||
+          'http://localhost:5000'
+        ).replace(/\/api\/?$/, '');
+
+        const response = await fetch(
+          `${baseUrl}/api/plans`
+        );
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            result.message ||
+            'Unable to load subscription plans.'
+          );
+        }
+
+        // Trial is not displayed on the paid upgrade page
+        const paidPlans = (result.data || []).filter(
+          (plan) =>
+            plan.name !== 'One Day Trial' &&
+            plan.isActive
+        );
+
+        setPlans(paidPlans);
+      } catch (error) {
+        setPlansError(error.message);
+      } finally {
+        setPlansLoading(false);
+      }
+    };
+
+    fetchPlans();
+  }, []);
+
+  useEffect(() => {
+    const socketUrl = String(
+      import.meta.env.VITE_API_URL ||
+      'http://localhost:5000'
+    ).replace(/\/api\/?$/, '');
+
+    const socket = io(socketUrl, {
+      transports: ['websocket', 'polling']
+    });
+
+    const handlePlanUpdated = ({ plan }) => {
+      if (!plan?._id) return;
+
+      setPlans((currentPlans) => {
+        // Remove inactive plans immediately
+        if (
+          !plan.isActive ||
+          plan.name === 'One Day Trial'
+        ) {
+          return currentPlans.filter(
+            (item) => item._id !== plan._id
+          );
+        }
+
+        const alreadyExists =
+          currentPlans.some(
+            (item) => item._id === plan._id
+          );
+
+        if (alreadyExists) {
+          return currentPlans.map((item) =>
+            item._id === plan._id
+              ? plan
+              : item
+          );
+        }
+
+        return [...currentPlans, plan].sort(
+          (first, second) =>
+            first.price - second.price
+        );
+      });
+    };
+
+    const joinCompanyRoom = () => {
+      if (user?.companyId) {
+        socket.emit('join-notification-room', {
+          userId: user?._id || user?.id,
+          role: user?.role,
+          companyId: user.companyId
+        });
+      }
+    };
+
+    const handleSubscriptionUpdated = (data) => {
+      if (!data) return;
+
+      updateUser({
+        isExpired: false,
+        status: data.status || 'Active',
+        subscription: data.subscription,
+        subscriptionExpiresAt:
+          data.subscriptionExpiresAt
+      });
+
+      // Close only the expired lock screen.
+      // Do not interrupt the payment success screen.
+      setMode((currentMode) =>
+        currentMode === 'lock' ? 'none' : currentMode
+      );
+    };
+
+    socket.on('connect', joinCompanyRoom);
+
+    socket.on(
+      'company_subscription_updated',
+      handleSubscriptionUpdated
+    );
+
+    socket.on(
+      'subscription_plan_updated',
+      handlePlanUpdated
+    );
+
+    return () => {
+      socket.off('connect', joinCompanyRoom);
+
+      socket.off(
+        'company_subscription_updated',
+        handleSubscriptionUpdated
+      );
+
+      socket.off(
+        'subscription_plan_updated',
+        handlePlanUpdated
+      );
+
+      socket.disconnect();
+    };
+  }, [user?.companyId, user?.role]);
+
+  const displayLimit = (value) => {
+    if (Number(value) === -1) {
+      return 'Unlimited';
+    }
+
+    return Number(value).toLocaleString('en-IN');
+  };
+
   // If not locked and no modal is active, render nothing
   if (mode === 'none') return null;
-
-  const plans = [
-    { 
-      name: 'Basic', 
-      price: 1999, 
-      features: ['500 Passes / Month', '1 Branch', '10 System Users (5 Security)', 'Standard Reports'], 
-      badgeBg: 'bg-green-100',
-      badgeText: 'text-green-700',
-      dotBg: 'bg-green-500',
-      iconColor: 'text-green-500',
-      btnBg: 'bg-green-600 hover:bg-green-700'
-    },
-    { 
-      name: 'Standard', 
-      price: 4999, 
-      features: ['3,000 Passes / Month', '5 Branches', '50 System Users (25 Security)', 'Advanced Analytics & Branding'], 
-      badgeBg: 'bg-blue-100',
-      badgeText: 'text-blue-700',
-      dotBg: 'bg-blue-500',
-      iconColor: 'text-blue-500',
-      btnBg: 'bg-blue-600 hover:bg-blue-700'
-    },
-    { 
-      name: 'Enterprise', 
-      price: 9999, 
-      features: ['Unlimited Passes', 'Unlimited Branches', 'Unlimited System Users', 'API Access & Priority Support'], 
-      badgeBg: 'bg-purple-100',
-      badgeText: 'text-purple-700',
-      dotBg: 'bg-purple-500',
-      iconColor: 'text-purple-500',
-      btnBg: 'bg-purple-600 hover:bg-purple-700'
-    }
-  ];
 
   const handlePlanSelect = (plan) => {
     setSelectedPlan(plan);
@@ -94,17 +217,30 @@ const SubscriptionModals = () => {
 
     try {
       const baseUrl = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://fic-visitor-1.onrender.com');
+      const authToken = localStorage.getItem('token') || user?.token;
+      const companyId = user?.companyId || '';
+
+      const reqHeaders = {
+        'Content-Type': 'application/json'
+      };
+      if (authToken && authToken !== 'null' && authToken !== 'undefined') {
+        reqHeaders['Authorization'] = `Bearer ${authToken}`;
+      }
+      if (companyId) {
+        reqHeaders['X-Company-Id'] = companyId;
+      }
+      if (user?.role) {
+        reqHeaders['X-User-Role'] = user.role;
+      }
+      if (user?.id || user?._id) {
+        reqHeaders['X-User-Id'] = user.id || user._id;
+      }
       
       const orderRes = await fetch(`${baseUrl}/api/payment/create-order`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
+        headers: reqHeaders,
         body: JSON.stringify({
-          amount: selectedPlan.price + Math.round(selectedPlan.price * 0.18),
-          plan: selectedPlan.name,
-          durationDays: 30
+          requestedPlan: selectedPlan.name
         })
       });
       
@@ -133,14 +269,13 @@ const SubscriptionModals = () => {
           try {
             const verifyRes = await fetch(`${baseUrl}/api/payment/verify`, {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
-              },
+              headers: reqHeaders,
               body: JSON.stringify({
-                razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_order_id: response.razorpay_order_id,
-                razorpay_signature: response.razorpay_signature
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                companyId: user?.companyId || companyId || '',
+                selectedPlan: selectedPlan?.name
               })
             });
             
@@ -225,79 +360,148 @@ const SubscriptionModals = () => {
   );
 
   return (
-    <div className={`fixed inset-0 z-[100] flex items-center justify-center p-4 ${mode === 'lock' ? 'bg-slate-900/40 backdrop-blur-xl' : 'bg-slate-900/80 backdrop-blur-sm'} animate-in fade-in duration-200`}>
+    <div className={`fixed inset-0 z-[100] flex items-center justify-center p-4 ${mode === 'lock' ? 'bg-slate-950/75 backdrop-blur-2xl' : 'bg-slate-900/80 backdrop-blur-sm'} animate-in fade-in duration-200`}>
       
-      {/* 1. LOCK SCREEN (Professional Freeze Screen) */}
+      {/* 1. LOCK SCREEN (Enterprise Premium Freeze Screen) */}
       {mode === 'lock' && (
-        <div className="bg-white rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col md:flex-row animate-in zoom-in-95 duration-300">
+        <div className="relative bg-white rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col md:flex-row border border-slate-200/80 animate-in zoom-in-95 duration-300">
           
-          {/* Left Side: Expiry Details */}
-          <div className="md:w-1/2 p-8 md:p-12 flex flex-col justify-center items-center text-center bg-slate-50 border-r border-slate-200">
-            <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mb-6 shadow-sm">
-              <ShieldAlert size={40} className="text-red-600" />
-            </div>
-            <h2 className="text-3xl font-bold text-gray-900 mb-2">Subscription Expired</h2>
-            <p className="text-gray-600 font-medium mb-8">Your trial has ended.</p>
+          {/* Left Side: Expiry Status & Branding */}
+          <div className="md:w-1/2 p-8 md:p-10 flex flex-col justify-between items-center text-center bg-gradient-to-b from-slate-900 via-slate-900 to-[#002D59] text-white relative overflow-hidden">
             
-            <div className="w-full space-y-4">
-              <div className="flex justify-between items-center pb-3 border-b border-gray-200">
-                <span className="text-gray-500 font-medium text-sm">Company</span>
-                <span className="font-bold text-gray-900">{user?.companyName || user?.companyId}</span>
+            {/* Background Glow Overlay */}
+            <div className="absolute -top-24 -left-24 w-64 h-64 bg-[#005BAA]/30 rounded-full blur-3xl pointer-events-none"></div>
+            <div className="absolute -bottom-24 -right-24 w-64 h-64 bg-red-500/20 rounded-full blur-3xl pointer-events-none"></div>
+
+            {/* Header Brand */}
+            <div className="relative z-10 flex items-center gap-3 w-full justify-center pb-6 border-b border-white/10">
+              <img 
+                src="/forge-india-logo-icon.svg" 
+                alt="Forge India Logo" 
+                className="h-10 w-auto object-contain drop-shadow" 
+              />
+              <div className="flex flex-col text-left">
+                <span className="text-base font-black tracking-tight text-white leading-none flex items-center gap-1">
+                  FORGE INDIA <span className="text-[#E6B800]">VMS</span>
+                </span>
+                <span className="text-[9px] tracking-wider text-blue-200 uppercase font-bold mt-0.5">
+                  CONNECT PVT. LTD. • SHAPING FUTURE
+                </span>
               </div>
-              <div className="flex justify-between items-center pb-3 border-b border-gray-200">
-                <span className="text-gray-500 font-medium text-sm">Current Plan</span>
-                <span className="font-bold text-gray-900">{user?.subscription || 'One Day Trial'}</span>
+            </div>
+
+            {/* Central Warning / Expired Lock Banner */}
+            <div className="relative z-10 my-6 flex flex-col items-center">
+              <div className="relative mb-5">
+                <div className="w-20 h-20 bg-red-500/20 rounded-3xl border border-red-500/40 flex items-center justify-center text-red-400 shadow-xl backdrop-blur-md">
+                  <Lock size={38} className="animate-pulse text-red-400" />
+                </div>
+                <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-4 w-4 bg-red-500"></span>
+                </span>
               </div>
-              <div className="flex justify-between items-center pb-3 border-b border-gray-200">
-                <span className="text-gray-500 font-medium text-sm">Expired</span>
-                <span className="font-bold text-red-600 text-right">
+
+              <span className="px-3.5 py-1 bg-red-500/20 border border-red-500/30 text-red-300 text-xs font-bold rounded-full uppercase tracking-wider mb-2">
+                Subscription Concluded
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">Subscription Expired</h2>
+              <p className="text-xs sm:text-sm text-slate-300 font-medium mt-1 max-w-xs">
+                Your organization's active plan period has ended. Access is temporarily locked.
+              </p>
+            </div>
+
+            {/* Account Details Box */}
+            <div className="relative z-10 w-full bg-white/5 backdrop-blur-md rounded-2xl p-4 border border-white/10 space-y-3 text-xs text-left">
+              <div className="flex justify-between items-center pb-2 border-b border-white/10">
+                <span className="text-slate-400 flex items-center gap-1.5 font-medium">
+                  <Building2 size={14} className="text-[#E6B800]" /> Company
+                </span>
+                <span className="font-bold text-white truncate max-w-[160px]">{user?.companyName || user?.companyId}</span>
+              </div>
+
+              <div className="flex justify-between items-center pb-2 border-b border-white/10">
+                <span className="text-slate-400 flex items-center gap-1.5 font-medium">
+                  <Sparkles size={14} className="text-blue-400" /> Current Plan
+                </span>
+                <span className="font-bold text-amber-300 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">
+                  {user?.subscription || 'One Day Trial'}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400 flex items-center gap-1.5 font-medium">
+                  <Clock size={14} className="text-red-400" /> Expired On
+                </span>
+                <span className="font-extrabold text-red-300">
                   {user?.subscriptionExpiresAt 
                     ? new Date(user.subscriptionExpiresAt).toLocaleString('en-US', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
                     : 'N/A'}
                 </span>
               </div>
             </div>
+
           </div>
           
-          {/* Right Side: Why Upgrade? */}
-          <div className="md:w-1/2 p-8 md:p-12 flex flex-col justify-between bg-white">
+          {/* Right Side: Why Upgrade & Action CTAs */}
+          <div className="md:w-1/2 p-8 md:p-10 flex flex-col justify-between bg-white">
             <div>
-              <h3 className="text-xl font-bold text-gray-900 mb-6">Why upgrade?</h3>
-              <ul className="space-y-4">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="px-2.5 py-0.5 bg-[#005BAA]/10 text-[#005BAA] text-[11px] font-extrabold rounded-full border border-[#005BAA]/20">
+                  PREMIUM VMS ACCESS
+                </span>
+              </div>
+              <h3 className="text-2xl font-black text-slate-900 tracking-tight">Unlock Full Features</h3>
+              <p className="text-xs text-slate-500 font-medium mt-1 mb-6">
+                Upgrade now to instantly restore workspace functionality for your security team.
+              </p>
+
+              <div className="space-y-3.5">
                 {[
-                  'Continue Visitor Registration',
-                  'QR Code Access',
-                  'Security Dashboard',
-                  'Reports',
-                  'Notifications'
-                ].map((feature, i) => (
-                  <li key={i} className="flex items-center text-gray-700 font-medium">
-                    <CheckCircle size={20} className="text-green-500 mr-3 shrink-0" />
-                    {feature}
-                  </li>
+                  { title: 'Continuous Visitor Registration', desc: 'Instant check-in & digital pass issuance' },
+                  { title: 'Contactless QR Scanner', desc: 'Express gate scans under 4 seconds' },
+                  { title: 'Security & Premises Dashboard', desc: 'Live visitor tracking & emergency logs' },
+                  { title: 'Analytics & Audit Reports', desc: 'Exportable logs & automated compliance' },
+                  { title: 'Host & Mobile Alerts', desc: 'Push, SMS & WhatsApp notifications' }
+                ].map((item, i) => (
+                  <div key={i} className="flex items-start gap-3 p-2.5 rounded-xl bg-slate-50 border border-slate-100 hover:border-slate-200 transition-colors">
+                    <div className="w-6 h-6 rounded-full bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0 mt-0.5 border border-emerald-500/20">
+                      <CheckCircle2 size={15} />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-800 leading-tight">{item.title}</p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">{item.desc}</p>
+                    </div>
+                  </div>
                 ))}
-              </ul>
+              </div>
             </div>
             
-            <div className="mt-10 space-y-3">
+            <div className="mt-8 space-y-3">
               <button
                 onClick={() => setMode('choose_plan')}
-                className="w-full bg-[#1E1B6E] text-white rounded-xl py-4 font-bold text-lg hover:bg-indigo-900 transition-colors shadow-lg"
+                className="w-full bg-gradient-to-r from-[#005BAA] via-[#004b8d] to-[#003B73] text-white rounded-xl py-3.5 px-6 font-extrabold text-sm hover:opacity-95 transition-all shadow-xl hover:shadow-2xl hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-2 group cursor-pointer"
               >
-                Upgrade Now
+                <Sparkles size={18} className="text-[#E6B800]" />
+                <span>Renew / Upgrade Subscription</span>
+                <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" />
               </button>
-              <div className="flex space-x-3">
+
+              <div className="flex gap-2.5">
                 <button
                   onClick={() => window.open(`https://wa.me/916369406416?text=Hi,%20I%20need%20Subscription%20Support%20for%20company:%20${user?.companyName || user?.companyId}`, '_blank')}
-                  className="flex-1 bg-white text-gray-700 border border-gray-300 rounded-xl py-3 font-semibold hover:bg-gray-50 transition-colors"
+                  className="flex-1 bg-slate-100 text-slate-700 border border-slate-200 rounded-xl py-2.5 px-3 text-xs font-bold hover:bg-slate-200 hover:text-slate-900 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  Contact Support
+                  <Headset size={15} className="text-[#005BAA]" />
+                  <span>Support</span>
                 </button>
+                
                 <button
                   onClick={logout}
-                  className="flex-1 bg-white text-red-600 border border-red-200 rounded-xl py-3 font-semibold hover:bg-red-50 transition-colors"
+                  className="flex-1 bg-red-50 text-red-600 border border-red-200 rounded-xl py-2.5 px-3 text-xs font-bold hover:bg-red-100 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  Logout
+                  <LogOut size={15} />
+                  <span>Sign Out</span>
                 </button>
               </div>
             </div>
@@ -322,38 +526,98 @@ const SubscriptionModals = () => {
             <p className="text-gray-500 text-lg">Choose the best plan for your company.</p>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {plans.map((plan) => (
-              <div key={plan.name} className="border-2 border-slate-100 hover:border-slate-300 rounded-2xl p-6 flex flex-col transition-all hover:shadow-xl bg-white">
-                <div className="mb-6">
-                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold ${plan.badgeBg} ${plan.badgeText} mb-4`}>
-                    <div className={`w-2 h-2 rounded-full ${plan.dotBg}`}></div>
-                    {plan.name}
-                  </span>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-3xl font-extrabold text-gray-900">₹{plan.price.toLocaleString('en-IN')}</span>
-                    <span className="text-gray-500 font-medium">/ Month</span>
-                  </div>
-                </div>
-                
-                <ul className="space-y-4 mb-8 flex-1">
-                  {plan.features.map((feature, i) => (
-                    <li key={i} className="flex items-start gap-3 text-gray-700">
-                      <CheckCircle className={`${plan.iconColor} shrink-0 mt-0.5`} size={18} />
-                      <span className="font-medium">{feature}</span>
-                    </li>
-                  ))}
-                </ul>
-                
-                <button
-                  onClick={() => handlePlanSelect(plan)}
-                  className={`w-full py-3.5 rounded-xl font-bold text-white transition-all shadow-md hover:shadow-lg ${plan.btnBg}`}
+          {plansLoading && (
+            <p className="text-center text-slate-500 my-8">
+              Loading available plans...
+            </p>
+          )}
+
+          {plansError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700 my-4">
+              {plansError}
+            </div>
+          )}
+
+          {!plansLoading && !plansError && (
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+              {plans.map((plan) => (
+                <div
+                  key={plan._id || plan.name}
+                  className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow"
                 >
-                  Choose Plan
-                </button>
-              </div>
-            ))}
-          </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-900">
+                      {plan.name}
+                    </h2>
+
+                    <div className="mt-3">
+                      <span className="text-3xl font-bold text-[#1E1B6E]">
+                        ₹{Number(plan.price).toLocaleString('en-IN')}
+                      </span>
+
+                      <span className="text-sm text-slate-500">
+                        {' '}/ {plan.durationDays === 30
+                          ? 'Month'
+                          : `${plan.durationDays} Days`}
+                      </span>
+                    </div>
+
+                    <p className="mt-3 text-sm text-slate-600">
+                      {plan.description}
+                    </p>
+
+                    <ul className="mt-6 space-y-3 text-sm text-slate-700">
+                      <li>
+                        ✓ {displayLimit(plan.visitorPasses)} Passes
+                      </li>
+
+                      <li>
+                        ✓ {displayLimit(plan.branches)} Branches
+                      </li>
+
+                      <li>
+                        ✓ {displayLimit(plan.users)} System Users
+                      </li>
+
+                      <li>
+                        ✓ {displayLimit(plan.securityUsers)} Security Users
+                      </li>
+
+                      <li>
+                        ✓ {displayLimit(plan.admins)} Admins
+                      </li>
+
+                      <li>
+                        ✓ {plan.features?.advancedReports
+                          ? 'Advanced Reports'
+                          : 'Standard Reports'}
+                      </li>
+
+                      {plan.features?.customBranding && (
+                        <li>✓ Custom Branding</li>
+                      )}
+
+                      {plan.features?.apiAccess && (
+                        <li>✓ API Access</li>
+                      )}
+
+                      {plan.features?.prioritySupport && (
+                        <li>✓ Priority Support</li>
+                      )}
+                    </ul>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handlePlanSelect(plan)}
+                    className="mt-6 w-full rounded-lg bg-[#1E1B6E] px-4 py-3 font-semibold text-white hover:bg-indigo-800 transition-colors"
+                  >
+                    Choose Plan
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           
           {!user?.isExpired && (
             <div className="mt-8 text-center">

@@ -13,6 +13,7 @@ export const ZoneProvider = ({ children }) => {
 
   // Fetch zones from backend
   const fetchZones = async () => {
+    if (!currentUser || currentUser.isExpired) return;
     try {
       const response = await fetch(API_URL, {
         headers: {
@@ -36,7 +37,7 @@ export const ZoneProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    if (!currentUser || !currentUser.token) {
+    if (!currentUser || !currentUser.token || currentUser.isExpired) {
       setZones([]);
       setLoading(false);
       return;

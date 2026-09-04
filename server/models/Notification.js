@@ -48,10 +48,13 @@ const notificationSchema = new mongoose.Schema(
     },
     type: {
       type: String,
+      enum: ['info', 'warning', 'success', 'error'],
       default: 'info',
     },
     module: {
       type: String,
+      default: 'System',
+      trim: true,
     },
     title: {
       type: String,

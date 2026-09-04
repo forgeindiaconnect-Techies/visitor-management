@@ -102,8 +102,15 @@ export const NotificationProvider = ({ children }) => {
         const notificationCompanyId = String(newNotif.companyId || '').trim().toUpperCase();
         const userCompanyId = String(parsedUser.companyId || '').trim().toUpperCase();
 
-        if (parsedUser.role === 'SaaS Super Admin') {
-          if (notificationCompanyId !== 'SYSTEM') return;
+        const isSaasRole = parsedUser.role === 'SaaS Super Admin' || parsedUser.role === 'Super Admin';
+        const isSaasNotif =
+          notificationCompanyId === 'SYSTEM' ||
+          newNotif.createdByRole === 'SaaS Super Admin' ||
+          newNotif.createdBy === 'SaaS Super Admin' ||
+          (Array.isArray(newNotif.roles) && (newNotif.roles.includes('SaaS Super Admin') || newNotif.roles.includes('Super Admin')));
+
+        if (isSaasRole && (userCompanyId === 'SYSTEM' || !userCompanyId)) {
+          if (!isSaasNotif) return;
         } else {
           if (
             !userCompanyId ||

@@ -366,7 +366,8 @@ const PreBookingRegistration = () => {
               name="dob" 
               value={formData.dob || ''} 
               onChange={handleChange}
-              className={inputClassName}
+              onClick={(e) => e.currentTarget.showPicker?.()}
+              className={`${inputClassName} cursor-pointer`}
             />
           </div>
 
@@ -402,7 +403,8 @@ const PreBookingRegistration = () => {
                 name="visitDate" 
                 value={formData.visitDate} 
                 onChange={handleChange}
-                className="w-1/2 px-3 py-2.5 border border-slate-200 rounded-lg text-xs outline-none bg-white"
+                onClick={(e) => e.currentTarget.showPicker?.()}
+                className="w-1/2 px-3 py-2.5 border border-slate-200 rounded-lg text-xs outline-none bg-white cursor-pointer"
               />
               <input 
                 type="text" 

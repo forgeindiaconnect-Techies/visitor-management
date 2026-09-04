@@ -53,7 +53,7 @@ export const VisitorProvider = ({ children }) => {
 
   // Fetch visitors from backend
   const fetchVisitors = async () => {
-    if (!currentUser) {
+    if (!currentUser || currentUser.isExpired) {
       setVisitors([]);
       allVisitorsRef.current = [];
       setLoading(false);
@@ -124,10 +124,15 @@ export const VisitorProvider = ({ children }) => {
           normalizedStatus = 'Pending';
         }
 
+        const regType = String(pb.registrationType || '').trim();
+        const visitType = String(pb.visitType || '').trim();
+        const bookingType = String(pb.bookingType || '').trim();
+        const isExplicitDirect = regType === 'Walk-in' || regType === 'Direct Visit' || visitType === 'DIRECT_VISIT' || bookingType === 'DIRECT_VISIT';
+
         return {
           ...pb,
           id: pb._id || pb.id,
-          isPreBooking: true,
+          isPreBooking: !isExplicitDirect && pb.isPreBooking !== false,
           visitorName: pb.fullName || pb.visitorName || 'Visitor',
           purpose: pb.visitPurpose || pb.purpose || 'Visit',
           branch: pb.branchLocation || pb.branch || 'Head Office',
@@ -207,7 +212,7 @@ export const VisitorProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    if (!currentUser) {
+    if (!currentUser || currentUser.isExpired) {
       setVisitors([]);
       allVisitorsRef.current = [];
       setLoading(false);

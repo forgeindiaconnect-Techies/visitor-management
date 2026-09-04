@@ -51,15 +51,15 @@ const demoPlans = [
     price: 1999,
     priceLabel: '₹1,999',
     validity: '30 Days',
-    visitorPasses: '500 Passes / Mo',
+    visitorPasses: '150 Passes / Mo',
     branches: '1 Branch',
-    users: '10 Users (5 Security)',
+    users: '5 Users (2 Security)',
     popular: false,
     badgeBg: 'bg-blue-100 text-[#005BAA] border-blue-200',
     btnBg: 'bg-[#005BAA] hover:bg-[#004887] text-white shadow-md',
     features: [
       'All Trial Features Included',
-      '500 Visitor Passes Monthly',
+      '150 Visitor Passes Monthly',
       'ID Proof Photo Storage',
       'Standard Exportable Reports',
       'Host Email & Web Alerts'
@@ -71,15 +71,15 @@ const demoPlans = [
     price: 4999,
     priceLabel: '₹4,999',
     validity: '30 Days',
-    visitorPasses: '3,000 Passes / Mo',
+    visitorPasses: '1,000 Passes / Mo',
     branches: '5 Branches',
-    users: '50 Users (25 Security)',
+    users: '15 Users (8 Security)',
     popular: true,
     badgeBg: 'bg-[#E6B800] text-slate-900 border-yellow-300 font-extrabold',
     btnBg: 'bg-gradient-to-r from-[#005BAA] via-blue-700 to-[#003B73] hover:from-[#004887] hover:to-[#002D59] text-white shadow-xl shadow-blue-900/30',
     features: [
       'All Basic Features Included',
-      '3,000 Visitor Passes Monthly',
+      '1,000 Visitor Passes Monthly',
       '5 Multi-Branch Locations',
       'AI Document OCR Verification',
       'Custom Branding & Email Pass',
@@ -212,17 +212,19 @@ const SaaSLanding = () => {
       {/* 2. Header Navigation */}
       <header className="sticky top-0 z-50 backdrop-blur-md bg-white/95 border-b border-slate-200 shadow-sm transition-all">
         <div className="max-w-7xl mx-auto px-6 lg:px-12 py-3.5 flex justify-between items-center">
-          <a href="#" className="flex items-center gap-3 group">
+          <a href="#" className="flex items-center gap-3.5 group">
             <img 
-              src="/forge-india-logo.svg" 
+              src="/forge-india-logo-icon.svg" 
               alt="Forge India Connect Logo" 
-              className="h-10 w-auto object-contain transition-transform group-hover:scale-105" 
+              className="h-12 w-auto object-contain transition-transform group-hover:scale-105 drop-shadow-sm" 
             />
-            <div className="flex flex-col">
-              <span className="text-lg font-black tracking-tight text-[#005BAA] flex items-center gap-1.5">
+            <div className="flex flex-col justify-center">
+              <span className="text-xl sm:text-2xl font-black tracking-tight text-[#005BAA] leading-none flex items-center gap-1.5">
                 FORGE INDIA <span className="text-[#E6B800]">VMS</span>
               </span>
-              <span className="text-[9px] tracking-widest text-slate-500 uppercase font-extrabold">SHAPING FUTURE • PVT. LTD</span>
+              <span className="text-[11px] sm:text-[12px] tracking-wider text-[#003B73] uppercase font-black mt-1">
+                CONNECT PVT. LTD. <span className="text-[#E6B800]">•</span> SHAPING FUTURE
+              </span>
             </div>
           </a>
 
@@ -318,7 +320,7 @@ const SaaSLanding = () => {
             </motion.div>
           </div>
 
-          {/* Hero Visual Video / Interactive Mockup */}
+          {/* Hero Interactive Mockup */}
           <motion.div 
             className="mt-16 relative max-w-5xl mx-auto"
             initial={{ opacity: 0, y: 50 }}
@@ -327,23 +329,6 @@ const SaaSLanding = () => {
           >
             <div className="relative rounded-2xl p-3 bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl">
               <div className="overflow-hidden rounded-xl bg-slate-900 border border-slate-800">
-                
-                {/* High-Definition HTML5 Video Player with Local Override */}
-                <div className="relative aspect-video w-full overflow-hidden rounded-xl shadow-2xl border border-slate-700 bg-slate-950">
-                  <video 
-                    controls
-                    autoPlay 
-                    loop 
-                    muted 
-                    playsInline 
-                    poster="/hero-dashboard.jpg"
-                    className="w-full h-full object-cover rounded-xl"
-                  >
-                    <source src="/vms-demo.mp4" type="video/mp4" />
-                    <source src="https://assets.mixkit.co/videos/preview/mixkit-security-guard-monitoring-surveillance-screens-41484-large.mp4" type="video/mp4" />
-                    Your browser does not support the video tag.
-                  </video>
-                </div>
                 <div className="p-6 space-y-6 text-left text-white">
                   
                   {/* Top Header Bar */}
@@ -838,8 +823,8 @@ const SaaSLanding = () => {
                       className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-sm text-slate-900 focus:ring-2 focus:ring-[#005BAA] focus:border-[#005BAA] outline-none transition"
                     >
                       <option value="One Day Trial">One Day Trial — Free — 25 Passes — 1 Branch</option>
-                      <option value="Basic">Basic — ₹1,999 / Mo — 500 Passes — 1 Branch</option>
-                      <option value="Standard">Standard — ₹4,999 / Mo — 3,000 Passes — 5 Branches (Most Popular)</option>
+                      <option value="Basic">Basic — ₹1,999 / Mo — 150 Passes — 1 Branch</option>
+                      <option value="Standard">Standard — ₹4,999 / Mo — 1,000 Passes — 5 Branches (Most Popular)</option>
                       <option value="Enterprise">Enterprise — ₹9,999 / Mo — Unlimited Passes & Branches</option>
                     </select>
                   </div>

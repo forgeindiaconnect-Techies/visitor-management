@@ -462,8 +462,8 @@ const getAllPreBookings = async (req, res) => {
 
     const filter =
       req.userRole === 'SaaS Super Admin'
-        ? {}
-        : { companyId: companyId.toUpperCase() };
+        ? { bookingType: { $ne: 'DIRECT_VISIT' } }
+        : { companyId: companyId.toUpperCase(), bookingType: { $ne: 'DIRECT_VISIT' } };
 
     const preBookings = await PreBooking.find(filter)
       .sort({ createdAt: -1 });

@@ -35,25 +35,57 @@ router.get('/stats', async (req, res) => {
     const [
       totalBranches,
       totalUsers,
-      totalVisitors,
-      totalPreBookings,
+      directFromVisitor,
+      directFromPreBooking,
+      preBookingFromPreBooking,
+      preBookingFromVisitor,
       visitorsInside,
       pendingApprovals,
       blockedVisitors
     ] = await Promise.all([
       BranchSetting.countDocuments(tenantFilter),
       User.countDocuments(tenantFilter),
-      Visitor.countDocuments(tenantFilter),
-      PreBooking.countDocuments(tenantFilter),
+
+      // Direct Visits count in Visitor model
+      Visitor.countDocuments({
+        ...tenantFilter,
+        registrationType: { $nin: ['Pre-Booking', 'PreBooking', 'Invitation'] },
+        visitType: { $ne: 'PRE_BOOKING' },
+        bookingType: { $ne: 'PRE_BOOKING' },
+        isPreBooking: { $ne: true }
+      }),
+
+      // Direct Visits count in PreBooking model
+      PreBooking.countDocuments({
+        ...tenantFilter,
+        bookingType: 'DIRECT_VISIT'
+      }),
+
+      // Pre-Bookings count in PreBooking model (excluding DIRECT_VISIT)
+      PreBooking.countDocuments({
+        ...tenantFilter,
+        bookingType: { $ne: 'DIRECT_VISIT' }
+      }),
+
+      // Pre-Bookings count in Visitor model
+      Visitor.countDocuments({
+        ...tenantFilter,
+        $or: [
+          { registrationType: { $in: ['Pre-Booking', 'PreBooking', 'Invitation'] } },
+          { visitType: 'PRE_BOOKING' },
+          { bookingType: 'PRE_BOOKING' },
+          { isPreBooking: true }
+        ]
+      }),
 
       Visitor.countDocuments({
         ...tenantFilter,
         status: { $in: ["INSIDE", "Checked In", "CHECKED_IN", "Inside"] }
       }),
 
-      PreBooking.countDocuments({
+      Visitor.countDocuments({
         ...tenantFilter,
-        status: { $in: ["PENDING", "Pending"] }
+        status: { $in: ["PENDING", "Pending", "Pending Approval", "PENDING APPROVAL"] }
       }),
 
       Blacklist.countDocuments({
@@ -62,12 +94,19 @@ router.get('/stats', async (req, res) => {
       })
     ]);
 
+    // Use one source per registration type to prevent duplicate counting
+    const totalDirectVisits = directFromVisitor;
+    const totalPreBookings = preBookingFromPreBooking;
+    const totalVisitors =
+      totalDirectVisits + totalPreBookings;
+
     return res.json({
       success: true,
       data: {
         totalBranches,
         totalUsers,
         totalVisitors,
+        totalDirectVisits,
         totalPreBookings,
         visitorsInside,
         pendingApprovals,

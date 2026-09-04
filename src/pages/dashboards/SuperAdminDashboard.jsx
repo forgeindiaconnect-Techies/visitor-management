@@ -112,17 +112,24 @@ const SuperAdminDashboard = () => {
 
   const today = new Date().toISOString().split('T')[0];
   
-  const isDirectVisit = (v) => {
-    const host = String(v.hostEmployee || v.hostName || '').trim().toLowerCase();
-    const isDirect = host === 'direct visits' || host === 'direct visit' || host.includes('direct') ||
-                     v.registrationType === 'Direct Visit' || v.registrationType === 'Walk-in' ||
-                     v.visitType === 'DIRECT_VISIT' || v.visitorType === 'NEW_VISITOR' || v.bookingType === 'DIRECT_VISIT' ||
-                     !v.isPreBooking || v.isReturning || v.returningVisitor;
-    return isDirect;
+  const isPreBookingVisit = (v) => {
+    const regType = String(v?.registrationType || '').trim();
+    const visitType = String(v?.visitType || '').trim();
+    const bookingType = String(v?.bookingType || '').trim();
+
+    if (regType === 'Walk-in' || regType === 'Direct Visit' || visitType === 'DIRECT_VISIT' || bookingType === 'DIRECT_VISIT') {
+      return false;
+    }
+
+    if (regType === 'Pre-Booking' || regType === 'PreBooking' || regType === 'Invitation') return true;
+    if (visitType === 'PRE_BOOKING' || bookingType === 'PRE_BOOKING') return true;
+    if (v?.isPreBooking === true) return true;
+
+    return false;
   };
 
-  const directVisitors = safeVisitors.filter(v => isDirectVisit(v));
-  const preBookedVisitors = safeVisitors.filter(v => !isDirectVisit(v));
+  const directVisitors = safeVisitors.filter(v => !isPreBookingVisit(v));
+  const preBookedVisitors = safeVisitors.filter(v => isPreBookingVisit(v));
   
   const totalDirectVisits = directVisitors.length;
   const totalPreBookings = preBookedVisitors.length;
@@ -314,8 +321,8 @@ const SuperAdminDashboard = () => {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-        <DashboardCard onClick={() => navigate('/visitors')} title="Direct Visits" value={dashboardStats ? Math.max(0, dashboardStats.totalVisitors - dashboardStats.totalPreBookings) : totalDirectVisits} icon={Users} colorClass="bg-blue-100 text-blue-600" />
-        <DashboardCard onClick={() => navigate('/pre-bookings')} title="Pre-Bookings" value={dashboardStats ? dashboardStats.totalPreBookings : totalPreBookings} icon={Users} colorClass="bg-indigo-100 text-indigo-600" />
+        <DashboardCard onClick={() => navigate('/visitors')} title="Direct Visits" value={dashboardStats?.totalDirectVisits ?? totalDirectVisits} icon={Users} colorClass="bg-blue-100 text-blue-600" />
+        <DashboardCard onClick={() => navigate('/pre-bookings')} title="Pre-Bookings" value={dashboardStats?.totalPreBookings ?? totalPreBookings} icon={Users} colorClass="bg-indigo-100 text-indigo-600" />
         <DashboardCard onClick={() => navigate('/tracking')} title="Visitors Inside" value={dashboardStats ? dashboardStats.visitorsInside : insideVisitors.length} icon={UserCheck} colorClass="bg-green-100 text-green-600" />
         <DashboardCard onClick={() => navigate('/approvals')} title="Pending Approvals" value={dashboardStats ? dashboardStats.pendingApprovals : pendingApprovals} icon={Clock} colorClass="bg-orange-100 text-orange-600" />
         <DashboardCard onClick={() => navigate('/blacklist')} title="Blocked Visitors" value={dashboardStats ? dashboardStats.blockedVisitors : blockedVisitors} icon={Ban} colorClass="bg-red-100 text-red-600" />

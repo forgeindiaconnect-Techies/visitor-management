@@ -14,7 +14,7 @@ export const AttendanceProvider = ({ children }) => {
   const today = new Date().toISOString().split('T')[0];
 
   const fetchAttendance = async () => {
-    if (!user) return;
+    if (!user || user.isExpired) return;
     
     try {
       let queryUrl = API_URL;
@@ -57,7 +57,7 @@ export const AttendanceProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    if (!user || !user.token) {
+    if (!user || !user.token || user.isExpired) {
       setAttendance(null);
       setAllAttendance([]);
       return;

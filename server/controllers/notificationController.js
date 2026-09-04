@@ -3,8 +3,15 @@ const getTenantFilter = require('../utils/tenantFilter');
 
 const buildNotificationFilter = (req) => {
   const tenantFilter = getTenantFilter(req);
-  if (req.userRole === 'SaaS Super Admin' && req.companyId === 'SYSTEM') {
-    return { companyId: 'SYSTEM' };
+  if (['SaaS Super Admin', 'Super Admin'].includes(req.userRole) || req.companyId === 'SYSTEM') {
+    return {
+      $or: [
+        { companyId: 'SYSTEM' },
+        { roles: { $in: ['SaaS Super Admin', 'Super Admin'] } },
+        { createdBy: { $in: ['SaaS Super Admin', req.userName].filter(Boolean) } },
+        { createdByRole: { $in: ['SaaS Super Admin', 'Super Admin'] } }
+      ]
+    };
   }
 
   const userId = String(req.userId || req.user?.id || req.user?._id || '');
@@ -61,7 +68,7 @@ exports.markAsRead = async (req, res) => {
     const userId = req.userId || req.user?.id || req.user?._id;
     const query = {
       _id: req.params.id,
-      companyId: req.userRole === 'SaaS Super Admin' ? 'SYSTEM' : req.companyId
+      ...(['SaaS Super Admin', 'Super Admin'].includes(req.userRole) ? {} : { companyId: req.companyId })
     };
 
     const notification = await Notification.findOneAndUpdate(
@@ -117,7 +124,7 @@ exports.deleteNotification = async (req, res) => {
   try {
     const query = {
       _id: req.params.id,
-      companyId: req.userRole === 'SaaS Super Admin' ? 'SYSTEM' : req.companyId
+      ...(['SaaS Super Admin', 'Super Admin'].includes(req.userRole) ? {} : { companyId: req.companyId })
     };
 
     const notification = await Notification.findOneAndDelete(query);

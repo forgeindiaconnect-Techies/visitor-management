@@ -73,7 +73,6 @@ const NotificationsPage = () => {
             : [];
 
         const normalizedList = normalizeNotifications(rawList);
-
         const seen = new Set();
 
         const uniqueList = normalizedList.filter((item) => {
@@ -87,7 +86,6 @@ const NotificationsPage = () => {
           const itemCompanyId = String(item.companyId || '').trim().toUpperCase();
           const userCompanyId = String(user?.companyId || '').trim().toUpperCase();
 
-          // Defense in depth: the API already applies the same tenant boundary.
           if (user?.role === 'SaaS Super Admin') {
             return itemCompanyId === 'SYSTEM';
           } else {
@@ -131,8 +129,15 @@ const NotificationsPage = () => {
       const notificationCompanyId = String(notification.companyId || '').trim().toUpperCase();
       const userCompanyId = String(user?.companyId || '').trim().toUpperCase();
 
-      if (user?.role === 'SaaS Super Admin') {
-        if (notificationCompanyId !== 'SYSTEM') return;
+      const isSaasRole = user?.role === 'SaaS Super Admin' || user?.role === 'Super Admin';
+      const isSaasNotif =
+        notificationCompanyId === 'SYSTEM' ||
+        notification.createdByRole === 'SaaS Super Admin' ||
+        notification.createdBy === 'SaaS Super Admin' ||
+        (Array.isArray(notification.roles) && (notification.roles.includes('SaaS Super Admin') || notification.roles.includes('Super Admin')));
+
+      if (isSaasRole && (userCompanyId === 'SYSTEM' || !userCompanyId)) {
+        if (!isSaasNotif) return;
       } else if (
         !userCompanyId ||
         !notificationCompanyId ||
@@ -140,13 +145,10 @@ const NotificationsPage = () => {
         notificationCompanyId !== userCompanyId
       ) return;
 
-      // Filter out Security Attendance notifications for non-super users
       if (notification.type === 'Attendance' && user?.role !== 'Super Admin' && user?.role !== 'SaaS Super Admin' && user?.role !== 'MD') {
         return;
       }
 
-
-      // If notification has a recipient or recipients list, verify match
       const currentUserId = String(user?._id || user?.id || '');
       const currentUserRole = user?.role || '';
       
@@ -160,9 +162,7 @@ const NotificationsPage = () => {
           const rRole = String(r.role || '');
           return (currentUserId && rUserId === currentUserId) || (currentUserRole && rRole.toLowerCase() === currentUserRole.toLowerCase());
         });
-        if (!matchesUser) {
-          return;
-        }
+        if (!matchesUser) return;
       } else if (notification.recipient) {
         const rStr = typeof notification.recipient === 'object' ? String(notification.recipient._id || notification.recipient.id || '') : String(notification.recipient);
         if (rStr !== currentUserId && rStr.toLowerCase() !== currentUserRole.toLowerCase()) {
@@ -225,15 +225,61 @@ const NotificationsPage = () => {
     }
   };
 
-  const getTypeMeta = (title = '', type = '') => {
-    const t = (title || type || '').toLowerCase();
+  const notificationStyle = {
+    info: 'bg-blue-50 border-blue-200 text-blue-700',
+    warning: 'bg-amber-50 border-amber-200 text-amber-700',
+    success: 'bg-green-50 border-green-200 text-green-700',
+    error: 'bg-red-50 border-red-200 text-red-700'
+  };
+
+  const getTypeMeta = (title = '', type = '', module = 'System') => {
+    const t = (title || '').toLowerCase();
+    const nType = (type || '').toLowerCase();
+
+    if (nType === 'warning' || t.includes('warning')) {
+      return {
+        icon: <AlertTriangle size={18} className="text-amber-600" />,
+        badge: module || 'Warning',
+        badgeClass: 'bg-amber-50 text-amber-700 border-amber-200/70',
+        iconBg: 'bg-amber-50 border-amber-100',
+        style: notificationStyle.warning
+      };
+    }
+    if (nType === 'error' || t.includes('error')) {
+      return {
+        icon: <XCircle size={18} className="text-red-600" />,
+        badge: module || 'Error',
+        badgeClass: 'bg-red-50 text-red-700 border-red-200/70',
+        iconBg: 'bg-red-50 border-red-100',
+        style: notificationStyle.error
+      };
+    }
+    if (nType === 'success' || t.includes('success')) {
+      return {
+        icon: <CheckCircle2 size={18} className="text-green-600" />,
+        badge: module || 'Success',
+        badgeClass: 'bg-green-50 text-green-700 border-green-200/70',
+        iconBg: 'bg-green-50 border-green-100',
+        style: notificationStyle.success
+      };
+    }
+    if (nType === 'info' || t.includes('info') || t.includes('system')) {
+      return {
+        icon: <Info size={18} className="text-blue-600" />,
+        badge: module || 'System',
+        badgeClass: 'bg-blue-50 text-blue-700 border-blue-200/70',
+        iconBg: 'bg-blue-50 border-blue-100',
+        style: notificationStyle.info
+      };
+    }
 
     if (t.includes('checked in') || t.includes('checkin') || t.includes('arrived')) {
       return {
         icon: <LogIn size={18} className="text-blue-600" />,
         badge: 'Checked In',
         badgeClass: 'bg-blue-50 text-blue-700 border-blue-200/70',
-        iconBg: 'bg-blue-50 border-blue-100'
+        iconBg: 'bg-blue-50 border-blue-100',
+        style: notificationStyle.info
       };
     }
     if (t.includes('checked out') || t.includes('checkout') || t.includes('departed')) {
@@ -241,46 +287,16 @@ const NotificationsPage = () => {
         icon: <LogOut size={18} className="text-slate-600" />,
         badge: 'Checked Out',
         badgeClass: 'bg-slate-100 text-slate-700 border-slate-200/70',
-        iconBg: 'bg-slate-50 border-slate-200'
-      };
-    }
-    if (t.includes('approved')) {
-      return {
-        icon: <CheckCircle2 size={18} className="text-emerald-600" />,
-        badge: 'Approved',
-        badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200/70',
-        iconBg: 'bg-emerald-50 border-emerald-100'
-      };
-    }
-    if (t.includes('rejected') || t.includes('denied')) {
-      return {
-        icon: <XCircle size={18} className="text-rose-600" />,
-        badge: 'Rejected',
-        badgeClass: 'bg-rose-50 text-rose-700 border-rose-200/70',
-        iconBg: 'bg-rose-50 border-rose-100'
-      };
-    }
-    if (t.includes('rescheduled') || t.includes('appointment')) {
-      return {
-        icon: <CalendarClock size={18} className="text-indigo-600" />,
-        badge: 'Rescheduled',
-        badgeClass: 'bg-indigo-50 text-indigo-700 border-indigo-200/70',
-        iconBg: 'bg-indigo-50 border-indigo-100'
-      };
-    }
-    if (t.includes('returning')) {
-      return {
-        icon: <ShieldCheck size={18} className="text-teal-600" />,
-        badge: 'Returning',
-        badgeClass: 'bg-teal-50 text-teal-700 border-teal-200/70',
-        iconBg: 'bg-teal-50 border-teal-100'
+        iconBg: 'bg-slate-50 border-slate-200',
+        style: notificationStyle.info
       };
     }
     return {
       icon: <UserCheck size={18} className="text-amber-600" />,
       badge: 'Pre-Booking',
       badgeClass: 'bg-amber-50 text-amber-700 border-amber-200/70',
-      iconBg: 'bg-amber-50 border-amber-100'
+      iconBg: 'bg-amber-50 border-amber-100',
+      style: notificationStyle.warning
     };
   };
 
@@ -344,20 +360,30 @@ const NotificationsPage = () => {
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6 p-4 flex flex-wrap gap-4 items-center">
         <div className="relative w-full md:w-64">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-          <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg outline-none" />
+          <Search size={18} className="absolute left-3 top-2.5 text-gray-400" />
+          <input 
+            type="text" 
+            placeholder="Search notifications..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
         </div>
-        <select value={filterDate} onChange={e => setFilterDate(e.target.value)} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-600 outline-none">
-          {dates.map(d => <option key={d} value={d}>{d}</option>)}
-        </select>
-        <select value={filterModule} onChange={e => setFilterModule(e.target.value)} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-600 outline-none">
-          <option value="All">All Modules</option>
-          {modules.filter(m => m !== 'All').map(m => <option key={m} value={m}>{m}</option>)}
-        </select>
-        <select value={filterType} onChange={e => setFilterType(e.target.value)} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-600 outline-none">
-          <option value="All">All Types</option>
-          {types.filter(t => t !== 'All').map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
-        </select>
+
+        <div className="flex flex-wrap gap-3 items-center ml-auto">
+          <div className="flex items-center gap-2">
+            <Filter size={16} className="text-gray-400" />
+            <select value={filterModule} onChange={(e) => setFilterModule(e.target.value)} className="border border-gray-300 rounded-lg text-sm py-2 px-3 focus:outline-none">
+              {modules.map(m => <option key={m} value={m}>{m === 'All' ? 'All Modules' : m}</option>)}
+            </select>
+          </div>
+          <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="border border-gray-300 rounded-lg text-sm py-2 px-3 focus:outline-none">
+            {types.map(t => <option key={t} value={t}>{t === 'All' ? 'All Types' : t}</option>)}
+          </select>
+          <select value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="border border-gray-300 rounded-lg text-sm py-2 px-3 focus:outline-none">
+            {dates.map(d => <option key={d} value={d}>{d === 'All' ? 'All Dates' : d}</option>)}
+          </select>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -374,28 +400,29 @@ const NotificationsPage = () => {
                   <div className="bg-gray-50 px-5 py-2 text-xs font-bold text-gray-500 uppercase tracking-wider">{groupName}</div>
                   <div className="divide-y divide-gray-50">
                     {items.map(notification => {
-                      const meta = getTypeMeta(notification.title, notification.type);
+                      const meta = getTypeMeta(notification.title, notification.type, notification.module);
                       const isUnread = !notification.isRead;
+                      const style = notificationStyle[notification.type] || meta.style || notificationStyle.info;
 
                       return (
                         <div 
                           key={notification._id || notification.id || notification.eventId} 
                           onClick={() => handleNotificationClick(notification)}
-                          className={`p-5 flex gap-4 transition-colors relative group cursor-pointer ${isUnread ? 'bg-indigo-50/20' : 'hover:bg-gray-50'}`}
+                          className={`p-5 flex gap-4 transition-colors relative group cursor-pointer border rounded-xl m-2 ${style} ${isUnread ? 'font-bold' : ''}`}
                         >
                           <div className={`w-10 h-10 rounded-xl shrink-0 flex items-center justify-center border shadow-xs ${meta.iconBg}`}>
                             {meta.icon}
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-2 mb-1">
-                              <h4 className={`text-sm font-semibold ${isUnread ? 'text-gray-900 font-bold' : 'text-gray-700'}`}>{notification.title}</h4>
+                              <h4 className="text-sm font-bold">{notification.title}</h4>
                               <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md border shrink-0 uppercase tracking-wider ${meta.badgeClass}`}>
                                 {meta.badge}
                               </span>
                             </div>
-                            <p className={`text-sm leading-relaxed ${isUnread ? 'text-gray-800' : 'text-gray-500'}`}>{notification.message}</p>
-                            <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-400 font-medium">
-                              <Clock size={12} className="text-gray-400 shrink-0" />
+                            <p className="text-sm leading-relaxed">{notification.message}</p>
+                            <div className="mt-2 flex items-center gap-1.5 text-xs opacity-75 font-medium">
+                              <Clock size={12} className="shrink-0" />
                               <span>{formatNotificationDate(notification.createdAt)}</span>
                             </div>
                           </div>
